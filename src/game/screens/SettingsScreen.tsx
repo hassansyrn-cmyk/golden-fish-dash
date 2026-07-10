@@ -134,7 +134,7 @@ export default function SettingsScreen({ onBack }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
 
   function toggle(key: keyof Settings) {
-    const next = { ...settings, !settings[key] };
+    const next = { ...settings, [key]: !settings[key] };
     setLocalSettings(next);
     setSettings(next);
   }
