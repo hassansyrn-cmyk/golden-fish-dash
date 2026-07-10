@@ -90,7 +90,8 @@ const FISH_X_RATIO = 0.28;
 
 const MAX_EXTRA_LIVES = 2;
 const GEM_SPAWN_CHANCE = 0.09;
-const HIT_INVINCIBILITY_MS = 1600;
+const HIT_INVINCIBILITY_MS = 1700;
+const SAFE_REVIVE_DELAY_MS = 900;
 
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
   const bubbles: Bubble[] = Array.from({ length: 18 }, () => ({
@@ -168,13 +169,13 @@ export function jump(state: EngineState, settings: { vibration: boolean }) {
 }
 
 function clampGapY(state: EngineState, gapY: number, gapSize: number) {
-  const safeMargin = Math.max(82, gapSize * 0.42);
+  const safeMargin = Math.max(92, gapSize * 0.45);
   return Math.max(safeMargin, Math.min(state.height - safeMargin, gapY));
 }
 
 function spawnObstacle(state: EngineState, score: number) {
   const { gap } = difficultyForScore(score);
-  const margin = Math.max(90, gap * 0.45);
+  const margin = Math.max(95, gap * 0.48);
   const rawGapY = margin + Math.random() * Math.max(1, state.height - margin * 2);
   const gapY = clampGapY(state, rawGapY, gap);
 
@@ -189,9 +190,9 @@ function spawnObstacle(state: EngineState, score: number) {
     gapY,
     gapSize: gap,
     passed: false,
-    bobbing: hardMode && Math.random() < 0.25,
+    bobbing: hardMode && Math.random() < 0.22,
     bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 14 + Math.random() * 12,
+    bobAmount: 12 + Math.random() * 10,
     glowing: legendaryMode,
     isDouble,
   });
@@ -200,7 +201,7 @@ function spawnObstacle(state: EngineState, score: number) {
   if (Math.random() < 0.68) {
     state.coins.push({
       x: state.width + BASE.obstacleWidth + 44,
-      y: gapY + (Math.random() - 0.5) * (gap * 0.35),
+      y: gapY + (Math.random() - 0.5) * (gap * 0.32),
       collected: false,
       bonus: score >= 60 && Math.random() < 0.22,
     });
@@ -210,7 +211,7 @@ function spawnObstacle(state: EngineState, score: number) {
   if (Math.random() < GEM_SPAWN_CHANCE) {
     state.gems.push({
       x: state.width + BASE.obstacleWidth + 88,
-      y: gapY + (Math.random() - 0.5) * (gap * 0.32),
+      y: gapY + (Math.random() - 0.5) * (gap * 0.28),
       collected: false,
       pulse: Math.random() * Math.PI * 2,
     });
@@ -239,156 +240,192 @@ function addBurst(
   }
 }
 
-function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
-  if (state.lives <= 0) return false;
+function clearDangerousReviveArea(state: EngineState) {
+  const fishX = state.width * FISH_X_RATIO;
+
+  /*
+    Remove obstacles that are too close to the fish after revive.
+
+    This is safer than only pushing obstacles forward, because pushing old
+    obstacles can still leave a narrow or impossible corridor. The player
+    should always revive into a fair lane.
+  */
+  state.obstacles = sta*e.obstacles.filter((obs) => {
+    *onst halfWidth = BASE.obstacleWidt* / 2;
+    const obsLeft = obs.x - *alfWidth;
+    const obsRight = obs*x + halfWidth;
+
+    const safelyBe*indFish = obsRight < fishX - BASE.*bstacleWidth * 2.2;
+    const safe*yFarAhead = obsLeft > state.width * BASE.obstacleWidth * 1.4;
+
+    re*urn safelyBehindFish || safelyFarA*ead;
+  });
+
+  // Remove collectibl*s from the unsafe revive corridor *oo.
+  state.coins = state.coins.fi*ter((coin) => {
+    const safelyBe*indFish = coin.x < fishX - BASE.ob*tacleWidth * 2;
+    const safelyFa*Ahead = coin.x > state.width + BAS*.obstacleWidth;
+
+    return safely*ehindFish || safelyFarAhead;
+  });*
+  state.gems = state.gems.filter(*gem) => {
+    const safelyBehindFi*h = gem.x < fishX - BASE.obstacleW*dth * 2;
+    const safelyFarAhead * gem.x > state.width + BASE.obstac*eWidth;
+
+    return safelyBehindFi*h || safelyFarAhead;
+  });
+
+  // D*lay the next obstacle so the playe* can regain control.
+  state.elaps*dSinceSpawn = -SAFE_REVIVE_DELAY_M*;
+}
+
+function spendExtraLife(state* EngineState, callbacks: EngineCal*backs) {
+  if (state.lives <= 0) r*turn false;
 
   state.lives -= 1;
-  state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
-  state.fishY = state.height / 2;
+ *state.invincibleUntil = state.time*s + HIT_INVINCIBILITY_MS;
+
+  // Pu* the fish in a safe middle positio*.
+  state.fishY = state.height / 2*
   state.fishVY = 0;
+  state.fishR*tation = 0;
 
-  for (const obs of state.obstacles) {
-    if (obs.x < state.width * 0.75) {
-      obs.x += state.width * 0.55;
-    }
-  }
+  clearDangerousReviv*Area(state);
 
-  callbacks.onLifeChange?.(state.lives);
-  callbacks.onShake(8);
+  callbacks.onLifeCh*nge?.(state.lives);
+  callbacks.on*hake(6);
 
   addBurst(
     state,
-    state.width * FISH_X_RATIO,
-    state.fishY,
-    'rgba(80, 220, 255, 0.95)',
-    18,
+ *  state.width * FISH_X_RATIO,
+    *tate.fishY,
+    'rgba(80, 220, 255* 0.95)',
+    22,
     3,
   );
 
-  return true;
+  re*urn true;
 }
 
-function killOrUseLife(state: EngineState, callbacks: EngineCallbacks) {
-  if (spendExtraLife(state, callbacks)) {
-    return;
-  }
+function killOrUseLif*(state: EngineState, callbacks: En*ineCallbacks) {
+  if (spendExtraLi*e(state, callbacks)) {
+    return;*  }
 
   callbacks.onShake(14);
-  callbacks.onDeath();
-  state.running = false;
+  ca*lbacks.onDeath();
+  state.running * false;
 }
 
-export function stepEngine(
+export function stepEng*ne(
   state: EngineState,
-  dtMs: number,
-  callbacks: EngineCallbacks,
-  settings: { vibration: boolean },
+  dtMs: *umber,
+  callbacks: EngineCallback*,
+  settings: { vibration: boolean*},
 ) {
-  if (!state.running) return;
+  if (!state.running) retur*;
 
-  const dt = Math.min(2.2, dtMs / 16.67);
+  const dt = Math.min(2.2, dtMs*/ 16.67);
   state.timeMs += dtMs;
-  state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
+* state.legendaryPulse = (state.leg*ndaryPulse + dtMs * 0.002) % (Math*PI * 2);
 
-  // --- Fish physics ---
-  state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
-  state.fishY += state.fishVY * dt;
-  state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
+  // --- Fish physics --*
+  state.fishVY = Math.min(BASE.ma*FallSpeed, state.fishVY + BASE.gra*ity * dt);
+  state.fishY += state.*ishVY * dt;
+  state.fishRotation =*Math.max(-0.5, Math.min(0.9, state*fishVY * 0.06));
 
-  const groundY = state.height - 8;
-  const ceilingY = 8;
-  const invincible = state.timeMs < state.invincibleUntil;
+  const groundY * state.height - 8;
+  const ceiling* = 8;
+  const invincible = state.t*meMs < state.invincibleUntil;
 
-  if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
-    state.fishY = Math.max(
-      ceilingY + BASE.fishRadius,
-      Math.min(groundY - BASE.fishRadius, state.fishY),
-    );
+  i* (state.fishY + BASE.fishRadius >=*groundY || state.fishY - BASE.fish*adius <= ceilingY) {
+    state.fis*Y = Math.max(
+      ceilingY + BAS*.fishRadius,
+      Math.min(ground* - BASE.fishRadius, state.fishY),
+*   );
 
     if (!invincible) {
-      killOrUseLife(state, callbacks);
-      return;
+    * killOrUseLife(state, callbacks);
+*     return;
     }
 
-    state.fishVY = 0;
+    state.fish*Y = 0;
   }
 
-  // --- Spawn obstacles ---
-  const { speed, spawnInterval } = difficultyForScore(state.score);
-  state.elapsedSinceSpawn += dtMs;
+  // --- Spawn obstacl*s ---
+  const { speed, spawnInterv*l } = difficultyForScore(state.sco*e);
+  state.elapsedSinceSpawn += d*Ms;
 
-  if (state.elapsedSinceSpawn >= spawnInterval) {
-    spawnObstacle(state, state.score);
-    state.elapsedSinceSpawn = 0;
+  if (state.elapsedSinceSpawn*>= spawnInterval) {
+    spawnObsta*le(state, state.score);
+    state.*lapsedSinceSpawn = 0;
   }
 
-  // --- Move obstacles + collision ---
-  const fishX = state.width * FISH_X_RATIO;
+  // --* Move obstacles + collision ---
+  *onst fishX = state.width * FISH_X_*ATIO;
 
-  for (const obs of state.obstacles) {
-    obs.x -= speed * dt;
+  for (const obs of state.o*stacles) {
+    obs.x -= speed * dt*
 
     if (obs.bobbing) {
-      obs.bobPhase += dtMs * 0.0022;
-      obs.gapY += Math.sin(obs.bobPhase) * 0.22 * dt;
-      obs.gapY = clampGapY(state, obs.gapY, obs.gapSize);
+      obs*bobPhase += dtMs * 0.002;
+      ob*.gapY += Math.sin(obs.bobPhase) * *.18 * dt;
+      obs.gapY = clampGa*Y(state, obs.gapY, obs.gapSize);
+ *  }
+
+    if (!obs.passed && obs.x * BASE.obstacleWidth / 2 < fishX) {*      obs.passed = true;
+      sta*e.score += 1;
+      callbacks.onSc*re(state.score);
     }
 
-    if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
-      obs.passed = true;
-      state.score += 1;
-      callbacks.onScore(state.score);
-    }
-
-    if (!invincible) {
+    if (!i*vincible) {
       const withinX =
-        fishX + BASE.fishRadius > obs.x - BASE.obstacleWidth / 2 &&
-        fishX - BASE.fishRadius < obs.x + BASE.obstacleWidth / 2;
+*       fishX + BASE.fishRadius > o*s.x - BASE.obstacleWidth / 2 &&
+  *     fishX - BASE.fishRadius < obs*x + BASE.obstacleWidth / 2;
 
-      if (withinX) {
-        const topGapEdge = obs.gapY - obs.gapSize / 2;
-        const bottomGapEdge = obs.gapY + obs.gapSize / 2;
+     *if (withinX) {
+        const topGa*Edge = obs.gapY - obs.gapSize / 2;*        const bottomGapEdge = obs.*apY + obs.gapSize / 2;
 
-        let safe: boolean;
+        le* safe: boolean;
 
-        if (obs.isDouble) {
-          const secondTop = bottomGapEdge + 54;
-          const secondBottom = secondTop + 48;
+        if (obs.i*Double) {
+          const secondTo* = bottomGapEdge + 58;
+          c*nst secondBottom = secondTop + 52;*
           const inGap1 =
-            state.fishY - BASE.fishRadius >= topGapEdge &&
-            state.fishY + BASE.fishRadius <= bottomGapEdge;
+        *   state.fishY - BASE.fishRadius >* topGapEdge &&
+            state.f*shY + BASE.fishRadius <= bottomGap*dge;
+
           const inGap2 =
-            state.fishY - BASE.fishRadius >= secondTop &&
-            state.fishY + BASE.fishRadius <= secondBottom;
-          safe = inGap1 || inGap2;
+   *        state.fishY - BASE.fishRad*us >= secondTop &&
+            sta*e.fishY + BASE.fishRadius <= secon*Bottom;
+
+          safe = inGap1 |* inGap2;
         } else {
-          const hitTop = state.fishY - BASE.fishRadius < topGapEdge;
-          const hitBottom = state.fishY + BASE.fishRadius > bottomGapEdge;
-          safe = !hitTop && !hitBottom;
-        }
+        * const hitTop = state.fishY - BASE*fishRadius < topGapEdge;
+         *const hitBottom = state.fishY + BA*E.fishRadius > bottomGapEdge;
+    *     safe = !hitTop && !hitBottom;*        }
 
         if (!safe) {
-          killOrUseLife(state, callbacks);
+  *       killOrUseLife(state, callba*ks);
           return;
         }
-      }
+ *    }
     }
   }
 
-  state.obstacles = state.obstacles.filter((o) => o.x > -BASE.obstacleWidth * 2);
+  state.obstacles*= state.obstacles.filter((o) => o.* > -BASE.obstacleWidth * 2);
 
-  // --- Coins ---
-  for (const coin of state.coins) {
-    coin.x -= speed * dt;
+  //*--- Coins ---
+  for (const coin of*state.coins) {
+    coin.x -= speed** dt;
 
     if (!coin.collected) {
-      const dx = coin.x - fishX;
-      const dy = coin.y - state.fishY;
+*     const dx = coin.x - fishX;
+  *   const dy = coin.y - state.fishY*
 
-      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 13) {
-        coin.collected = true;
+      if (Math.sqrt(dx * dx + dy** dy) < BASE.fishRadius + 13) {
+  *     coin.collected = true;
 
-        const amount = coin.bonus ? 5 : 1;
+     *  const amount = coin.bonus ? 5 : 1;
 
         // Coins now matter immediately:
         // normal coin = +1 score
@@ -407,7 +444,7 @@ export function stepEngine(
   // --- Rare gems ---
   for (const gem of state.gems) {
     gem.x -= speed * dt;
-    gem.pulse += dtMs * 0.006;
+    gem.pulse += dtMs * 0.0045;
 
     if (!gem.collected) {
       const dx = gem.x - fishX;
@@ -454,6 +491,9 @@ export function stepEngine(
 
   // --- Shake decay ---
   state.shakeIntensity = Math.max(0, state.shakeIntensity - dtMs * 0.05);
+
+  // Keep TypeScript happy if stricter configs are enabled later.
+  void settings;
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
@@ -559,8 +599,8 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   if (obs.glowing) ctx.restore();
 
   if (obs.isDouble) {
-    const secondTop = bottomGapEdge + 54;
-    const secondBottom = secondTop + 48;
+    const secondTop = bottomGapEdge + 58;
+    const secondBottom = secondTop + 52;
 
     ctx.clearRect(x - 6, secondTop, w + 12, secondBottom - secondTop);
 
@@ -588,6 +628,7 @@ function drawFish(
   ctx.shadowColor = skin.colors.glow;
   ctx.shadowBlur = state.score >= 100 ? 26 : 14;
 
+  // Tail
   ctx.beginPath();
   ctx.moveTo(-BASE.fishRadius - 2, 0);
   ctx.lineTo(-BASE.fishRadius - 16, -10);
@@ -596,16 +637,19 @@ function drawFish(
   ctx.fillStyle = skin.colors.fin;
   ctx.fill();
 
+  // Body
   ctx.beginPath();
   ctx.ellipse(0, 0, BASE.fishRadius, BASE.fishRadius * 0.78, 0, 0, Math.PI * 2);
   ctx.fillStyle = skin.colors.body;
   ctx.fill();
 
+  // Belly highlight
   ctx.beginPath();
   ctx.ellipse(2, 5, BASE.fishRadius * 0.6, BASE.fishRadius * 0.4, 0, 0, Math.PI * 2);
   ctx.fillStyle = skin.colors.belly;
   ctx.fill();
 
+  // Top fin
   ctx.beginPath();
   ctx.moveTo(-2, -BASE.fishRadius * 0.7);
   ctx.lineTo(6, -BASE.fishRadius * 1.25);
@@ -616,6 +660,7 @@ function drawFish(
 
   ctx.restore();
 
+  // Eye
   ctx.beginPath();
   ctx.arc(BASE.fishRadius * 0.45, -BASE.fishRadius * 0.15, 4.2, 0, Math.PI * 2);
   ctx.fillStyle = '#1c1c1c';
@@ -632,7 +677,8 @@ function drawFish(
 function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   if (coin.collected) return;
 
-  const bob = Math.sin(timeMs * 0.005 + coin.x) * 3;
+  // Gentle floating movement. Previously this was stronger and looked like shaking.
+  const bob = Math.sin(timeMs * 0.004 + coin.x) * 1.2;
 
   ctx.save();
   ctx.translate(coin.x, coin.y + bob);
@@ -661,9 +707,10 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
 function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   if (gem.collected) return;
 
-  const bob = Math.sin(timeMs * 0.004 + gem.x) * 4;
+  // Gentle floating movement. This keeps it alive visually without annoying shaking.
+  const bob = Math.sin(timeMs * 0.003 + gem.x) * 1.5;
   const pulse = (Math.sin(gem.pulse) + 1) / 2;
-  const size = 12 + pulse * 2;
+  const size = 12 + pulse * 1.4;
 
   ctx.save();
   ctx.translate(gem.x, gem.y + bob);
@@ -701,14 +748,14 @@ function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   ctx.restore();
 }
 
-function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
-  const alpha = 1 - p.life / p.maxLife;
+function drawParticle(ctx: CanvasRenderingContext2D, particle: Particle) {
+  const alpha = 1 - particle.life / particle.maxLife;
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
   ctx.beginPath();
-  ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-  ctx.fillStyle = p.color;
+  ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+  ctx.fillStyle = particle.color;
   ctx.fill();
   ctx.restore();
 }
@@ -737,7 +784,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
 
   drawFish(ctx, state, fishX, invincible);
 
-  for (const p of state.particles) drawParticle(ctx, p);
+  for (const particle of state.particles) drawParticle(ctx, particle);
 
   ctx.restore();
 }
