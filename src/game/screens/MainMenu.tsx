@@ -8,6 +8,57 @@ interface Props {
   onSettings: () => void;
 }
 
+/**
+ * Cute goldfish with blue stripes — matches the splash / loading style.
+ */
+function MenuFish() {
+  return (
+    <div className="menu-fish-decor" aria-hidden="true">
+      <svg viewBox="0 0 80 56" width="96" height="68" className="menu-fish-svg" style={{ overflow: 'visible' }}>
+        {/* soft glow */}
+        <ellipse cx="44" cy="28" rx="28" ry="20" fill="#ffe066" opacity="0.25" />
+        {/* tail */}
+        <path
+          d="M6 28 C0 14, 2 12, 14 16 C8 22, 8 28, 8 28 C8 28, 8 34, 14 40 C2 44, 0 42, 6 28 Z"
+          fill="#ffb703"
+        />
+        {/* body */}
+        <path
+          d="M14 28 C14 14, 26 6, 44 7 C60 8, 72 16, 74 28 C72 40, 60 48, 44 49 C26 50, 14 42, 14 28 Z"
+          fill="#ffd60a"
+        />
+        {/* blue vertical stripes (like splash fish) */}
+        <path d="M26 12 C28 28, 28 28, 26 44 C32 44, 34 28, 32 12 Z" fill="#4cc9f0" opacity="0.85" />
+        <path d="M40 10 C42 28, 42 28, 40 46 C46 46, 48 28, 46 10 Z" fill="#4cc9f0" opacity="0.9" />
+        <path d="M52 14 C54 28, 54 28, 52 42 C56 42, 58 28, 56 14 Z" fill="#4cc9f0" opacity="0.75" />
+        {/* belly */}
+        <path
+          d="M24 32 C32 42, 56 42, 64 30 C56 38, 36 40, 26 34 Z"
+          fill="#fff8d6"
+          opacity="0.7"
+        />
+        {/* dorsal */}
+        <path d="M32 10 C40 0, 52 0, 56 12 C48 6, 40 6, 32 10 Z" fill="#ffb703" />
+        {/* pectoral */}
+        <path d="M50 28 C64 20, 66 34, 54 34 C52 32, 51 30, 50 28 Z" fill="#ffb703" />
+        {/* eye */}
+        <circle cx="62" cy="22" r="5" fill="#1a1200" />
+        <circle cx="63.5" cy="20.5" r="1.8" fill="#fff" />
+        {/* cheek blush */}
+        <ellipse cx="58" cy="28" rx="3.5" ry="2.2" fill="#ff9f1c" opacity="0.4" />
+        {/* shine */}
+        <path
+          d="M28 18 Q44 10 60 18"
+          stroke="rgba(255,255,255,0.5)"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
 export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings }: Props) {
   const [best, setBest] = useState(0);
   const [globalBest, setGlobalBest] = useState(0);
@@ -21,31 +72,7 @@ export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings }:
 
   return (
     <div className="screen menu-screen">
-      <div className="menu-fish-decor" aria-hidden="true">
-        <svg viewBox="0 0 80 56" width="88" height="62" className="menu-fish-svg">
-          {/* soft glow */}
-          <circle cx="44" cy="28" r="24" fill="#ffe066" opacity="0.2" />
-          {/* tail */}
-          <path d="M4 28 L20 10 L18 28 L20 46 Z" fill="#ff9f1c" />
-          {/* body */}
-          <ellipse cx="44" cy="28" rx="24" ry="16" fill="#ffc93c" />
-          {/* belly */}
-          <ellipse cx="46" cy="33" rx="15" ry="9" fill="#fff3c4" opacity="0.9" />
-          {/* dorsal fin */}
-          <path d="M32 14 Q44 0 56 14 L50 16 L38 16 Z" fill="#ff9f1c" />
-          {/* lower fin */}
-          <path d="M34 40 Q44 54 54 40 L48 38 L40 38 Z" fill="#ff9f1c" opacity="0.95" />
-          {/* side fin */}
-          <path d="M50 30 Q66 22 68 36 Q58 34 50 30" fill="#ff9f1c" />
-          {/* eye */}
-          <circle cx="58" cy="23" r="4.5" fill="#1a1200" />
-          <circle cx="59.5" cy="21.5" r="1.6" fill="#fff" />
-          {/* smile */}
-          <path d="M60 30 Q64 34 68 30" stroke="#1a1200" strokeWidth="1.6" fill="none" strokeLinecap="round" />
-          {/* shine */}
-          <path d="M30 20 Q44 12 58 20" stroke="rgba(255,255,255,0.55)" strokeWidth="3" fill="none" strokeLinecap="round" />
-        </svg>
-      </div>
+      <MenuFish />
       <h1 className="game-title">
         Golden <span className="game-title-accent">Fish Rush</span>
       </h1>
@@ -72,7 +99,9 @@ export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings }:
           />
         </div>
         <span className="daily-status">
-          {daily.completed ? `Completed! +${daily.challenge.rewardCoins} coins` : `${daily.progress}/${daily.challenge.target}`}
+          {daily.completed
+            ? `Completed! +${daily.challenge.rewardCoins} coins`
+            : `${daily.progress}/${daily.challenge.target}`}
         </span>
       </div>
 
