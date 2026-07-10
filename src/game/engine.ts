@@ -9,7 +9,7 @@ import type { SkinId } from './types';
 
 export interface Obstacle {
   x: number;
-  gapY: number; // center of the gap
+  gapY: number;
   gapSize: number;
   passed: boolean;
   bobbing: boolean;
@@ -24,6 +24,13 @@ export interface Coin {
   y: number;
   collected: boolean;
   bonus: boolean;
+}
+
+export interface Gem {
+  x: number;
+  y: number;
+  collected: boolean;
+  pulse: number;
 }
 
 export interface Bubble {
@@ -50,6 +57,10 @@ export interface EngineCallbacks {
   onCoinCollect: (total: number) => void;
   onDeath: () => void;
   onShake: (intensity: number) => void;
+
+  // Optional callbacks for newer gameplay features.
+  onGemCollect?: (lives: number) => void;
+  onLifeChange?: (lives: number) => void;
 }
 
 export interface EngineState {
@@ -63,6 +74,7 @@ export interface EngineState {
   invincibleUntil: number;
   obstacles: Obstacle[];
   coins: Coin[];
+  gems: Gem[];
   bubbles: Bubble[];
   particles: Particle[];
   elapsedSinceSpawn: number;
@@ -70,9 +82,15 @@ export interface EngineState {
   shakeIntensity: number;
   timeMs: number;
   legendaryPulse: number;
+  lives: number;
+  maxLives: number;
 }
 
 const FISH_X_RATIO = 0.28;
+
+const MAX_EXTRA_LIVES = 2;
+const GEM_SPAWN_CHANCE = 0.09;
+const HIT_INVINCIBILITY_MS = 1600;
 
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
   const bubbles: Bubble[] = Array.from({ length: 18 }, () => ({
@@ -82,6 +100,7 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     speed: 0.3 + Math.random() * 0.9,
     drift: (Math.random() - 0.5) * 0.4,
   }));
+
   return {
     width,
     height,
@@ -93,6 +112,7 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     invincibleUntil: 0,
     obstacles: [],
     coins: [],
+    gems: [],
     bubbles,
     particles: [],
     elapsedSinceSpawn: 999999,
@@ -100,24 +120,31 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     shakeIntensity: 0,
     timeMs: 0,
     legendaryPulse: 0,
+    lives: 0,
+    maxLives: MAX_EXTRA_LIVES,
   };
 }
 
 export function difficultyForScore(score: number) {
-  // Speed increases gradually every 10 points, capped at maxSpeed.
-  const speedSteps = Math.floor(score / 10);
-  const speed = Math.min(BASE.maxSpeed, BASE.baseSpeed + speedSteps * 0.32);
-  // Gap shrinks gradually but never below minGap.
-  const gap = Math.max(BASE.minGap, BASE.baseGap - speedSteps * 6);
-  const spawnInterval = Math.max(900, BASE.spawnInterval - speedSteps * 55);
+  // Easier balance:
+  // - slower initial speed
+  // - slower difficulty increase
+  // - bigger gaps
+  // - more time between obstacles
+  const speedSteps = Math.floor(score / 12);
+  const speed = Math.min(BASE.maxSpeed * 0.9, BASE.baseSpeed * 0.86 + speedSteps * 0.22);
+  const gap = Math.max(BASE.minGap + 24, BASE.baseGap + 24 - speedSteps * 4);
+  const spawnInterval = Math.max(1080, BASE.spawnInterval + 180 - speedSteps * 38);
   const tier = getDifficultyTier(score);
+
   return { speed, gap, spawnInterval, tier };
 }
 
 export function jump(state: EngineState, settings: { vibration: boolean }) {
   if (!state.running) return;
+
   state.fishVY = BASE.jumpVelocity;
-  // Small splash/bubble burst on jump.
+
   for (let i = 0; i < 6; i++) {
     state.particles.push({
       x: state.width * FISH_X_RATIO,
@@ -130,6 +157,7 @@ export function jump(state: EngineState, settings: { vibration: boolean }) {
       size: 2 + Math.random() * 3,
     });
   }
+
   if (settings.vibration && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     try {
       navigator.vibrate(12);
@@ -139,35 +167,115 @@ export function jump(state: EngineState, settings: { vibration: boolean }) {
   }
 }
 
+function clampGapY(state: EngineState, gapY: number, gapSize: number) {
+  const safeMargin = Math.max(82, gapSize * 0.42);
+  return Math.max(safeMargin, Math.min(state.height - safeMargin, gapY));
+}
+
 function spawnObstacle(state: EngineState, score: number) {
   const { gap } = difficultyForScore(score);
-  const margin = 70;
-  const gapY = margin + Math.random() * (state.height - margin * 2);
-  const hardMode = score >= 26;
-  const expertMode = score >= 51;
-  const legendaryMode = score >= 100;
-  const isDouble = expertMode && Math.random() < 0.18;
+  const margin = Math.max(90, gap * 0.45);
+  const rawGapY = margin + Math.random() * Math.max(1, state.height - margin * 2);
+  const gapY = clampGapY(state, rawGapY, gap);
+
+  const hardMode = score >= 35;
+  const expertMode = score >= 70;
+  const legendaryMode = score >= 120;
+
+  const isDouble = expertMode && Math.random() < 0.1;
+
   state.obstacles.push({
     x: state.width + BASE.obstacleWidth,
     gapY,
     gapSize: gap,
     passed: false,
-    bobbing: hardMode && Math.random() < 0.4,
+    bobbing: hardMode && Math.random() < 0.25,
     bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 22 + Math.random() * 18,
+    bobAmount: 14 + Math.random() * 12,
     glowing: legendaryMode,
     isDouble,
   });
 
-  // Occasionally spawn a collectible coin in the gap.
-  if (Math.random() < 0.55) {
+  // Coin in the gap.
+  if (Math.random() < 0.68) {
     state.coins.push({
-      x: state.width + BASE.obstacleWidth + 40,
-      y: gapY + (Math.random() - 0.5) * (gap * 0.4),
+      x: state.width + BASE.obstacleWidth + 44,
+      y: gapY + (Math.random() - 0.5) * (gap * 0.35),
       collected: false,
-      bonus: legendaryMode && Math.random() < 0.25,
+      bonus: score >= 60 && Math.random() < 0.22,
     });
   }
+
+  // Rare gem: gives one extra life.
+  if (Math.random() < GEM_SPAWN_CHANCE) {
+    state.gems.push({
+      x: state.width + BASE.obstacleWidth + 88,
+      y: gapY + (Math.random() - 0.5) * (gap * 0.32),
+      collected: false,
+      pulse: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+function addBurst(
+  state: EngineState,
+  x: number,
+  y: number,
+  color: string,
+  count: number,
+  sizeBase = 2,
+) {
+  for (let i = 0; i < count; i++) {
+    state.particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 3.6,
+      vy: (Math.random() - 0.5) * 3.6,
+      life: 0,
+      maxLife: 22 + Math.random() * 12,
+      color,
+      size: sizeBase + Math.random() * 3,
+    });
+  }
+}
+
+function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
+  if (state.lives <= 0) return false;
+
+  state.lives -= 1;
+  state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+  state.fishY = state.height / 2;
+  state.fishVY = 0;
+
+  for (const obs of state.obstacles) {
+    if (obs.x < state.width * 0.75) {
+      obs.x += state.width * 0.55;
+    }
+  }
+
+  callbacks.onLifeChange?.(state.lives);
+  callbacks.onShake(8);
+
+  addBurst(
+    state,
+    state.width * FISH_X_RATIO,
+    state.fishY,
+    'rgba(80, 220, 255, 0.95)',
+    18,
+    3,
+  );
+
+  return true;
+}
+
+function killOrUseLife(state: EngineState, callbacks: EngineCallbacks) {
+  if (spendExtraLife(state, callbacks)) {
+    return;
+  }
+
+  callbacks.onShake(14);
+  callbacks.onDeath();
+  state.running = false;
 }
 
 export function stepEngine(
@@ -177,7 +285,8 @@ export function stepEngine(
   settings: { vibration: boolean },
 ) {
   if (!state.running) return;
-  const dt = Math.min(2.2, dtMs / 16.67); // normalize to ~60fps steps, cap for tab-switch spikes
+
+  const dt = Math.min(2.2, dtMs / 16.67);
   state.timeMs += dtMs;
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
 
@@ -191,20 +300,23 @@ export function stepEngine(
   const invincible = state.timeMs < state.invincibleUntil;
 
   if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
+    state.fishY = Math.max(
+      ceilingY + BASE.fishRadius,
+      Math.min(groundY - BASE.fishRadius, state.fishY),
+    );
+
     if (!invincible) {
-      state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
-      callbacks.onShake(10);
-      callbacks.onDeath();
-      state.running = false;
+      killOrUseLife(state, callbacks);
       return;
     }
-    state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
+
     state.fishVY = 0;
   }
 
   // --- Spawn obstacles ---
   const { speed, spawnInterval } = difficultyForScore(state.score);
   state.elapsedSinceSpawn += dtMs;
+
   if (state.elapsedSinceSpawn >= spawnInterval) {
     spawnObstacle(state, state.score);
     state.elapsedSinceSpawn = 0;
@@ -212,12 +324,14 @@ export function stepEngine(
 
   // --- Move obstacles + collision ---
   const fishX = state.width * FISH_X_RATIO;
+
   for (const obs of state.obstacles) {
     obs.x -= speed * dt;
+
     if (obs.bobbing) {
-      obs.bobPhase += dtMs * 0.0028;
-      obs.gapY += Math.sin(obs.bobPhase) * 0.35 * dt;
-      obs.gapY = Math.max(90, Math.min(state.height - 90, obs.gapY));
+      obs.bobPhase += dtMs * 0.0022;
+      obs.gapY += Math.sin(obs.bobPhase) * 0.22 * dt;
+      obs.gapY = clampGapY(state, obs.gapY, obs.gapSize);
     }
 
     if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
@@ -227,21 +341,25 @@ export function stepEngine(
     }
 
     if (!invincible) {
-      const withinX = fishX + BASE.fishRadius > obs.x - BASE.obstacleWidth / 2 && fishX - BASE.fishRadius < obs.x + BASE.obstacleWidth / 2;
+      const withinX =
+        fishX + BASE.fishRadius > obs.x - BASE.obstacleWidth / 2 &&
+        fishX - BASE.fishRadius < obs.x + BASE.obstacleWidth / 2;
+
       if (withinX) {
         const topGapEdge = obs.gapY - obs.gapSize / 2;
         const bottomGapEdge = obs.gapY + obs.gapSize / 2;
 
         let safe: boolean;
+
         if (obs.isDouble) {
-          // Double obstacle pattern: two separate safe corridors (the main
-          // gap plus a secondary gap below it). The fish must be fully
-          // inside one of the two gaps to be safe -- everything else is a
-          // solid pillar, matching the rendered geometry in drawObstacle.
-          const secondTop = bottomGapEdge + 46;
-          const secondBottom = secondTop + 40;
-          const inGap1 = state.fishY - BASE.fishRadius >= topGapEdge && state.fishY + BASE.fishRadius <= bottomGapEdge;
-          const inGap2 = state.fishY - BASE.fishRadius >= secondTop && state.fishY + BASE.fishRadius <= secondBottom;
+          const secondTop = bottomGapEdge + 54;
+          const secondBottom = secondTop + 48;
+          const inGap1 =
+            state.fishY - BASE.fishRadius >= topGapEdge &&
+            state.fishY + BASE.fishRadius <= bottomGapEdge;
+          const inGap2 =
+            state.fishY - BASE.fishRadius >= secondTop &&
+            state.fishY + BASE.fishRadius <= secondBottom;
           safe = inGap1 || inGap2;
         } else {
           const hitTop = state.fishY - BASE.fishRadius < topGapEdge;
@@ -250,47 +368,74 @@ export function stepEngine(
         }
 
         if (!safe) {
-          callbacks.onShake(14);
-          callbacks.onDeath();
-          state.running = false;
+          killOrUseLife(state, callbacks);
           return;
         }
       }
     }
   }
+
   state.obstacles = state.obstacles.filter((o) => o.x > -BASE.obstacleWidth * 2);
 
   // --- Coins ---
   for (const coin of state.coins) {
     coin.x -= speed * dt;
+
     if (!coin.collected) {
       const dx = coin.x - fishX;
       const dy = coin.y - state.fishY;
-      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 12) {
+
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 13) {
         coin.collected = true;
+
         const amount = coin.bonus ? 5 : 1;
+
+        // Coins now matter immediately:
+        // normal coin = +1 score
+        // bonus coin = +5 score
+        state.score += amount;
+        callbacks.onScore(state.score);
         callbacks.onCoinCollect(amount);
-        for (let i = 0; i < 10; i++) {
-          state.particles.push({
-            x: coin.x,
-            y: coin.y,
-            vx: (Math.random() - 0.5) * 3,
-            vy: (Math.random() - 0.5) * 3,
-            life: 0,
-            maxLife: 22 + Math.random() * 10,
-            color: coin.bonus ? '#ff9500' : '#ffd60a',
-            size: 2 + Math.random() * 3,
-          });
-        }
+
+        addBurst(state, coin.x, coin.y, coin.bonus ? '#ff9500' : '#ffd60a', 12, 2);
       }
     }
   }
-  state.coins = state.coins.filter((c) => c.x > -40 && !(c.collected && Math.random() < 0));
 
-  // --- Bubbles (ambient decoration) ---
+  state.coins = state.coins.filter((c) => c.x > -40 && !c.collected);
+
+  // --- Rare gems ---
+  for (const gem of state.gems) {
+    gem.x -= speed * dt;
+    gem.pulse += dtMs * 0.006;
+
+    if (!gem.collected) {
+      const dx = gem.x - fishX;
+      const dy = gem.y - state.fishY;
+
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 16) {
+        gem.collected = true;
+
+        if (state.lives < state.maxLives) {
+          state.lives += 1;
+        }
+
+        callbacks.onGemCollect?.(state.lives);
+        callbacks.onLifeChange?.(state.lives);
+        callbacks.onShake(5);
+
+        addBurst(state, gem.x, gem.y, '#7df9ff', 22, 3);
+      }
+    }
+  }
+
+  state.gems = state.gems.filter((g) => g.x > -50 && !g.collected);
+
+  // --- Bubbles ---
   for (const b of state.bubbles) {
     b.y -= b.speed * dt;
     b.x += Math.sin(state.timeMs * 0.001 + b.x) * b.drift * dt;
+
     if (b.y < -20) {
       b.y = state.height + 10;
       b.x = Math.random() * state.width;
@@ -304,6 +449,7 @@ export function stepEngine(
     p.y += p.vy * dt;
     p.vy += 0.05 * dt;
   }
+
   state.particles = state.particles.filter((p) => p.life < p.maxLife);
 
   // --- Shake decay ---
@@ -315,21 +461,21 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   const tier = getDifficultyTier(state.score);
   const [c1, c2] = tier.bg;
   const grad = ctx.createLinearGradient(0, 0, 0, height);
+
   grad.addColorStop(0, c1);
   grad.addColorStop(1, c2);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
 
-  // Legendary golden shimmer overlay
   if (state.score >= 100) {
     const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
     ctx.fillStyle = `rgba(255, 214, 10, ${0.05 + pulse * 0.06})`;
     ctx.fillRect(0, 0, width, height);
   }
 
-  // Light rays
   ctx.save();
   ctx.globalAlpha = 0.12;
+
   for (let i = 0; i < 4; i++) {
     const rx = (width / 4) * i + Math.sin(state.timeMs * 0.0002 + i) * 20;
     ctx.beginPath();
@@ -341,10 +487,11 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.fillStyle = '#ffffff';
     ctx.fill();
   }
+
   ctx.restore();
 
-  // Bubbles
   ctx.save();
+
   for (const b of state.bubbles) {
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
@@ -354,24 +501,26 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.lineWidth = 1;
     ctx.stroke();
   }
+
   ctx.restore();
 
-  // Simple coral silhouettes near the bottom for depth.
   ctx.save();
   ctx.globalAlpha = 0.35;
   ctx.fillStyle = tier.name === 'Easy' ? '#0a6ea8' : '#04203f';
+
   for (let i = 0; i < 6; i++) {
     const cx = (width / 6) * i + 20;
     const h = 30 + ((i * 37) % 50);
+
     ctx.beginPath();
     ctx.moveTo(cx, height);
     ctx.quadraticCurveTo(cx - 14, height - h, cx, height - h - 10);
     ctx.quadraticCurveTo(cx + 14, height - h, cx, height);
     ctx.fill();
   }
+
   ctx.restore();
 
-  // Ground + ceiling bands
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.fillRect(0, height - 8, width, 8);
   ctx.fillRect(0, 0, width, 8);
@@ -384,6 +533,7 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   const x = obs.x - w / 2;
 
   const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+
   if (obs.glowing) {
     grad.addColorStop(0, '#ffd60a');
     grad.addColorStop(1, '#ff9500');
@@ -391,6 +541,7 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
     grad.addColorStop(0, '#2a9d8f');
     grad.addColorStop(1, '#1d7870');
   }
+
   ctx.fillStyle = grad;
 
   if (obs.glowing) {
@@ -399,23 +550,20 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
     ctx.shadowBlur = 22;
   }
 
-  // Top spire
   ctx.fillRect(x, 0, w, topGapEdge);
   ctx.fillRect(x - 6, topGapEdge - 18, w + 12, 18);
-  // Bottom spire
+
   ctx.fillRect(x, bottomGapEdge, w, height - bottomGapEdge);
   ctx.fillRect(x - 6, bottomGapEdge, w + 12, 18);
 
   if (obs.glowing) ctx.restore();
 
-  // Double-obstacle: the bottom spire is split into a middle pillar and a
-  // lower pillar with a second safe gap between them (matches the two-gap
-  // collision logic in stepEngine).
   if (obs.isDouble) {
-    const secondTop = bottomGapEdge + 46;
-    const secondBottom = secondTop + 40;
-    // Clear the gap band between the two pillars.
+    const secondTop = bottomGapEdge + 54;
+    const secondBottom = secondTop + 48;
+
     ctx.clearRect(x - 6, secondTop, w + 12, secondBottom - secondTop);
+
     ctx.fillStyle = '#e63946';
     ctx.fillRect(x - 6, secondBottom, w + 12, 8);
   }
@@ -429,18 +577,17 @@ function drawFish(
 ) {
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const blink = invincible && Math.floor(state.timeMs / 100) % 2 === 0;
+
   if (blink) return;
 
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
 
-  // Glow aura
   ctx.save();
   ctx.shadowColor = skin.colors.glow;
   ctx.shadowBlur = state.score >= 100 ? 26 : 14;
 
-  // Tail
   ctx.beginPath();
   ctx.moveTo(-BASE.fishRadius - 2, 0);
   ctx.lineTo(-BASE.fishRadius - 16, -10);
@@ -449,19 +596,16 @@ function drawFish(
   ctx.fillStyle = skin.colors.fin;
   ctx.fill();
 
-  // Body
   ctx.beginPath();
   ctx.ellipse(0, 0, BASE.fishRadius, BASE.fishRadius * 0.78, 0, 0, Math.PI * 2);
   ctx.fillStyle = skin.colors.body;
   ctx.fill();
 
-  // Belly highlight
   ctx.beginPath();
   ctx.ellipse(2, 5, BASE.fishRadius * 0.6, BASE.fishRadius * 0.4, 0, 0, Math.PI * 2);
   ctx.fillStyle = skin.colors.belly;
   ctx.fill();
 
-  // Top fin
   ctx.beginPath();
   ctx.moveTo(-2, -BASE.fishRadius * 0.7);
   ctx.lineTo(6, -BASE.fishRadius * 1.25);
@@ -469,13 +613,14 @@ function drawFish(
   ctx.closePath();
   ctx.fillStyle = skin.colors.fin;
   ctx.fill();
+
   ctx.restore();
 
-  // Eye
   ctx.beginPath();
   ctx.arc(BASE.fishRadius * 0.45, -BASE.fishRadius * 0.15, 4.2, 0, Math.PI * 2);
   ctx.fillStyle = '#1c1c1c';
   ctx.fill();
+
   ctx.beginPath();
   ctx.arc(BASE.fishRadius * 0.55, -BASE.fishRadius * 0.25, 1.4, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
@@ -486,29 +631,79 @@ function drawFish(
 
 function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   if (coin.collected) return;
+
   const bob = Math.sin(timeMs * 0.005 + coin.x) * 3;
+
   ctx.save();
   ctx.translate(coin.x, coin.y + bob);
+
   ctx.beginPath();
   ctx.arc(0, 0, coin.bonus ? 12 : 9, 0, Math.PI * 2);
   ctx.fillStyle = coin.bonus ? '#ff9500' : '#ffd60a';
   ctx.shadowColor = coin.bonus ? '#ffb347' : '#fff275';
   ctx.shadowBlur = 10;
   ctx.fill();
+
   ctx.shadowBlur = 0;
   ctx.strokeStyle = '#a97400';
   ctx.lineWidth = 1.5;
   ctx.stroke();
+
   ctx.fillStyle = '#fff8e0';
   ctx.font = `${coin.bonus ? 11 : 9}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('$', 0, 0);
+  ctx.fillText(coin.bonus ? '+5' : '+1', 0, 0);
+
+  ctx.restore();
+}
+
+function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
+  if (gem.collected) return;
+
+  const bob = Math.sin(timeMs * 0.004 + gem.x) * 4;
+  const pulse = (Math.sin(gem.pulse) + 1) / 2;
+  const size = 12 + pulse * 2;
+
+  ctx.save();
+  ctx.translate(gem.x, gem.y + bob);
+
+  ctx.shadowColor = '#7df9ff';
+  ctx.shadowBlur = 18;
+
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.lineTo(size, -2);
+  ctx.lineTo(size * 0.55, size);
+  ctx.lineTo(-size * 0.55, size);
+  ctx.lineTo(-size, -2);
+  ctx.closePath();
+
+  const grad = ctx.createLinearGradient(-size, -size, size, size);
+  grad.addColorStop(0, '#e8ffff');
+  grad.addColorStop(0.45, '#7df9ff');
+  grad.addColorStop(1, '#2176ff');
+
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('+♥', 0, 2);
+
   ctx.restore();
 }
 
 function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
   const alpha = 1 - p.life / p.maxLife;
+
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
   ctx.beginPath();
@@ -520,9 +715,11 @@ function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
 
 export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) {
   const { width, height } = state;
+
   ctx.clearRect(0, 0, width, height);
 
   ctx.save();
+
   if (state.shakeIntensity > 0.2) {
     const dx = (Math.random() - 0.5) * state.shakeIntensity;
     const dy = (Math.random() - 0.5) * state.shakeIntensity;
@@ -530,11 +727,14 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   }
 
   drawBackground(ctx, state);
+
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
+  for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
 
   const fishX = width * FISH_X_RATIO;
   const invincible = state.timeMs < state.invincibleUntil;
+
   drawFish(ctx, state, fishX, invincible);
 
   for (const p of state.particles) drawParticle(ctx, p);
