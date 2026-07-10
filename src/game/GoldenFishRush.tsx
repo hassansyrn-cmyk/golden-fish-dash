@@ -56,7 +56,7 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt } = useGameEngine({
+  const { score, lives, doJump, reviveAt, shieldCharges, magnetRemainingMs } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -163,6 +163,13 @@ export default function GoldenFishRush() {
                   {index < visibleLives ? '♥' : '♡'}
                 </span>
               ))}
+              {/* Power-up indicators - small, left-aligned with hearts, non-intrusive */}
+              {shieldCharges > 0 && (
+                <span style={{ marginLeft: '10px', fontSize: '14px', verticalAlign: 'middle' }} title="Shield charges">🛡️{shieldCharges}</span>
+              )}
+              {magnetRemainingMs > 0 && (
+                <span style={{ marginLeft: '8px', fontSize: '14px', verticalAlign: 'middle' }} title="Coin Magnet active">🧲 {Math.ceil(magnetRemainingMs / 1000)}s</span>
+              )}
             </div>
 
             <div className="hud-score">{score}</div>

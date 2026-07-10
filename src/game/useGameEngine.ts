@@ -202,13 +202,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     state.fishVY = 0;
     state.invincibleUntil = state.timeMs + invincibleMs;
 
-    /*
-      Clear dangerous obstacles around the revive area.
-
-      Before this fix, the fake rewarded-ad revive could return the player
-      beside an obstacle or inside an almost impossible gap. Keeping the
-      run alive is correct, but the player also needs a safe recovery lane.
-    */
     state.obstacles = state.obstacles.filter((obs) => {
       const approximateHalfObstacleWidth = 20;
       const obsRight = obs.x + approximateHalfObstacleWidth;
@@ -220,7 +213,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       return safelyBehindFish || farAhead;
     });
 
-    // Give the player a short breathing room before the next obstacle.
     state.elapsedSinceSpawn = -850;
 
     playSound('reward', settings.sound);
@@ -419,6 +411,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     coins,
     roundCoins,
     lives,
+    shieldCharges: stateRef.current?.shieldCharges ?? 0,
+    magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
