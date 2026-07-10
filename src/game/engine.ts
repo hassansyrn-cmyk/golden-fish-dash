@@ -250,182 +250,188 @@ function clearDangerousReviveArea(state: EngineState) {
     obstacles can still leave a narrow or impossible corridor. The player
     should always revive into a fair lane.
   */
-  state.obstacles = sta*e.obstacles.filter((obs) => {
-    *onst halfWidth = BASE.obstacleWidt* / 2;
-    const obsLeft = obs.x - *alfWidth;
-    const obsRight = obs*x + halfWidth;
+  state.obstacles = state.obstacles.filter((obs) => {
+    const halfWidth = BASE.obstacleWidth / 2;
+    const obsLeft = obs.x - halfWidth;
+    const obsRight = obs.x + halfWidth;
 
-    const safelyBe*indFish = obsRight < fishX - BASE.*bstacleWidth * 2.2;
-    const safe*yFarAhead = obsLeft > state.width * BASE.obstacleWidth * 1.4;
+    const safelyBehindFish = obsRight < fishX - BASE.obstacleWidth * 2.2;
+    const safelyFarAhead = obsLeft > state.width + BASE.obstacleWidth * 1.4;
 
-    re*urn safelyBehindFish || safelyFarA*ead;
+    return safelyBehindFish || safelyFarAhead;
   });
 
-  // Remove collectibl*s from the unsafe revive corridor *oo.
-  state.coins = state.coins.fi*ter((coin) => {
-    const safelyBe*indFish = coin.x < fishX - BASE.ob*tacleWidth * 2;
-    const safelyFa*Ahead = coin.x > state.width + BAS*.obstacleWidth;
+  // Remove collectibles from the unsafe revive corridor too.
+  state.coins = state.coins.filter((coin) => {
+    const safelyBehindFish = coin.x < fishX - BASE.obstacleWidth * 2;
+    const safelyFarAhead = coin.x > state.width + BASE.obstacleWidth;
 
-    return safely*ehindFish || safelyFarAhead;
-  });*
-  state.gems = state.gems.filter(*gem) => {
-    const safelyBehindFi*h = gem.x < fishX - BASE.obstacleW*dth * 2;
-    const safelyFarAhead * gem.x > state.width + BASE.obstac*eWidth;
-
-    return safelyBehindFi*h || safelyFarAhead;
+    return safelyBehindFish || safelyFarAhead;
   });
 
-  // D*lay the next obstacle so the playe* can regain control.
-  state.elaps*dSinceSpawn = -SAFE_REVIVE_DELAY_M*;
+  state.gems = state.gems.filter((gem) => {
+    const safelyBehindFish = gem.x < fishX - BASE.obstacleWidth * 2;
+    const safelyFarAhead = gem.x > state.width + BASE.obstacleWidth;
+
+    return safelyBehindFish || safelyFarAhead;
+  });
+
+  // Delay the next obstacle so the player can regain control.
+  state.elapsedSinceSpawn = -SAFE_REVIVE_DELAY_MS;
 }
 
-function spendExtraLife(state* EngineState, callbacks: EngineCal*backs) {
-  if (state.lives <= 0) r*turn false;
+function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
+  if (state.lives <= 0) return false;
 
   state.lives -= 1;
- *state.invincibleUntil = state.time*s + HIT_INVINCIBILITY_MS;
+  state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
 
-  // Pu* the fish in a safe middle positio*.
-  state.fishY = state.height / 2*
+  // Put the fish in a safe middle position.
+  state.fishY = state.height / 2;
   state.fishVY = 0;
-  state.fishR*tation = 0;
+  state.fishRotation = 0;
 
-  clearDangerousReviv*Area(state);
+  clearDangerousReviveArea(state);
 
-  callbacks.onLifeCh*nge?.(state.lives);
-  callbacks.on*hake(6);
+  callbacks.onLifeChange?.(state.lives);
+  callbacks.onShake(6);
 
   addBurst(
     state,
- *  state.width * FISH_X_RATIO,
-    *tate.fishY,
-    'rgba(80, 220, 255* 0.95)',
+    state.width * FISH_X_RATIO,
+    state.fishY,
+    'rgba(80, 220, 255, 0.95)',
     22,
     3,
   );
 
-  re*urn true;
+  return true;
 }
 
-function killOrUseLif*(state: EngineState, callbacks: En*ineCallbacks) {
-  if (spendExtraLi*e(state, callbacks)) {
-    return;*  }
+function killOrUseLife(state: EngineState, callbacks: EngineCallbacks) {
+  if (spendExtraLife(state, callbacks)) {
+    return;
+  }
 
   callbacks.onShake(14);
-  ca*lbacks.onDeath();
-  state.running * false;
+  callbacks.onDeath();
+  state.running = false;
 }
 
-export function stepEng*ne(
+export function stepEngine(
   state: EngineState,
-  dtMs: *umber,
-  callbacks: EngineCallback*,
-  settings: { vibration: boolean*},
+  dtMs: number,
+  callbacks: EngineCallbacks,
+  settings: { vibration: boolean },
 ) {
-  if (!state.running) retur*;
+  if (!state.running) return;
 
-  const dt = Math.min(2.2, dtMs*/ 16.67);
+  const dt = Math.min(2.2, dtMs / 16.67);
   state.timeMs += dtMs;
-* state.legendaryPulse = (state.leg*ndaryPulse + dtMs * 0.002) % (Math*PI * 2);
+  state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
 
-  // --- Fish physics --*
-  state.fishVY = Math.min(BASE.ma*FallSpeed, state.fishVY + BASE.gra*ity * dt);
-  state.fishY += state.*ishVY * dt;
-  state.fishRotation =*Math.max(-0.5, Math.min(0.9, state*fishVY * 0.06));
+  // --- Fish physics ---
+  state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
+  state.fishY += state.fishVY * dt;
+  state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
 
-  const groundY * state.height - 8;
-  const ceiling* = 8;
-  const invincible = state.t*meMs < state.invincibleUntil;
+  const groundY = state.height - 8;
+  const ceilingY = 8;
+  const invincible = state.timeMs < state.invincibleUntil;
 
-  i* (state.fishY + BASE.fishRadius >=*groundY || state.fishY - BASE.fish*adius <= ceilingY) {
-    state.fis*Y = Math.max(
-      ceilingY + BAS*.fishRadius,
-      Math.min(ground* - BASE.fishRadius, state.fishY),
-*   );
+  if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
+    state.fishY = Math.max(
+      ceilingY + BASE.fishRadius,
+      Math.min(groundY - BASE.fishRadius, state.fishY),
+    );
 
     if (!invincible) {
-    * killOrUseLife(state, callbacks);
-*     return;
+      killOrUseLife(state, callbacks);
+      return;
     }
 
-    state.fish*Y = 0;
+    state.fishVY = 0;
   }
 
-  // --- Spawn obstacl*s ---
-  const { speed, spawnInterv*l } = difficultyForScore(state.sco*e);
-  state.elapsedSinceSpawn += d*Ms;
+  // --- Spawn obstacles ---
+  const { speed, spawnInterval } = difficultyForScore(state.score);
+  state.elapsedSinceSpawn += dtMs;
 
-  if (state.elapsedSinceSpawn*>= spawnInterval) {
-    spawnObsta*le(state, state.score);
-    state.*lapsedSinceSpawn = 0;
+  if (state.elapsedSinceSpawn >= spawnInterval) {
+    spawnObstacle(state, state.score);
+    state.elapsedSinceSpawn = 0;
   }
 
-  // --* Move obstacles + collision ---
-  *onst fishX = state.width * FISH_X_*ATIO;
+  // --- Move obstacles + collision ---
+  const fishX = state.width * FISH_X_RATIO;
 
-  for (const obs of state.o*stacles) {
-    obs.x -= speed * dt*
+  for (const obs of state.obstacles) {
+    obs.x -= speed * dt;
 
     if (obs.bobbing) {
-      obs*bobPhase += dtMs * 0.002;
-      ob*.gapY += Math.sin(obs.bobPhase) * *.18 * dt;
-      obs.gapY = clampGa*Y(state, obs.gapY, obs.gapSize);
- *  }
-
-    if (!obs.passed && obs.x * BASE.obstacleWidth / 2 < fishX) {*      obs.passed = true;
-      sta*e.score += 1;
-      callbacks.onSc*re(state.score);
+      obs.bobPhase += dtMs * 0.002;
+      obs.gapY += Math.sin(obs.bobPhase) * 1.18 * dt;
+      obs.gapY = clampGapY(state, obs.gapY, obs.gapSize);
     }
 
-    if (!i*vincible) {
+    if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
+      obs.passed = true;
+      state.score += 1;
+      callbacks.onScore(state.score);
+    }
+
+    if (!invincible) {
       const withinX =
-*       fishX + BASE.fishRadius > o*s.x - BASE.obstacleWidth / 2 &&
-  *     fishX - BASE.fishRadius < obs*x + BASE.obstacleWidth / 2;
+        fishX + BASE.fishRadius > obs.x - BASE.obstacleWidth / 2 &&
+        fishX - BASE.fishRadius < obs.x + BASE.obstacleWidth / 2;
 
-     *if (withinX) {
-        const topGa*Edge = obs.gapY - obs.gapSize / 2;*        const bottomGapEdge = obs.*apY + obs.gapSize / 2;
+      if (withinX) {
+        const topGapEdge = obs.gapY - obs.gapSize / 2;
+        const bottomGapEdge = obs.gapY + obs.gapSize / 2;
 
-        le* safe: boolean;
+        let safe: boolean;
 
-        if (obs.i*Double) {
-          const secondTo* = bottomGapEdge + 58;
-          c*nst secondBottom = secondTop + 52;*
+        if (obs.isDouble) {
+          const secondTop = bottomGapEdge + 58;
+          const secondBottom = secondTop + 52;
+
           const inGap1 =
-        *   state.fishY - BASE.fishRadius >* topGapEdge &&
-            state.f*shY + BASE.fishRadius <= bottomGap*dge;
+            state.fishY - BASE.fishRadius >= topGapEdge &&
+            state.fishY + BASE.fishRadius <= bottomGapEdge;
 
           const inGap2 =
-   *        state.fishY - BASE.fishRad*us >= secondTop &&
-            sta*e.fishY + BASE.fishRadius <= secon*Bottom;
+            state.fishY - BASE.fishRadius >= secondTop &&
+            state.fishY + BASE.fishRadius <= secondBottom;
 
-          safe = inGap1 |* inGap2;
+          safe = inGap1 || inGap2;
         } else {
-        * const hitTop = state.fishY - BASE*fishRadius < topGapEdge;
-         *const hitBottom = state.fishY + BA*E.fishRadius > bottomGapEdge;
-    *     safe = !hitTop && !hitBottom;*        }
+          const hitTop = state.fishY - BASE.fishRadius < topGapEdge;
+          const hitBottom = state.fishY + BASE.fishRadius > bottomGapEdge;
+          safe = !hitTop && !hitBottom;
+        }
 
         if (!safe) {
-  *       killOrUseLife(state, callba*ks);
+          killOrUseLife(state, callbacks);
           return;
         }
- *    }
+      }
     }
   }
 
-  state.obstacles*= state.obstacles.filter((o) => o.* > -BASE.obstacleWidth * 2);
+  state.obstacles = state.obstacles.filter((o) => o.x > -BASE.obstacleWidth * 2);
 
-  //*--- Coins ---
-  for (const coin of*state.coins) {
-    coin.x -= speed** dt;
+  // --- Coins ---
+  for (const coin of state.coins) {
+    coin.x -= speed * dt;
 
     if (!coin.collected) {
-*     const dx = coin.x - fishX;
-  *   const dy = coin.y - state.fishY*
+      const dx = coin.x - fishX;
+      const dy = coin.y - state.fishY;
 
-      if (Math.sqrt(dx * dx + dy** dy) < BASE.fishRadius + 13) {
-  *     coin.collected = true;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 13) {
+        coin.collected = true;
 
-     *  const amount = coin.bonus ? 5 : 1;
+        const amount = coin.bonus ? 5 : 1;
 
         // Coins now matter immediately:
         // normal coin = +1 score
