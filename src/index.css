@@ -741,6 +741,114 @@ html, body, #root {
   animation: gfr-bob 1.5s ease-in-out infinite;
 }
 
+/* ===================== Shop Screen Styles ===================== */
+.shop-screen {
+  padding: 20px;
+  gap: 16px;
+}
+
+.shop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 400px;
+}
+
+.shop-coins {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 214, 10, 0.15);
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-weight: 700;
+}
+
+.coin-icon { font-size: 1.5rem; }
+.coin-amount { font-size: 1.4rem; color: #ffd60a; }
+
+.shop-message {
+  color: #4fe3c1;
+  font-weight: 600;
+  margin: 8px 0;
+}
+
+.shop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.shop-item-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shop-item-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.shop-item-desc {
+  font-size: 0.85rem;
+  color: #9fdcf2;
+  line-height: 1.3;
+}
+
+.shop-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.shop-price {
+  font-weight: 700;
+  color: #ffd60a;
+}
+
+.shop-owned {
+  font-size: 0.8rem;
+  color: #9fdcf2;
+}
+
+.shop-buy-btn {
+  margin-top: 8px;
+  background: linear-gradient(180deg, #ffe066, #ffb703);
+  color: #241800;
+  border: none;
+  border-radius: 12px;
+  padding: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shop-buy-btn:disabled {
+  background: rgba(255, 255, 255, 0.15);
+  color: #9fdcf2;
+  cursor: not-allowed;
+}
+
+.shop-footer {
+  margin-top: 12px;
+  font-size: 0.75rem;
+  color: #9fdcf2;
+  max-width: 320px;
+}
+
+.shop-note {
+  margin: 0;
+}
+
 @layer utilities {
   input[type='search']::-webkit-search-cancel-button { @apply hidden; }
   [contenteditable][data-placeholder]:empty::before {
@@ -767,19 +875,10 @@ html, body, #root {
     position: relative;
     z-index: 0;
   }
-  .hover-elevate:not(.no-default-hover-elevate)::after,
-  .active-elevate:not(.no-default-active-elevate)::after,
-  .hover-elevate-2:not(.no-default-hover-elevate)::after,
-  .active-elevate-2:not(.no-default-active-elevate)::after {
-    content: '';
-    pointer-events: none;
-    position: absolute;
-    inset: 0px;
-    border-radius: inherit;
-    z-index: 999;
-  }
   .hover-elevate:hover:not(.no-default-hover-elevate)::after,
-  .active-elevate:active:not(.no-default-active-elevate)::after {
+  .active-elevate:active:not(.no-default-active-elevate)::after,
+  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:active:not(.no-default-active-elevate)::after {
     background-color: var(--elevate-1);
   }
   .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
