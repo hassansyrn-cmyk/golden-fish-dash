@@ -6,6 +6,7 @@ interface Props {
   onLeaderboard: () => void;
   onHowTo: () => void;
   onSettings: () => void;
+  onShop: () => void;
 }
 
 /**
@@ -59,7 +60,7 @@ function MenuFish() {
   );
 }
 
-export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings }: Props) {
+export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings, onShop }: Props) {
   const [best, setBest] = useState(0);
   const [globalBest, setGlobalBest] = useState(0);
   const [daily, setDaily] = useState(getDailyChallenge());
@@ -117,6 +118,9 @@ export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings }:
         </button>
         <button className="btn btn-secondary" onClick={onSettings}>
           Settings
+        </button>
+        <button className="btn btn-secondary" onClick={onShop}>
+          Shop
         </button>
       </div>
     </div>
