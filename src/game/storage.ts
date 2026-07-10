@@ -19,6 +19,7 @@ import type {
   Settings,
   SkinId,
 } from './types';
+import { submitLeaderboardScore as submitToFirebase, fetchGlobalLeaderboard as fetchFromFirebase } from './firebaseLeaderboard';
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -154,12 +155,10 @@ export function getLocalLeaderboard(): LeaderboardEntry[] {
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
 }
-
 export function getGlobalBestScore(): number {
   const board = ensureLeaderboardSeeded();
   return board.reduce((max, e) => Math.max(max, e.score), 0);
 }
-
 export function addLocalLeaderboardEntry(name: string, score: number): LeaderboardEntry[] {
   const board = ensureLeaderboardSeeded();
   board.push({ name: name.slice(0, 16) || 'Player', score, date: dateKey() });
@@ -168,12 +167,10 @@ export function addLocalLeaderboardEntry(name: string, score: number): Leaderboa
   writeJSON(STORAGE_KEYS.leaderboard, trimmed);
   return trimmed;
 }
-
 export function qualifiesForLeaderboard(score: number): boolean {
   const board = getLocalLeaderboard();
   return score > 0 && (board.length < 10 || score > board[board.length - 1].score);
 }
-
 export function estimateGlobalRank(score: number): number {
   const board = ensureLeaderboardSeeded();
   const better = board.filter((e) => e.score > score).length;
@@ -181,34 +178,44 @@ export function estimateGlobalRank(score: number): number {
 }
 
 // -----------------------------------------------------------------------
-// Backend placeholder functions.
-//
-// TODO(backend): Replace the bodies below with real network calls once a
-// server exists. Suggested REST contract:
-//   POST /api/score            { name, score }  -> { rank }
-//   GET  /api/leaderboard      -> LeaderboardEntry[] (top N)
-//   GET  /api/global-best      -> { score }
-//
-// SECURITY NOTE: never trust a client-submitted score in production. The
-// server must validate that a score is plausible (e.g. bounded by max
-// possible score for elapsed play time) before accepting it, and ideally
-// require a signed/session-scoped play token per run.
+// Backend functions now powered by Firebase Firestore.
+// Falls back to local storage on any error so the game never crashes.
 // -----------------------------------------------------------------------
-
 export async function submitScoreToServer(playerName: string, score: number): Promise<{ rank: number }> {
-  // TODO(backend): POST /api/score { name: playerName, score }
-  // For now, fall back to the local leaderboard so the UI keeps working.
-  addLocalLeaderboardEntry(playerName, score);
-  return { rank: estimateGlobalRank(score) };
+  const trimmed = (playerName || 'Player').trim().slice(0, 16) || 'Player';
+  const safeScore = Math.floor(Math.max(0, score || 0));
+
+  try {
+    await submitToFirebase(trimmed, safeScore);
+    return { rank: estimateGlobalRank(safeScore) };
+  } catch (firebaseError) {
+    console.warn('[Storage] Firebase submit failed, falling back to local.', firebaseError);
+    addLocalLeaderboardEntry(trimmed, safeScore);
+    return { rank: estimateGlobalRank(safeScore) };
+  }
 }
 
 export async function fetchGlobalLeaderboard(): Promise<LeaderboardEntry[]> {
-  // TODO(backend): GET /api/leaderboard, merge/replace local results.
+  try {
+    const remote = await fetchFromFirebase(10);
+    if (remote && remote.length > 0) {
+      return remote;
+    }
+  } catch (e) {
+    console.warn('[Storage] Firebase fetch failed, using local leaderboard.', e);
+  }
   return getLocalLeaderboard();
 }
 
 export async function fetchGlobalBestFromServer(): Promise<number> {
-  // TODO(backend): GET /api/global-best
+  try {
+    const board = await fetchGlobalLeaderboard();
+    if (board.length > 0) {
+      return board[0].score;
+    }
+  } catch {
+    // ignore
+  }
   return getGlobalBestScore();
 }
 
