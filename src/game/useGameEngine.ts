@@ -37,8 +37,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const canvas = canvasRef.current;
     if (!canvas) return;
     const parent = canvas.parentElement;
-    const width = parent?.clientWidth ?? window.innerWidth;
-    const height = parent?.clientHeight ?? window.innerHeight;
+    const width = parent?.clientWidth ?? 0;
+    const height = parent?.clientHeight ?? 0;
+
+    // Guard against unresolved/collapsed parent layout on initial render
+    if (width < 250 || height < 250) return;
+
     canvas.width = width;
     canvas.height = height;
     stateRef.current = createEngine(width, height, skin);
@@ -186,15 +190,25 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     const handleResize = () => {
       const canvas = canvasRef.current;
-      const state = stateRef.current;
-      if (!canvas || !state) return;
+      if (!canvas) return;
       const parent = canvas.parentElement;
-      const width = parent?.clientWidth ?? window.innerWidth;
-      const height = parent?.clientHeight ?? window.innerHeight;
+      const width = parent?.clientWidth ?? 0;
+      const height = parent?.clientHeight ?? 0;
+
+      // Guard against collapsed dimensions on resize events
+      if (width < 250 || height < 250) return;
+
       canvas.width = width;
       canvas.height = height;
-      state.width = width;
-      state.height = height;
+
+      const state = stateRef.current;
+      if (!state) {
+        // Lazily initialize engine state when valid dimensions are acquired
+        stateRef.current = createEngine(width, height, skin);
+      } else {
+        state.width = width;
+        state.height = height;
+      }
     };
     window.addEventListener('resize', handleResize);
 
