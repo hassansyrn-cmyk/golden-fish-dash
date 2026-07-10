@@ -209,18 +209,18 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       beside an obstacle or inside an almost impossible gap. Keeping the
       run alive is correct, but the player also needs a safe recovery lane.
     */
-    state.obstacles = state.o*stacles.filter((obs) => {
-      co*st approximateHalfObstacleWidth = *0;
-      const obsRight = obs.x + *pproximateHalfObstacleWidth;
-     *const obsLeft = obs.x - approximat*HalfObstacleWidth;
+    state.obstacles = state.obstacles.filter((obs) => {
+      const approximateHalfObstacleWidth = 20;
+      const obsRight = obs.x + approximateHalfObstacleWidth;
+      const obsLeft = obs.x - approximateHalfObstacleWidth;
 
-      const sa*elyBehindFish = obsRight < fishX -*state.width * 0.25;
-      const fa*Ahead = obsLeft > state.width + 14*;
+      const safelyBehindFish = obsRight < fishX - state.width * 0.25;
+      const farAhead = obsLeft > state.width + 140;
 
-      return safelyBehindFish |* farAhead;
+      return safelyBehindFish || farAhead;
     });
 
-    // Give th* player a short breathing room before the next obstacle.
+    // Give the player a short breathing room before the next obstacle.
     state.elapsedSinceSpawn = -850;
 
     playSound('reward', settings.sound);
