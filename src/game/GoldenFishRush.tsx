@@ -56,20 +56,20 @@ export default function GoldenFishRush() {
     - true whenever the player should not control the fish
     - false only during real playing
   */
-  const keepEngineAliv* =
+  const keepEngineAlive =
     screen === 'playing' ||
-   *screen === 'paused' ||
-    screen *== 'continueAd' ||
-    reviveCount*own !== null;
+    screen === 'paused' ||
+    screen === 'continueAd' ||
+    reviveCountdown !== null;
 
-  const enginePause* = screen !== 'playing' || reviveC*untdown !== null;
+  const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score* doJump, reviveAt } = useGameEngin*({
+  const { score, doJump, reviveAt } = useGameEngine({
     canvasRef,
-    active: keep*ngineAlive,
-    paused: enginePaus*d,
+    active: keepEngineAlive,
+    paused: enginePaused,
     skin,
-    onGameOver: handl*GameOver,
+    onGameOver: handleGameOver,
   });
 
   const startRun = useCallback(() => {
