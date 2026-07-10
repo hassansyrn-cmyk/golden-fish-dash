@@ -615,6 +615,11 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   }
 }
 
+/**
+ * Distinct fish silhouettes that match the high-quality SVG previews
+ * in SettingsScreen. Each skin has a radically different shape so the
+ * player can instantly recognize which reward they are using.
+ */
 function drawFish(
   ctx: CanvasRenderingContext2D,
   state: EngineState,
@@ -626,157 +631,425 @@ function drawFish(
 
   if (blink) return;
 
+  const r = BASE.fishRadius;
   const isRuby = skin.id === 'ruby';
   const isEmerald = skin.id === 'emerald';
   const isDiamond = skin.id === 'diamond';
   const isLegendary = skin.id === 'legendary';
-
-  const bodyRadiusX = BASE.fishRadius * (isLegendary ? 1.08 : isDiamond ? 1.04 : 1);
-  const bodyRadiusY = BASE.fishRadius * (isLegendary ? 0.83 : 0.78);
-  const glowBlur = isLegendary ? 30 : isDiamond ? 24 : state.score >= 100 ? 26 : 14;
-  const tailLength = BASE.fishRadius + (isRuby ? 22 : isLegendary ? 24 : 16);
-  const tailHeight = isLegendary ? 14 : isRuby ? 13 : 10;
-  const finLift = isEmerald ? -4 : isLegendary ? -5 : 0;
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
 
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
 
+  // ---------- Legendary outer halo ----------
   if (isLegendary) {
     ctx.save();
-    ctx.globalAlpha = 0.28 + pulse * 0.18;
+    ctx.globalAlpha = 0.32 + pulse * 0.22;
     ctx.beginPath();
-    ctx.ellipse(0, 0, BASE.fishRadius * 1.75, BASE.fishRadius * 1.22, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 1.85, r * 1.28, 0, 0, Math.PI * 2);
     ctx.fillStyle = skin.colors.glow;
     ctx.fill();
+
+    // second thinner ring
+    ctx.globalAlpha = 0.45 + pulse * 0.25;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 1.55, r * 1.08, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = skin.colors.glow;
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
     ctx.restore();
   }
 
+  // ---------- soft glow for all higher skins ----------
   ctx.save();
   ctx.shadowColor = skin.colors.glow;
-  ctx.shadowBlur = glowBlur;
+  ctx.shadowBlur = isLegendary ? 32 : isDiamond ? 26 : isRuby || isEmerald ? 18 : 14;
 
-  // Tail
-  ctx.beginPath();
-  ctx.moveTo(-BASE.fishRadius - 2, 0);
-  ctx.lineTo(-tailLength, -tailHeight);
-  ctx.lineTo(-tailLength + (isRuby ? 6 : 0), 0);
-  ctx.lineTo(-tailLength, tailHeight);
-  ctx.closePath();
-  ctx.fillStyle = skin.colors.fin;
-  ctx.fill();
-
-  if (isEmerald || isLegendary) {
+  // =====================================================
+  // TAIL — completely different construction per skin
+  // =====================================================
+  if (isRuby) {
+    // Angular aggressive double-point tail
     ctx.beginPath();
-    ctx.moveTo(-BASE.fishRadius - 8, 0);
-    ctx.lineTo(-tailLength - 8, -tailHeight * 0.72);
-    ctx.lineTo(-tailLength - 4, tailHeight * 0.72);
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.lineTo(-r * 2.15, -r * 0.95);
+    ctx.lineTo(-r * 1.55, 0);
+    ctx.lineTo(-r * 2.15, r * 0.95);
     ctx.closePath();
-    ctx.fillStyle = isLegendary ? '#fff275' : skin.colors.belly;
-    ctx.globalAlpha = isLegendary ? 0.78 : 0.52;
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (isEmerald) {
+    // Long flowing double-layer tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 1.9, -r * 1.1, -r * 2.4, -r * 0.35);
+    ctx.lineTo(-r * 1.7, 0);
+    ctx.quadraticCurveTo(-r * 2.4, r * 0.35, -r * 1.9, r * 1.1);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // inner lighter flow
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.7, -r * 0.55, -r * 2.05, 0);
+    ctx.quadraticCurveTo(-r * 1.7, r * 0.55, -r * 0.9, 0);
+    ctx.fillStyle = skin.colors.belly;
+    ctx.globalAlpha = 0.55;
     ctx.fill();
     ctx.globalAlpha = 1;
+  } else if (isDiamond) {
+    // Clean faceted diamond-style tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.lineTo(-r * 1.9, -r * 0.75);
+    ctx.lineTo(-r * 1.55, 0);
+    ctx.lineTo(-r * 1.9, r * 0.75);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // crystal edge highlight
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.9, -2);
+    ctx.lineTo(-r * 1.75, -r * 0.55);
+    ctx.lineTo(-r * 1.5, 0);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+  } else if (isLegendary) {
+    // Large ornate multi-layer tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.95, 0);
+    ctx.quadraticCurveTo(-r * 1.8, -r * 1.35, -r * 2.55, -r * 0.55);
+    ctx.lineTo(-r * 1.85, 0);
+    ctx.quadraticCurveTo(-r * 2.55, r * 0.55, -r * 1.8, r * 1.35);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // golden inner layer
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.0, 0);
+    ctx.quadraticCurveTo(-r * 1.7, -r * 0.7, -r * 2.15, 0);
+    ctx.quadraticCurveTo(-r * 1.7, r * 0.7, -r * 1.0, 0);
+    ctx.fillStyle = '#fff275';
+    ctx.globalAlpha = 0.72 + pulse * 0.15;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else {
+    // Golden — cute soft rounded tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.lineTo(-r * 1.75, -r * 0.7);
+    ctx.quadraticCurveTo(-r * 1.45, 0, -r * 1.75, r * 0.7);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
   }
 
-  // Body
-  ctx.beginPath();
-  ctx.ellipse(0, 0, bodyRadiusX, bodyRadiusY, 0, 0, Math.PI * 2);
+  // =====================================================
+  // BODY — different proportions and silhouette
+  // =====================================================
+  if (isRuby) {
+    // Slightly angular / sharper body
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.95, 0);
+    ctx.quadraticCurveTo(-r * 0.7, -r * 0.95, r * 0.15, -r * 0.9);
+    ctx.quadraticCurveTo(r * 1.05, -r * 0.55, r * 1.05, 0);
+    ctx.quadraticCurveTo(r * 1.05, r * 0.55, r * 0.15, r * 0.9);
+    ctx.quadraticCurveTo(-r * 0.7, r * 0.95, -r * 0.95, 0);
+    ctx.closePath();
+  } else if (isEmerald) {
+    // Elongated sleek body
+    ctx.beginPath();
+    ctx.ellipse(r * 0.08, 0, r * 1.15, r * 0.68, 0, 0, Math.PI * 2);
+  } else if (isDiamond) {
+    // Faceted cleaner body (almost hex-like)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.lineTo(-r * 0.35, -r * 0.82);
+    ctx.lineTo(r * 0.55, -r * 0.78);
+    ctx.lineTo(r * 1.05, 0);
+    ctx.lineTo(r * 0.55, r * 0.78);
+    ctx.lineTo(-r * 0.35, r * 0.82);
+    ctx.closePath();
+  } else if (isLegendary) {
+    // Larger regal body
+    ctx.beginPath();
+    ctx.ellipse(r * 0.05, 0, r * 1.12, r * 0.86, 0, 0, Math.PI * 2);
+  } else {
+    // Golden — classic cute rounded
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 1.0, r * 0.78, 0, 0, Math.PI * 2);
+  }
 
-  const bodyGradient = ctx.createLinearGradient(-BASE.fishRadius, -BASE.fishRadius, BASE.fishRadius, BASE.fishRadius);
+  const bodyGradient = ctx.createLinearGradient(-r, -r, r, r);
   bodyGradient.addColorStop(0, skin.colors.belly);
-  bodyGradient.addColorStop(0.42, skin.colors.body);
+  bodyGradient.addColorStop(0.4, skin.colors.body);
   bodyGradient.addColorStop(1, skin.colors.fin);
-
   ctx.fillStyle = bodyGradient;
   ctx.fill();
 
   // Belly highlight
   ctx.beginPath();
-  ctx.ellipse(2, 5, BASE.fishRadius * 0.62, BASE.fishRadius * 0.38, 0, 0, Math.PI * 2);
+  if (isEmerald) {
+    ctx.ellipse(r * 0.2, r * 0.22, r * 0.7, r * 0.32, 0, 0, Math.PI * 2);
+  } else {
+    ctx.ellipse(r * 0.12, r * 0.28, r * 0.62, r * 0.36, 0, 0, Math.PI * 2);
+  }
   ctx.fillStyle = skin.colors.belly;
-  ctx.globalAlpha = isRuby ? 0.82 : 0.95;
+  ctx.globalAlpha = isRuby ? 0.78 : 0.9;
   ctx.fill();
   ctx.globalAlpha = 1;
 
-  // Top fin
-  ctx.beginPath();
-  ctx.moveTo(-2, -BASE.fishRadius * 0.7 + finLift);
-  ctx.lineTo(6, -BASE.fishRadius * (isLegendary ? 1.42 : 1.25) + finLift);
-  ctx.lineTo(14, -BASE.fishRadius * 0.55 + finLift);
-  ctx.closePath();
-  ctx.fillStyle = skin.colors.fin;
-  ctx.fill();
+  // =====================================================
+  // FINS — unique per skin
+  // =====================================================
 
-  // Bottom fin
+  // Top / dorsal fin
+  if (isRuby) {
+    // Large sharp dorsal
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.15, -r * 0.65);
+    ctx.lineTo(r * 0.25, -r * 1.45);
+    ctx.lineTo(r * 0.75, -r * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (isEmerald) {
+    // Long flowing dorsal
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.3, -r * 0.55);
+    ctx.quadraticCurveTo(r * 0.25, -r * 1.55, r * 0.95, -r * 0.5);
+    ctx.quadraticCurveTo(r * 0.4, -r * 0.75, -r * 0.1, -r * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (isDiamond) {
+    // Crystal pointed dorsal
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 0.7);
+    ctx.lineTo(r * 0.35, -r * 1.35);
+    ctx.lineTo(r * 0.7, -r * 0.6);
+    ctx.lineTo(r * 0.25, -r * 0.75);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (isLegendary) {
+    // Grand multi-point dorsal + crest
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.25, -r * 0.7);
+    ctx.quadraticCurveTo(r * 0.2, -r * 1.65, r * 0.95, -r * 0.55);
+    ctx.lineTo(r * 0.55, -r * 0.75);
+    ctx.lineTo(r * 0.15, -r * 0.7);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // crown spikes
+    ctx.strokeStyle = '#fffbe0';
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(r * 0.55, -r * 0.95);
+    ctx.lineTo(r * 0.65, -r * 1.35);
+    ctx.moveTo(r * 0.78, -r * 0.9);
+    ctx.lineTo(r * 0.9, -r * 1.25);
+    ctx.stroke();
+  } else {
+    // Golden soft dorsal
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 0.65);
+    ctx.quadraticCurveTo(r * 0.25, -r * 1.2, r * 0.65, -r * 0.55);
+    ctx.lineTo(r * 0.2, -r * 0.65);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  }
+
+  // Side / pectoral fin
+  if (isRuby) {
+    ctx.beginPath();
+    ctx.moveTo(r * 0.25, r * 0.15);
+    ctx.lineTo(r * 1.15, -r * 0.15);
+    ctx.lineTo(r * 1.05, r * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (isEmerald) {
+    ctx.beginPath();
+    ctx.moveTo(r * 0.35, r * 0.1);
+    ctx.quadraticCurveTo(r * 1.25, -r * 0.25, r * 1.35, r * 0.35);
+    ctx.quadraticCurveTo(r * 0.85, r * 0.3, r * 0.35, r * 0.1);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.globalAlpha = 0.9;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (isDiamond || isLegendary) {
+    ctx.beginPath();
+    ctx.moveTo(r * 0.3, r * 0.12);
+    ctx.lineTo(r * 1.15, -r * 0.2);
+    ctx.lineTo(r * 1.1, r * 0.45);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else {
+    // Golden
+    ctx.beginPath();
+    ctx.moveTo(r * 0.25, r * 0.15);
+    ctx.quadraticCurveTo(r * 0.95, -r * 0.1, r * 0.9, r * 0.45);
+    ctx.quadraticCurveTo(r * 0.55, r * 0.35, r * 0.25, r * 0.15);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  }
+
+  // Bottom fin (extra for higher tiers)
   if (isEmerald || isDiamond || isLegendary) {
     ctx.beginPath();
-    ctx.moveTo(-3, BASE.fishRadius * 0.58);
-    ctx.lineTo(7, BASE.fishRadius * (isLegendary ? 1.2 : 1.05));
-    ctx.lineTo(15, BASE.fishRadius * 0.45);
+    if (isLegendary) {
+      ctx.moveTo(-r * 0.15, r * 0.55);
+      ctx.quadraticCurveTo(r * 0.25, r * 1.35, r * 0.85, r * 0.5);
+      ctx.lineTo(r * 0.35, r * 0.55);
+    } else if (isEmerald) {
+      ctx.moveTo(-r * 0.1, r * 0.5);
+      ctx.quadraticCurveTo(r * 0.3, r * 1.25, r * 0.9, r * 0.45);
+      ctx.lineTo(r * 0.3, r * 0.5);
+    } else {
+      // diamond
+      ctx.moveTo(-r * 0.05, r * 0.55);
+      ctx.lineTo(r * 0.3, r * 1.1);
+      ctx.lineTo(r * 0.7, r * 0.5);
+    }
     ctx.closePath();
     ctx.fillStyle = isDiamond ? '#e8f9ff' : skin.colors.fin;
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.88;
     ctx.fill();
     ctx.globalAlpha = 1;
   }
 
+  // =====================================================
+  // SPECIAL DETAILS
+  // =====================================================
   if (isDiamond) {
+    // Crystal shine streak + facets
     ctx.beginPath();
-    ctx.ellipse(-2, -4, BASE.fishRadius * 0.72, BASE.fishRadius * 0.18, -0.32, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.46)';
+    ctx.ellipse(-r * 0.15, -r * 0.25, r * 0.7, r * 0.16, -0.35, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.fill();
 
+    // sparkle dots
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(-8, -11);
-    ctx.lineTo(0, -15);
-    ctx.lineTo(8, -10);
-    ctx.lineTo(2, -5);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.34)';
+    ctx.arc(-r * 0.35, -r * 0.35, 1.8, 0, Math.PI * 2);
+    ctx.arc(r * 0.15, -r * 0.5, 1.3, 0, Math.PI * 2);
     ctx.fill();
   }
 
   if (isLegendary) {
-    ctx.save();
-    ctx.globalAlpha = 0.75 + pulse * 0.2;
+    // Golden scale accents
     ctx.fillStyle = '#fffbe0';
-
-    for (let i = 0; i < 4; i++) {
-      const angle = state.legendaryPulse + i * (Math.PI / 2);
-      const sx = Math.cos(angle) * (BASE.fishRadius * 1.45);
-      const sy = Math.sin(angle) * (BASE.fishRadius * 0.95);
-
+    ctx.globalAlpha = 0.65 + pulse * 0.2;
+    for (let i = 0; i < 3; i++) {
+      const sx = -r * 0.35 + i * r * 0.35;
+      const sy = -r * 0.15 + (i % 2) * r * 0.2;
       ctx.beginPath();
-      ctx.moveTo(sx, sy - 4);
-      ctx.lineTo(sx + 2, sy);
-      ctx.lineTo(sx, sy + 4);
-      ctx.lineTo(sx - 2, sy);
+      ctx.arc(sx, sy, 2.1 - i * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // rotating sparkles around the fish
+    ctx.save();
+    ctx.globalAlpha = 0.8 + pulse * 0.2;
+    ctx.fillStyle = '#fffbe0';
+    for (let i = 0; i < 5; i++) {
+      const angle = state.legendaryPulse + i * ((Math.PI * 2) / 5);
+      const sx = Math.cos(angle) * (r * 1.55);
+      const sy = Math.sin(angle) * (r * 1.05);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 3.5);
+      ctx.lineTo(sx + 2.2, sy);
+      ctx.lineTo(sx, sy + 3.5);
+      ctx.lineTo(sx - 2.2, sy);
       ctx.closePath();
       ctx.fill();
     }
-
     ctx.restore();
   }
 
-  ctx.restore();
+  if (isRuby) {
+    // Ruby shine streak
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.4, -r * 0.35);
+    ctx.lineTo(r * 0.45, -r * 0.45);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
 
-  // Eye
+  if (isEmerald) {
+    // Speed lines hint
+    ctx.strokeStyle = skin.colors.glow;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.1, -r * 0.35);
+    ctx.lineTo(-r * 1.7, -r * 0.5);
+    ctx.moveTo(-r * 1.1, r * 0.35);
+    ctx.lineTo(-r * 1.7, r * 0.5);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Golden soft shine
+  if (!isRuby && !isEmerald && !isDiamond && !isLegendary) {
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.15, -r * 0.3, r * 0.55, r * 0.18, -0.4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fill();
+  }
+
+  ctx.restore(); // end shadow
+
+  // =====================================================
+  // EYE + expression
+  // =====================================================
+  const eyeX = isEmerald ? r * 0.65 : r * 0.5;
+  const eyeY = isEmerald ? -r * 0.12 : -r * 0.18;
+  const eyeR = isLegendary ? 4.6 : 4.1;
+
   ctx.beginPath();
-  ctx.arc(BASE.fishRadius * 0.45, -BASE.fishRadius * 0.15, 4.2, 0, Math.PI * 2);
-  ctx.fillStyle = '#1c1c1c';
+  ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a1200';
   ctx.fill();
 
   ctx.beginPath();
-  ctx.arc(BASE.fishRadius * 0.55, -BASE.fishRadius * 0.25, 1.4, 0, Math.PI * 2);
+  ctx.arc(eyeX + 1.3, eyeY - 1.3, 1.45, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
 
   if (isRuby) {
+    // ruby eye glint
     ctx.beginPath();
-    ctx.arc(BASE.fishRadius * 0.45, -BASE.fishRadius * 0.15, 1.1, 0, Math.PI * 2);
+    ctx.arc(eyeX, eyeY, 1.15, 0, Math.PI * 2);
     ctx.fillStyle = '#ff6b6b';
     ctx.fill();
+  }
+
+  // Cute smile for Golden only
+  if (!isRuby && !isEmerald && !isDiamond && !isLegendary) {
+    ctx.beginPath();
+    ctx.arc(r * 0.7, r * 0.15, 4.5, 0.15, Math.PI - 0.15);
+    ctx.strokeStyle = '#1a1200';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
   }
 
   ctx.restore();
