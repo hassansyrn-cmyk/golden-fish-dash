@@ -397,9 +397,35 @@ body,
   letter-spacing: 1px;
 }
 
+.hud-lives {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left));
+  top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.hud-heart {
+  font-size: 1.75rem;
+  line-height: 1;
+  display: inline-block;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.hud-heart-full {
+  color: #ff4d6d;
+  filter: drop-shadow(0 0 6px rgba(255, 77, 109, 0.6));
+}
+
+.hud-heart-empty {
+  color: rgba(255, 255, 255, 0.28);
+}
+
 .hud-pause-btn {
   position: absolute;
-  right: 16px;
+  right: max(16px, env(safe-area-inset-right));
   top: 18px;
   width: 40px;
   height: 40px;
