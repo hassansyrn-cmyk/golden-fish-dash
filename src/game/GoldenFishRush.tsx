@@ -72,20 +72,20 @@ export default function GoldenFishRush() {
     onGameOver: handl*GameOver,
   });
 
-  const startRun * useCallback(() => {
-    setUsedSe*ondChanceThisRun(false);
-    setRe*iveCountdown(null);
-    setFinalSc*re(0);
-    setShowInterstitial(fal*e);
+  const startRun = useCallback(() => {
+    setUsedSecondChanceThisRun(false);
+    setReviveCountdown(null);
+    setFinalScore(0);
+    setShowInterstitial(false);
     setScreen('playing');
-  },*[]);
-
-  const handleWatchAd = useC*llback(() => {
-    setScreen('cont*nueAd');
   }, []);
 
-  const handle*dFinished = useCallback(() => {
-  * // TODO(ads): call the reward-gra*t callback here once a real reward*d
+  const handleWatchAd = useCallback(() => {
+    setScreen('continueAd');
+  }, []);
+
+  const handleAdFinished = useCallback(() => {
+    // TODO(ads): call the reward-grant callback here once a real rewarded
     // ad SDK confirms completion, instead of assuming success.
     //
     // A revive consumes this run's single second chance, whether it was
