@@ -18,6 +18,8 @@ import type {
   LeaderboardEntry,
   Settings,
   SkinId,
+  ShopInventory,
+  ShopItemId,
 } from './types';
 import { submitLeaderboardScore as submitToFirebase, fetchGlobalLeaderboard as fetchFromFirebase } from './firebaseLeaderboard';
 
@@ -59,6 +61,12 @@ export function addCoins(amount: number): number {
   const total = getCoins() + amount;
   writeJSON(STORAGE_KEYS.coins, total);
   return total;
+}
+export function spendCoins(amount: number): number {
+  const current = getCoins();
+  const newTotal = Math.max(0, current - Math.max(0, amount));
+  writeJSON(STORAGE_KEYS.coins, newTotal);
+  return newTotal;
 }
 
 // ---- Skins ----
@@ -132,6 +140,50 @@ export function setSettings(settings: Settings) {
   writeJSON(STORAGE_KEYS.settings, settings);
 }
 
+// ---- Shop Inventory ----
+const DEFAULT_SHOP_INVENTORY: ShopInventory = {
+  shield: 0,
+  magnet: 0,
+  gemBoost: 0,
+  continueToken: 0,
+};
+
+export function getShopInventory(): ShopInventory {
+  return readJSON<ShopInventory>(STORAGE_KEYS.shopInventory, DEFAULT_SHOP_INVENTORY);
+}
+
+function saveShopInventory(inventory: ShopInventory) {
+  writeJSON(STORAGE_KEYS.shopInventory, inventory);
+}
+
+export function getShopItemCount(itemId: ShopItemId): number {
+  const inv = getShopInventory();
+  return inv[itemId] ?? 0;
+}
+
+export function buyShopItem(itemId: ShopItemId, cost: number): boolean {
+  const currentCoins = getCoins();
+  if (currentCoins < cost) {
+    return false;
+  }
+  const inv = getShopInventory();
+  const newInv: ShopInventory = { ...inv, [itemId]: (inv[itemId] ?? 0) + 1 };
+  spendCoins(cost);
+  saveShopInventory(newInv);
+  return true;
+}
+
+export function consumeShopItem(itemId: ShopItemId): boolean {
+  const inv = getShopInventory();
+  const current = inv[itemId] ?? 0;
+  if (current <= 0) {
+    return false;
+  }
+  const newInv: ShopInventory = { ...inv, [itemId]: current - 1 };
+  saveShopInventory(newInv);
+  return true;
+}
+
 // ---- Local leaderboard ----
 // Seeded once with sample "global" scores so the board never looks empty.
 // Structured to be a drop-in replacement target for a real backend: once
@@ -167,6 +219,7 @@ export function addLocalLeaderboardEntry(name: string, score: number): Leaderboa
   writeJSON(STORAGE_KEYS.leaderboard, trimmed);
   return trimmed;
 }
+
 export function qualifiesForLeaderboard(score: number): boolean {
   const board = getLocalLeaderboard();
   return score > 0 && (board.length < 10 || score > board[board.length - 1].score);
@@ -181,6 +234,7 @@ export function estimateGlobalRank(score: number): number {
 // Backend functions now powered by Firebase Firestore.
 // Falls back to local storage on any error so the game never crashes.
 // -----------------------------------------------------------------------
+
 export async function submitScoreToServer(playerName: string, score: number): Promise<{ rank: number }> {
   const trimmed = (playerName || 'Player').trim().slice(0, 16) || 'Player';
   const safeScore = Math.floor(Math.max(0, score || 0));
