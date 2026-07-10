@@ -8,11 +8,17 @@ import ContinueAdScreen from './screens/ContinueAdScreen';
 import PauseScreen from './screens/PauseScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import AchievementsModal from './screens/AchievementsModal';
+import UnlockCelebration from './screens/UnlockCelebration';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
-import { getSelectedSkin, incrementGameOverCount, markUsedSecondChanceEver, unlockAchievement } from './storage';
-import type { ScreenName } from './types';
+import {
+  getSelectedSkin,
+  incrementGameOverCount,
+  markUsedSecondChanceEver,
+  unlockAchievement,
+} from './storage';
+import type { ScreenName, SkinId } from './types';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
@@ -24,6 +30,7 @@ export default function GoldenFishRush() {
   const [showAchievements, setShowAchievements] = useState(false);
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
+  const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
@@ -41,20 +48,6 @@ export default function GoldenFishRush() {
     [usedSecondChanceThisRun],
   );
 
-  // Important:
-  // The engine must stay alive while the Continue Ad placeholder is open.
-  // If active becomes false during continueAd, useGameEngine will recreate
-  // the engine when returning to playing, which restarts the run from zero.
-  //
-  // keepEngineAlive:
-  // - playing: normal gameplay
-  // - paused: keep current run
-  // - continueAd: keep current run while fake rewarded ad/countdown is shown
-  // - reviveCountdown: keep current run while revive countdown is visible
-  //
-  // enginePaused:
-  // - true whenever the player should not control the fish
-  // - false only during real playing
   const keepEngineAlive =
     screen === 'playing' ||
     screen === 'paused' ||
@@ -76,6 +69,7 @@ export default function GoldenFishRush() {
     setReviveCountdown(null);
     setFinalScore(0);
     setShowInterstitial(false);
+    setNewUnlocks(null);
     setScreen('playing');
   }, []);
 
@@ -84,15 +78,9 @@ export default function GoldenFishRush() {
   }, []);
 
   const handleAdFinished = useCallback(() => {
-    // TODO(ads): call the reward-grant callback here once a real rewarded
-    // ad SDK confirms completion, instead of assuming success.
-    //
-    // A revive consumes this run's single second chance, whether it was
-    // offered automatically after death or from the Game Over screen.
     setUsedSecondChanceThisRun(true);
     markUsedSecondChanceEver();
     unlockAchievement('comeback');
-
     reviveAt(REVIVE_INVINCIBILITY_MS);
     setReviveCountdown(3);
   }, [reviveAt]);
@@ -104,47 +92,37 @@ export default function GoldenFishRush() {
 
   useEffect(() => {
     if (reviveCountdown === null) return;
-
     if (reviveCountdown <= 0) {
       setReviveCountdown(null);
       setScreen('playing');
       return;
     }
-
     const timer = setTimeout(() => {
       setReviveCountdown((current) => (current ?? 1) - 1);
     }, 700);
-
     return () => clearTimeout(timer);
   }, [reviveCountdown]);
 
   useEffect(() => {
     if (screen !== 'gameover') return;
-
     const count = incrementGameOverCount();
-
     if (count % 3 === 0) {
       setShowInterstitial(true);
     }
   }, [screen]);
 
-  // Input handling: tap/click/space to jump while playing.
   useEffect(() => {
     if (screen !== 'playing') return;
-
     const handleKey = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
         event.preventDefault();
         doJump();
       }
-
       if (event.code === 'Escape') {
         setScreen('paused');
       }
     };
-
     window.addEventListener('keydown', handleKey);
-
     return () => window.removeEventListener('keydown', handleKey);
   }, [screen, doJump]);
 
@@ -153,6 +131,14 @@ export default function GoldenFishRush() {
       doJump();
     }
   }, [screen, doJump]);
+
+  const handleNewUnlocks = useCallback((ids: SkinId[]) => {
+    setNewUnlocks(ids);
+  }, []);
+
+  const handleUnlockContinue = useCallback(() => {
+    setNewUnlocks(null);
+  }, []);
 
   const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
 
@@ -236,7 +222,7 @@ export default function GoldenFishRush() {
           />
         )}
 
-        {screen === 'gameover' && (
+        {screen === 'gameover' && !newUnlocks && (
           <GameOverScreen
             finalScore={finalScore}
             canContinue={!usedSecondChanceThisRun}
@@ -244,7 +230,12 @@ export default function GoldenFishRush() {
             onPlayAgain={startRun}
             onLeaderboard={() => setScreen('leaderboard')}
             onMenu={() => setScreen('menu')}
+            onNewUnlocks={handleNewUnlocks}
           />
+        )}
+
+        {newUnlocks && newUnlocks.length > 0 && (
+          <UnlockCelebration unlockedIds={newUnlocks} onContinue={handleUnlockContinue} />
         )}
 
         {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
