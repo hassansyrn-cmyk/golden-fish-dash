@@ -626,43 +626,138 @@ function drawFish(
 
   if (blink) return;
 
+  const isRuby = skin.id === 'ruby';
+  const isEmerald = skin.id === 'emerald';
+  const isDiamond = skin.id === 'diamond';
+  const isLegendary = skin.id === 'legendary';
+
+  const bodyRadiusX = BASE.fishRadius * (isLegendary ? 1.08 : isDiamond ? 1.04 : 1);
+  const bodyRadiusY = BASE.fishRadius * (isLegendary ? 0.83 : 0.78);
+  const glowBlur = isLegendary ? 30 : isDiamond ? 24 : state.score >= 100 ? 26 : 14;
+  const tailLength = BASE.fishRadius + (isRuby ? 22 : isLegendary ? 24 : 16);
+  const tailHeight = isLegendary ? 14 : isRuby ? 13 : 10;
+  const finLift = isEmerald ? -4 : isLegendary ? -5 : 0;
+  const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
+
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
 
+  if (isLegendary) {
+    ctx.save();
+    ctx.globalAlpha = 0.28 + pulse * 0.18;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, BASE.fishRadius * 1.75, BASE.fishRadius * 1.22, 0, 0, Math.PI * 2);
+    ctx.fillStyle = skin.colors.glow;
+    ctx.fill();
+    ctx.restore();
+  }
+
   ctx.save();
   ctx.shadowColor = skin.colors.glow;
-  ctx.shadowBlur = state.score >= 100 ? 26 : 14;
+  ctx.shadowBlur = glowBlur;
 
   // Tail
   ctx.beginPath();
   ctx.moveTo(-BASE.fishRadius - 2, 0);
-  ctx.lineTo(-BASE.fishRadius - 16, -10);
-  ctx.lineTo(-BASE.fishRadius - 16, 10);
+  ctx.lineTo(-tailLength, -tailHeight);
+  ctx.lineTo(-tailLength + (isRuby ? 6 : 0), 0);
+  ctx.lineTo(-tailLength, tailHeight);
   ctx.closePath();
   ctx.fillStyle = skin.colors.fin;
   ctx.fill();
 
+  if (isEmerald || isLegendary) {
+    ctx.beginPath();
+    ctx.moveTo(-BASE.fishRadius - 8, 0);
+    ctx.lineTo(-tailLength - 8, -tailHeight * 0.72);
+    ctx.lineTo(-tailLength - 4, tailHeight * 0.72);
+    ctx.closePath();
+    ctx.fillStyle = isLegendary ? '#fff275' : skin.colors.belly;
+    ctx.globalAlpha = isLegendary ? 0.78 : 0.52;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
   // Body
   ctx.beginPath();
-  ctx.ellipse(0, 0, BASE.fishRadius, BASE.fishRadius * 0.78, 0, 0, Math.PI * 2);
-  ctx.fillStyle = skin.colors.body;
+  ctx.ellipse(0, 0, bodyRadiusX, bodyRadiusY, 0, 0, Math.PI * 2);
+
+  const bodyGradient = ctx.createLinearGradient(-BASE.fishRadius, -BASE.fishRadius, BASE.fishRadius, BASE.fishRadius);
+  bodyGradient.addColorStop(0, skin.colors.belly);
+  bodyGradient.addColorStop(0.42, skin.colors.body);
+  bodyGradient.addColorStop(1, skin.colors.fin);
+
+  ctx.fillStyle = bodyGradient;
   ctx.fill();
 
   // Belly highlight
   ctx.beginPath();
-  ctx.ellipse(2, 5, BASE.fishRadius * 0.6, BASE.fishRadius * 0.4, 0, 0, Math.PI * 2);
+  ctx.ellipse(2, 5, BASE.fishRadius * 0.62, BASE.fishRadius * 0.38, 0, 0, Math.PI * 2);
   ctx.fillStyle = skin.colors.belly;
+  ctx.globalAlpha = isRuby ? 0.82 : 0.95;
   ctx.fill();
+  ctx.globalAlpha = 1;
 
   // Top fin
   ctx.beginPath();
-  ctx.moveTo(-2, -BASE.fishRadius * 0.7);
-  ctx.lineTo(6, -BASE.fishRadius * 1.25);
-  ctx.lineTo(12, -BASE.fishRadius * 0.55);
+  ctx.moveTo(-2, -BASE.fishRadius * 0.7 + finLift);
+  ctx.lineTo(6, -BASE.fishRadius * (isLegendary ? 1.42 : 1.25) + finLift);
+  ctx.lineTo(14, -BASE.fishRadius * 0.55 + finLift);
   ctx.closePath();
   ctx.fillStyle = skin.colors.fin;
   ctx.fill();
+
+  // Bottom fin
+  if (isEmerald || isDiamond || isLegendary) {
+    ctx.beginPath();
+    ctx.moveTo(-3, BASE.fishRadius * 0.58);
+    ctx.lineTo(7, BASE.fishRadius * (isLegendary ? 1.2 : 1.05));
+    ctx.lineTo(15, BASE.fishRadius * 0.45);
+    ctx.closePath();
+    ctx.fillStyle = isDiamond ? '#e8f9ff' : skin.colors.fin;
+    ctx.globalAlpha = 0.9;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  if (isDiamond) {
+    ctx.beginPath();
+    ctx.ellipse(-2, -4, BASE.fishRadius * 0.72, BASE.fishRadius * 0.18, -0.32, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.46)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(-8, -11);
+    ctx.lineTo(0, -15);
+    ctx.lineTo(8, -10);
+    ctx.lineTo(2, -5);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.34)';
+    ctx.fill();
+  }
+
+  if (isLegendary) {
+    ctx.save();
+    ctx.globalAlpha = 0.75 + pulse * 0.2;
+    ctx.fillStyle = '#fffbe0';
+
+    for (let i = 0; i < 4; i++) {
+      const angle = state.legendaryPulse + i * (Math.PI / 2);
+      const sx = Math.cos(angle) * (BASE.fishRadius * 1.45);
+      const sy = Math.sin(angle) * (BASE.fishRadius * 0.95);
+
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 4);
+      ctx.lineTo(sx + 2, sy);
+      ctx.lineTo(sx, sy + 4);
+      ctx.lineTo(sx - 2, sy);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
 
   ctx.restore();
 
@@ -676,6 +771,13 @@ function drawFish(
   ctx.arc(BASE.fishRadius * 0.55, -BASE.fishRadius * 0.25, 1.4, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
+
+  if (isRuby) {
+    ctx.beginPath();
+    ctx.arc(BASE.fishRadius * 0.45, -BASE.fishRadius * 0.15, 1.1, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff6b6b';
+    ctx.fill();
+  }
 
   ctx.restore();
 }
