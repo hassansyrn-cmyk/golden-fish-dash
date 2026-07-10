@@ -58,6 +58,8 @@ export default function GameOverScreen({
   const qualifies = qualifiesForLeaderboard(finalScore);
 
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [name, setName] = useState('');
   const [newlyUnlocked, setNewlyUnlocked] = useState<SkinId[]>([]);
   const [selectedSkin, setSelectedSkinState] = useState<SkinId>(() => getSelectedSkin());
@@ -82,12 +84,22 @@ export default function GameOverScreen({
   }, [best, finalScore, onNewUnlocks, prevBest]);
 
   async function handleSubmit() {
+    if (isSubmitting || submitted) return;
+
     const trimmed = name.trim();
 
     if (!trimmed) return;
 
-    await submitScoreToServer(trimmed, finalScore);
-    setSubmitted(true);
+    setIsSubmitting(true);
+    setSubmitError('');
+
+    try {
+      await submitScoreToServer(trimmed, finalScore);
+      setSubmitted(true);
+    } catch {
+      setSubmitError('Could not save score. Please try again.');
+      setIsSubmitting(false);
+    }
   }
 
   function handleEquipSkin(id: SkinId) {
@@ -166,13 +178,20 @@ export default function GameOverScreen({
               maxLength={16}
               placeholder="Your name"
               value={name}
+              disabled={isSubmitting}
               onChange={(event) => setName(event.target.value)}
             />
 
-            <button className="btn btn-primary" onClick={handleSubmit}>
-              Save
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={isSubmitting || !name.trim()}
+            >
+              {isSubmitting ? 'Saving...' : 'Save'}
             </button>
           </div>
+
+          {submitError && <p className="name-saved-note">{submitError}</p>}
         </div>
       )}
 
