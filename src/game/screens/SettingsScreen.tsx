@@ -15,9 +15,120 @@ interface Props {
   onBack: () => void;
 }
 
+function SkinPreview({ skinId }: { skinId: SkinId }) {
+  const skin = SKINS.find((item) => item.id === skinId) ?? SKINS[0];
+
+  const isRuby = skin.id === 'ruby';
+  const isEmerald = skin.id === 'emerald';
+  const isDiamond = skin.id === 'diamond';
+  const isLegendary = skin.id === 'legendary';
+
+  const bodyScale = isDiamond ? 1.04 : isLegendary ? 1.08 : 1;
+  const tailScale = isRuby ? 1.08 : isLegendary ? 1.14 : 1;
+  const finOffset = isEmerald ? -2 : isLegendary ? -3 : 0;
+  const glowSize = isLegendary ? 18 : isDiamond ? 15 : 11;
+
+  return (
+    <div
+      className="skin-fish-preview"
+      style={{
+        position: 'relative',
+        width: 58,
+        height: 42,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        filter: `drop-shadow(0 0 ${glowSize}px ${skin.colors.glow})`,
+      }}
+      aria-hidden="true"
+    >
+      <div
+        style={{
+          position: 'absolute',
+          left: 4,
+          width: 0,
+          height: 0,
+          borderTop: `${10 * tailScale}px solid transparent`,
+          borderBottom: `${10 * tailScale}px solid transparent`,
+          borderRight: `${18 * tailScale}px solid ${skin.colors.fin}`,
+          transform: isLegendary ? 'rotate(4deg)' : 'rotate(0deg)',
+        }}
+      />
+
+      <div
+        style={{
+          position: 'absolute',
+          width: 38 * bodyScale,
+          height: 26 * bodyScale,
+          left: 18,
+          borderRadius: '52% 48% 48% 52%',
+          background: `linear-gradient(135deg, ${skin.colors.body}, ${skin.colors.fin})`,
+          boxShadow: `inset 0 -5px 0 ${skin.colors.belly}, 0 0 ${glowSize}px ${skin.colors.glow}`,
+        }}
+      />
+
+      <div
+        style={{
+          position: 'absolute',
+          left: 34,
+          top: 4 + finOffset,
+          width: 14,
+          height: 12,
+          background: skin.colors.fin,
+          clipPath: 'polygon(50% 0%, 100% 100%, 0% 75%)',
+          opacity: 0.95,
+          transform: isLegendary ? 'rotate(8deg)' : 'rotate(0deg)',
+        }}
+      />
+
+      <div
+        style={{
+          position: 'absolute',
+          left: 46,
+          top: 15,
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: '#111',
+          boxShadow: '1px -1px 0 #fff',
+        }}
+      />
+
+      {isDiamond && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 25,
+            top: 13,
+            width: 18,
+            height: 7,
+            borderRadius: 999,
+            background: 'rgba(255, 255, 255, 0.45)',
+            transform: 'rotate(-12deg)',
+          }}
+        />
+      )}
+
+      {isLegendary && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 999,
+            border: '1px solid rgba(255, 255, 255, 0.35)',
+            boxShadow: `0 0 18px ${skin.colors.glow}`,
+            opacity: 0.85,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function SettingsScreen({ onBack }: Props) {
   const [settings, setLocalSettings] = useState<Settings>(() => getSettings());
   const best = getPersonalBest();
+
   // Sync any skins newly earned by the player's best score before rendering
   // so the unlock state and button enablement always agree.
   const [unlocked, setUnlocked] = useState<SkinId[]>(() => refreshUnlockedSkins(best));
@@ -25,7 +136,7 @@ export default function SettingsScreen({ onBack }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
 
   function toggle(key: keyof Settings) {
-    const next = { ...settings, [key]: !settings[key] };
+    const next = { ...settings, !settings[key] };
     setLocalSettings(next);
     setSettings(next);
   }
@@ -38,6 +149,9 @@ export default function SettingsScreen({ onBack }: Props) {
 
   function handleReset() {
     resetPersonalBest();
+    setUnlocked(refreshUnlockedSkins(0));
+    setSelected('golden');
+    setSelectedSkin('golden');
     setConfirmReset(false);
   }
 
@@ -50,21 +164,31 @@ export default function SettingsScreen({ onBack }: Props) {
           <span>Sound</span>
           <input type="checkbox" checked={settings.sound} onChange={() => toggle('sound')} />
         </label>
+
         <label className="settings-row">
           <span>Music</span>
           <input type="checkbox" checked={settings.music} onChange={() => toggle('music')} />
         </label>
+
         <label className="settings-row">
           <span>Vibration</span>
           <input type="checkbox" checked={settings.vibration} onChange={() => toggle('vibration')} />
         </label>
       </div>
 
-      <h3 className="settings-subtitle">Fish Skin</h3>
+      <h3 className="settings-subtitle">Fish Rewards</h3>
+
       <div className="skin-grid">
         {SKINS.map((skin) => {
           const isUnlocked = unlocked.includes(skin.id) || best >= skin.unlockScore;
           const isSelected = selected === skin.id;
+          const progressText =
+            skin.unlockScore === 0
+              ? 'Starter fish'
+              : isUnlocked
+                ? 'Unlocked'
+                : `Score ${skin.unlockScore}`;
+
           return (
             <button
               key={skin.id}
@@ -72,9 +196,19 @@ export default function SettingsScreen({ onBack }: Props) {
               onClick={() => pickSkin(skin.id)}
               disabled={!isUnlocked}
             >
-              <div className="skin-swatch" style={{ background: skin.colors.body }} />
+              <SkinPreview skinId={skin.id} />
+
               <span>{skin.name}</span>
-              {!isUnlocked && <span className="skin-lock-req">Score {skin.unlockScore}</span>}
+
+              {!isUnlocked && <span className="skin-lock-req">{progressText}</span>}
+
+              {isUnlocked && !isSelected && (
+                <span className="skin-lock-req">Tap to equip</span>
+              )}
+
+              {isSelected && (
+                <span className="skin-lock-req">Equipped</span>
+              )}
             </button>
           );
         })}
@@ -88,9 +222,11 @@ export default function SettingsScreen({ onBack }: Props) {
         ) : (
           <div className="confirm-row">
             <span>Are you sure? This can't be undone.</span>
+
             <button className="btn btn-danger" onClick={handleReset}>
               Confirm Reset
             </button>
+
             <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>
               Cancel
             </button>
