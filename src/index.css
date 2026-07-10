@@ -462,12 +462,13 @@ body,
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 32px 22px;
+  padding: 36px 22px 28px;
   background: linear-gradient(180deg, rgba(2, 15, 28, 0.92), rgba(2, 15, 28, 0.98));
   text-align: center;
   overflow-y: auto;
   z-index: 10;
   animation: gfr-fade-in 0.35s ease-out;
+  box-sizing: border-box;
 }
 
 @keyframes gfr-fade-in {
@@ -495,17 +496,41 @@ body,
 @keyframes gfr-bob {
   0%,
   100% {
-    transform: translateY(0) rotate(-4deg);
+    transform: translateY(0) rotate(-3deg);
   }
   50% {
-    transform: translateY(-14px) rotate(4deg);
+    transform: translateY(-10px) rotate(3deg);
   }
 }
 
 .menu-fish-decor {
-  font-size: 4.5rem;
-  animation: gfr-bob 2.6s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 72px;
+  margin-top: 4px;
+  margin-bottom: 2px;
+  animation: gfr-bob 2.8s ease-in-out infinite;
   filter: drop-shadow(0 0 18px rgba(255, 214, 10, 0.55));
+  flex-shrink: 0;
+}
+
+.menu-fish-svg {
+  width: 88px;
+  height: 62px;
+  overflow: visible;
+}
+
+.menu-screen {
+  padding-top: max(52px, calc(env(safe-area-inset-top) + 32px));
+  padding-bottom: 28px;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.menu-screen .game-title {
+  margin-top: 0;
 }
 
 .game-title {
@@ -757,6 +782,10 @@ body,
 .skin-lock-req {
   color: #ffd60a;
   font-size: 0.6rem;
+}
+
+.skin-fish-preview {
+  flex-shrink: 0;
 }
 
 .confirm-row {
