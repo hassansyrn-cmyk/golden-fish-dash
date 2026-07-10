@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   roundsPlayed: 'gfr_rounds_played',
   usedSecondChanceEver: 'gfr_used_second_chance_ever',
   gameOverCount: 'gfr_game_over_count',
+  shopInventory: 'gfr_shop_inventory',
 } as const;
 
 // Base gameplay tuning. Difficulty scales off these values as score increases.
