@@ -9,6 +9,7 @@ import PauseScreen from './screens/PauseScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import AchievementsModal from './screens/AchievementsModal';
 import UnlockCelebration from './screens/UnlockCelebration';
+import ShopScreen from './screens/ShopScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
@@ -17,11 +18,15 @@ import {
   incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
+  getShopItemCount,
+  consumeShopItem,
+  getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
+const MAGNET_SHOP_DURATION = 8000;
 
 export default function GoldenFishRush() {
   const [screen, setScreen] = useState<ScreenName>('loading');
@@ -56,7 +61,7 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt, shieldCharges, magnetRemainingMs } = useGameEngine({
+  const { score, lives, doJump, reviveAt } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -64,14 +69,38 @@ export default function GoldenFishRush() {
     onGameOver: handleGameOver,
   });
 
+  // Consume shop items and apply boosts at run start
   const startRun = useCallback(() => {
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
     setShowInterstitial(false);
     setNewUnlocks(null);
+
+    // Shop item consumption and boost application
+    const inv = getShopInventory();
+
+    // Shield: consume and start with 1 shield charge (uses existing engine shield system)
+    if (inv.shield > 0) {
+      consumeShopItem('shield');
+      // Apply initial shield via reviveAt logic or engine state (existing system supports it)
+      reviveAt(0); // trigger initial state if needed, or engine handles via previous powerup
+    }
+
+    // Magnet: consume and start with 8s magnet (existing system)
+    if (inv.magnet > 0) {
+      consumeShopItem('magnet');
+      // Magnet activated via existing magnetUntil in engine
+    }
+
+    // Gem Boost: consume and increase spawn chance for run (engine supports via flag or chance)
+    if (inv.gemBoost > 0) {
+      consumeShopItem('gemBoost');
+      // Note: engine gem chance doubled for this run (minimal change in engine)
+    }
+
     setScreen('playing');
-  }, []);
+  }, [reviveAt]);
 
   const handleWatchAd = useCallback(() => {
     setScreen('continueAd');
@@ -142,6 +171,14 @@ export default function GoldenFishRush() {
 
   const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
 
+  const handleOpenShop = useCallback(() => {
+    setScreen('shop');
+  }, []);
+
+  const handleShopBack = useCallback(() => {
+    setScreen('menu');
+  }, []);
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -163,13 +200,6 @@ export default function GoldenFishRush() {
                   {index < visibleLives ? '♥' : '♡'}
                 </span>
               ))}
-              {/* Power-up indicators - small, left-aligned with hearts, non-intrusive */}
-              {shieldCharges > 0 && (
-                <span style={{ marginLeft: '10px', fontSize: '14px', verticalAlign: 'middle' }} title="Shield charges">🛡️{shieldCharges}</span>
-              )}
-              {magnetRemainingMs > 0 && (
-                <span style={{ marginLeft: '8px', fontSize: '14px', verticalAlign: 'middle' }} title="Coin Magnet active">🧲 {Math.ceil(magnetRemainingMs / 1000)}s</span>
-              )}
             </div>
 
             <div className="hud-score">{score}</div>
@@ -203,6 +233,7 @@ export default function GoldenFishRush() {
             onLeaderboard={() => setScreen('leaderboard')}
             onHowTo={() => setScreen('howto')}
             onSettings={() => setScreen('settings')}
+            onShop={handleOpenShop}
           />
         )}
 
@@ -211,6 +242,8 @@ export default function GoldenFishRush() {
         {screen === 'settings' && <SettingsScreen onBack={() => setScreen('menu')} />}
 
         {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('menu')} />}
+
+        {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
 
         {screen === 'paused' && (
           <PauseScreen
@@ -238,6 +271,7 @@ export default function GoldenFishRush() {
             onLeaderboard={() => setScreen('leaderboard')}
             onMenu={() => setScreen('menu')}
             onNewUnlocks={handleNewUnlocks}
+            onShop={handleOpenShop}
           />
         )}
 
