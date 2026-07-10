@@ -52,3 +52,10 @@ export type ScreenName =
   | 'gameover'
   | 'leaderboard'
   | 'settings';
+
+export type PowerUpType = 'shield' | 'magnet';
+
+export interface PowerUpState {
+  shieldCharges: number;
+  magnetUntil: number; // timestamp when magnet expires, 0 if inactive
+}
