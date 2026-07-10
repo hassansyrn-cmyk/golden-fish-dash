@@ -129,8 +129,6 @@ export default function SettingsScreen({ onBack }: Props) {
   const [settings, setLocalSettings] = useState<Settings>(() => getSettings());
   const best = getPersonalBest();
 
-  // Sync any skins newly earned by the player's best score before rendering
-  // so the unlock state and button enablement always agree.
   const [unlocked, setUnlocked] = useState<SkinId[]>(() => refreshUnlockedSkins(best));
   const [selected, setSelected] = useState<SkinId>(() => getSelectedSkin());
   const [confirmReset, setConfirmReset] = useState(false);
@@ -149,7 +147,8 @@ export default function SettingsScreen({ onBack }: Props) {
 
   function handleReset() {
     resetPersonalBest();
-    setUnlocked(refreshUnlockedSkins(0));
+    const resetUnlocked = refreshUnlockedSkins(0);
+    setUnlocked(resetUnlocked);
     setSelected('golden');
     setSelectedSkin('golden');
     setConfirmReset(false);
@@ -221,7 +220,7 @@ export default function SettingsScreen({ onBack }: Props) {
           </button>
         ) : (
           <div className="confirm-row">
-            <span>Are you sure? This can't be undone.</span>
+            <span>Are you sure? This cannot be undone.</span>
 
             <button className="btn btn-danger" onClick={handleReset}>
               Confirm Reset
