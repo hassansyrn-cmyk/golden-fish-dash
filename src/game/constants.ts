@@ -27,7 +27,7 @@ export const BASE = {
   minGap: 118,
   baseSpeed: 2.6,
   maxSpeed: 6.2,
-  spawnInterval: 1650, // ms, decreases with speed
+  spawnInterval: 1650,
 };
 
 export const SKINS: SkinDef[] = [
@@ -35,31 +35,56 @@ export const SKINS: SkinDef[] = [
     id: 'golden',
     name: 'Golden Fish',
     unlockScore: 0,
-    colors: { body: '#ffc93c', belly: '#fff3c4', fin: '#ff9f1c', glow: '#ffe066' },
+    colors: {
+      body: '#ffc93c',
+      belly: '#fff3c4',
+      fin: '#ff9f1c',
+      glow: '#ffe066',
+    },
   },
   {
     id: 'ruby',
     name: 'Ruby Fish',
     unlockScore: 25,
-    colors: { body: '#e63946', belly: '#ffb3ab', fin: '#c1121f', glow: '#ff6b6b' },
+    colors: {
+      body: '#e63946',
+      belly: '#ffd1d1',
+      fin: '#9d0208',
+      glow: '#ff6b6b',
+    },
   },
   {
     id: 'emerald',
     name: 'Emerald Fish',
     unlockScore: 50,
-    colors: { body: '#2ec4b6', belly: '#cbf3f0', fin: '#0f9b8e', glow: '#5ef2c3' },
+    colors: {
+      body: '#2ec4b6',
+      belly: '#cbf3f0',
+      fin: '#007f73',
+      glow: '#5ef2c3',
+    },
   },
   {
     id: 'diamond',
     name: 'Diamond Fish',
     unlockScore: 100,
-    colors: { body: '#8ecae6', belly: '#e8f9ff', fin: '#219ebc', glow: '#caf0f8' },
+    colors: {
+      body: '#8ecae6',
+      belly: '#f0fbff',
+      fin: '#219ebc',
+      glow: '#caf0f8',
+    },
   },
   {
     id: 'legendary',
     name: 'Legendary Fish',
     unlockScore: 200,
-    colors: { body: '#ffd60a', belly: '#fffbe0', fin: '#ff9500', glow: '#fff275' },
+    colors: {
+      body: '#ffd60a',
+      belly: '#fffbe0',
+      fin: '#ff7b00',
+      glow: '#fff275',
+    },
   },
 ];
 
