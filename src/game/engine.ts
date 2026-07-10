@@ -1,5 +1,7 @@
 // -----------------------------------------------------------------------
 // Core canvas game engine for Golden Fish Rush.
+// Power-ups: Shield (protects one hit + invincibility) and Magnet (pulls nearby coins)
+// Gem improvement: full lives -> +5 score
 // -----------------------------------------------------------------------
 
 import { BASE, SKINS, getDifficultyTier } from './constants';
@@ -27,6 +29,14 @@ export interface Coin {
 export interface Gem {
   x: number;
   y: number;
+  collected: boolean;
+  pulse: number;
+}
+
+export interface PowerUp {
+  x: number;
+  y: number;
+  type: 'shield' | 'magnet';
   collected: boolean;
   pulse: number;
 }
@@ -71,6 +81,7 @@ export interface EngineState {
   obstacles: Obstacle[];
   coins: Coin[];
   gems: Gem[];
+  powerUps: PowerUp[];
   bubbles: Bubble[];
   particles: Particle[];
   elapsedSinceSpawn: number;
@@ -80,6 +91,8 @@ export interface EngineState {
   legendaryPulse: number;
   lives: number;
   maxLives: number;
+  shieldCharges: number;
+  magnetUntil: number;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -98,9 +111,9 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
   }));
   return {
     width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: 0, running: true,
-    invincibleUntil: 0, obstacles: [], coins: [], gems: [], bubbles, particles: [],
+    invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
-    lives: 0, maxLives: MAX_EXTRA_LIVES,
+    lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0,
   };
 }
 
@@ -159,6 +172,18 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, pulse: Math.random() * Math.PI * 2,
     });
   }
+  // Rare power-up spawn (shield or magnet)
+  if (Math.random() < 0.035) {
+    const type: 'shield' | 'magnet' = Math.random() < 0.5 ? 'shield' : 'magnet';
+    const puY = gapY + (Math.random() - 0.5) * (gap * 0.25);
+    state.powerUps.push({
+      x: state.width + BASE.obstacleWidth + 125,
+      y: puY,
+      type,
+      collected: false,
+      pulse: Math.random() * Math.PI * 2,
+    });
+  }
 }
 
 function addBurst(state: EngineState, x: number, y: number, color: string, count: number, sizeBase = 2) {
@@ -180,6 +205,7 @@ function clearDangerousReviveArea(state: EngineState) {
   });
   state.coins = state.coins.filter((coin) => coin.x < fishX - BASE.obstacleWidth * 2 || coin.x > state.width + BASE.obstacleWidth);
   state.gems = state.gems.filter((gem) => gem.x < fishX - BASE.obstacleWidth * 2 || gem.x > state.width + BASE.obstacleWidth);
+  state.powerUps = state.powerUps.filter((pu) => pu.x < fishX - BASE.obstacleWidth * 2 || pu.x > state.width + BASE.obstacleWidth);
   state.elapsedSinceSpawn = -SAFE_REVIVE_DELAY_MS;
 }
 
@@ -254,7 +280,17 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         } else {
           safe = !(state.fishY - BASE.fishRadius < topGapEdge || state.fishY + BASE.fishRadius > bottomGapEdge);
         }
-        if (!safe) { killOrUseLife(state, callbacks); return; }
+        if (!safe) {
+          if (state.shieldCharges > 0) {
+            state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+            state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+            callbacks.onShake(7);
+            addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 16, 3);
+          } else {
+            killOrUseLife(state, callbacks);
+            return;
+          }
+        }
       }
     }
   }
@@ -274,6 +310,23 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       }
     }
   }
+  // Magnet: pull nearby uncollected coins toward fish
+  if (state.magnetUntil > state.timeMs) {
+    const fishXMag = state.width * FISH_X_RATIO;
+    const fishYMag = state.fishY;
+    for (const coin of state.coins) {
+      if (!coin.collected) {
+        const dx = coin.x - fishXMag;
+        const dy = coin.y - fishYMag;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 5 && dist < 130) {
+          const pull = 0.22 * dt;
+          coin.x -= dx * pull;
+          coin.y -= dy * pull;
+        }
+      }
+    }
+  }
   state.coins = state.coins.filter((c) => c.x > -40 && !c.collected);
   for (const gem of state.gems) {
     gem.x -= speed * dt;
@@ -283,15 +336,41 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = gem.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 16) {
         gem.collected = true;
-        if (state.lives < state.maxLives) state.lives += 1;
-        callbacks.onGemCollect?.(state.lives);
-        callbacks.onLifeChange?.(state.lives);
+        if (state.lives < state.maxLives) {
+          state.lives += 1;
+          callbacks.onGemCollect?.(state.lives);
+          callbacks.onLifeChange?.(state.lives);
+        } else {
+          state.score += 5;
+          callbacks.onScore(state.score);
+        }
         callbacks.onShake(5);
         addBurst(state, gem.x, gem.y, '#7df9ff', 22, 3);
       }
     }
   }
   state.gems = state.gems.filter((g) => g.x > -50 && !g.collected);
+  // Power-up movement, collection (shield charges / magnet activate)
+  for (const pu of state.powerUps) {
+    pu.x -= speed * dt;
+    if (pu.pulse !== undefined) pu.pulse += dtMs * 0.004;
+    if (!pu.collected) {
+      const dx = pu.x - fishX;
+      const dy = pu.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 18) {
+        pu.collected = true;
+        if (pu.type === 'shield') {
+          state.shieldCharges = Math.min(3, state.shieldCharges + 1);
+          callbacks.onShake?.(4);
+          addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
+        } else if (pu.type === 'magnet') {
+          state.magnetUntil = state.timeMs + 8000;
+          addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
+        }
+      }
+    }
+  }
+  state.powerUps = state.powerUps.filter((p) => p.x > -60 && !p.collected);
   for (const b of state.bubbles) {
     b.y -= b.speed * dt;
     b.x += Math.sin(state.timeMs * 0.001 + b.x) * b.drift * dt;
@@ -569,6 +648,44 @@ function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   ctx.restore();
 }
 
+function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number) {
+  if (pu.collected) return;
+  const bob = Math.sin(timeMs * 0.003 + pu.x) * 1.3;
+  ctx.save();
+  ctx.translate(pu.x, pu.y + bob);
+  if (pu.type === 'shield') {
+    ctx.shadowColor = '#4fc3f7';
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#4fc3f7';
+    ctx.fill();
+    ctx.strokeStyle = '#e3f2fd';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🛡️', 0, 1);
+  } else {
+    ctx.shadowColor = '#ff6d00';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#ff6d00';
+    ctx.beginPath();
+    ctx.ellipse(-2, -3, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-2, 3, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-5, -7, 6, 14);
+    ctx.fillStyle = '#ff6d00';
+    ctx.fillRect(-4, -6, 4, 12);
+  }
+  ctx.restore();
+}
+
 function drawParticle(ctx: CanvasRenderingContext2D, particle: Particle) {
   const alpha = 1 - particle.life / particle.maxLife;
   ctx.save();
@@ -593,6 +710,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
   for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
+  for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);
   const fishX = width * FISH_X_RATIO;
   const invincible = state.timeMs < state.invincibleUntil;
   drawFish(ctx, state, fishX, invincible);
