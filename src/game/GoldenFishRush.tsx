@@ -15,6 +15,7 @@ import { getSelectedSkin, incrementGameOverCount, markUsedSecondChanceEver, unlo
 import type { ScreenName } from './types';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
+const MAX_VISIBLE_EXTRA_LIVES = 2;
 
 export default function GoldenFishRush() {
   const [screen, setScreen] = useState<ScreenName>('loading');
@@ -40,22 +41,20 @@ export default function GoldenFishRush() {
     [usedSecondChanceThisRun],
   );
 
-  /*
-    Important:
-    The engine must stay alive while the Continue Ad placeholder is open.
-    If active becomes false during continueAd, useGameEngine will recreate
-    the engine when returning to playing, which restarts the run from zero.
-
-    keepEngineAlive:
-    - playing: normal gameplay
-    - paused: keep current run
-    - continueAd: keep current run while fake rewarded ad/countdown is shown
-    - reviveCountdown: keep current run while revive countdown is visible
-
-    enginePaused:
-    - true whenever the player should not control the fish
-    - false only during real playing
-  */
+  // Important:
+  // The engine must stay alive while the Continue Ad placeholder is open.
+  // If active becomes false during continueAd, useGameEngine will recreate
+  // the engine when returning to playing, which restarts the run from zero.
+  //
+  // keepEngineAlive:
+  // - playing: normal gameplay
+  // - paused: keep current run
+  // - continueAd: keep current run while fake rewarded ad/countdown is shown
+  // - reviveCountdown: keep current run while revive countdown is visible
+  //
+  // enginePaused:
+  // - true whenever the player should not control the fish
+  // - false only during real playing
   const keepEngineAlive =
     screen === 'playing' ||
     screen === 'paused' ||
@@ -64,7 +63,7 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, doJump, reviveAt } = useGameEngine({
+  const { score, lives, doJump, reviveAt } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -155,6 +154,8 @@ export default function GoldenFishRush() {
     }
   }, [screen, doJump]);
 
+  const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -167,6 +168,17 @@ export default function GoldenFishRush() {
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
+            <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`}>
+              {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => (
+                <span
+                  key={index}
+                  className={index < visibleLives ? 'hud-heart hud-heart-full' : 'hud-heart hud-heart-empty'}
+                >
+                  {index < visibleLives ? '♥' : '♡'}
+                </span>
+              ))}
+            </div>
+
             <div className="hud-score">{score}</div>
 
             {screen === 'playing' && (
