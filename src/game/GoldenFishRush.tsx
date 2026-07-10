@@ -11,6 +11,7 @@ import AchievementsModal from './screens/AchievementsModal';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
+import { sounds } from './sounds';
 import { getSelectedSkin, incrementGameOverCount, markUsedSecondChanceEver, unlockAchievement } from './storage';
 import type { ScreenName } from './types';
 
@@ -31,12 +32,31 @@ export default function GoldenFishRush() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Global click/pointerdown sound effect for buttons
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === 'BUTTON' ||
+         target.closest('button') ||
+         target.classList.contains('skin-card') ||
+         target.classList.contains('hud-pause-btn') ||
+         target.closest('.skin-card'))
+      ) {
+        sounds.playButtonClick();
+      }
+    };
+    document.addEventListener('click', handleGlobalClick);
+    return () => document.removeEventListener('click', handleGlobalClick);
+  }, []);
+
   const handleGameOver = useCallback((score: number) => {
     setFinalScore(score);
     setScreen(usedSecondChanceThisRun ? 'gameover' : 'continueAd');
   }, [usedSecondChanceThisRun]);
 
-  const { score, doJump, reviveAt } = useGameEngine({
+  const { score, coins, lives, doJump, reviveAt } = useGameEngine({
     canvasRef,
     active: screen === 'playing' || screen === 'paused',
     paused: screen === 'paused',
@@ -54,11 +74,6 @@ export default function GoldenFishRush() {
   }, []);
 
   const handleAdFinished = useCallback(() => {
-    // TODO(ads): call the reward-grant callback here once a real rewarded
-    // ad SDK confirms completion, instead of assuming success.
-    // A revive always consumes this run's single second chance, regardless
-    // of whether it was offered from the automatic post-death prompt or the
-    // game-over screen's "Watch Ad to Continue" button.
     setUsedSecondChanceThisRun(true);
     markUsedSecondChanceEver();
     unlockAchievement('comeback');
@@ -116,8 +131,16 @@ export default function GoldenFishRush() {
         />
 
         {(screen === 'playing' || screen === 'paused') && (
-          <div className="hud">
-            <div className="hud-score">{score}</div>
+          <div className="hud" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="hud-info" style={{ display: 'flex', gap: '15px' }}>
+              <div className="hud-score" style={{ fontSize: '20px', fontWeight: 'bold' }}>🏆 {score}</div>
+              <div className="hud-coins" style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffd60a' }}>🪙 {coins}</div>
+              {lives > 1 && (
+                <div className="hud-lives" style={{ fontSize: '20px', fontWeight: 'bold', color: '#ff4081', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  💖 <span style={{ textShadow: '0 0 8px rgba(255,64,129,0.6)' }}>{lives}</span>
+                </div>
+              )}
+            </div>
             {screen === 'playing' && (
               <button
                 className="hud-pause-btn"
@@ -163,7 +186,7 @@ export default function GoldenFishRush() {
         {screen === 'continueAd' && (
           <ContinueAdScreen
             onFinished={handleAdFinished}
-            onSkip={usedSecondChanceThisRun ? handleSkipAd : handleSkipAd}
+            onSkip={handleSkipAd}
           />
         )}
 

@@ -26,6 +26,12 @@ export interface Coin {
   bonus: boolean;
 }
 
+export interface Gem {
+  x: number;
+  y: number;
+  collected: boolean;
+}
+
 export interface Bubble {
   x: number;
   y: number;
@@ -48,6 +54,8 @@ export interface Particle {
 export interface EngineCallbacks {
   onScore: (score: number) => void;
   onCoinCollect: (total: number) => void;
+  onGemCollect: () => void;
+  onLifeLost: (remainingLives: number) => void;
   onDeath: () => void;
   onShake: (intensity: number) => void;
 }
@@ -63,6 +71,7 @@ export interface EngineState {
   invincibleUntil: number;
   obstacles: Obstacle[];
   coins: Coin[];
+  gems: Gem[];
   bubbles: Bubble[];
   particles: Particle[];
   elapsedSinceSpawn: number;
@@ -70,6 +79,7 @@ export interface EngineState {
   shakeIntensity: number;
   timeMs: number;
   legendaryPulse: number;
+  lives: number; // 💖 Extra lives from gems
 }
 
 const FISH_X_RATIO = 0.28;
@@ -93,6 +103,7 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     invincibleUntil: 0,
     obstacles: [],
     coins: [],
+    gems: [],
     bubbles,
     particles: [],
     elapsedSinceSpawn: 999999,
@@ -100,16 +111,17 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     shakeIntensity: 0,
     timeMs: 0,
     legendaryPulse: 0,
+    lives: 1, // Start with 1 standard life
   };
 }
 
 export function difficultyForScore(score: number) {
-  // Speed increases gradually every 10 points, capped at maxSpeed.
+  // Speed increases gradually every 10 points, capped at maxSpeed. Made smoother.
   const speedSteps = Math.floor(score / 10);
-  const speed = Math.min(BASE.maxSpeed, BASE.baseSpeed + speedSteps * 0.32);
-  // Gap shrinks gradually but never below minGap.
-  const gap = Math.max(BASE.minGap, BASE.baseGap - speedSteps * 6);
-  const spawnInterval = Math.max(900, BASE.spawnInterval - speedSteps * 55);
+  const speed = Math.min(BASE.maxSpeed, BASE.baseSpeed + speedSteps * 0.22);
+  // Gap shrinks gradually but never below minGap. Made wider.
+  const gap = Math.max(BASE.minGap, BASE.baseGap - speedSteps * 4);
+  const spawnInterval = Math.max(1000, BASE.spawnInterval - speedSteps * 45);
   const tier = getDifficultyTier(score);
   return { speed, gap, spawnInterval, tier };
 }
@@ -146,21 +158,30 @@ function spawnObstacle(state: EngineState, score: number) {
   const hardMode = score >= 26;
   const expertMode = score >= 51;
   const legendaryMode = score >= 100;
-  const isDouble = expertMode && Math.random() < 0.18;
+  const isDouble = expertMode && Math.random() < 0.10; // Lower double obstacle spawn rate for balance
   state.obstacles.push({
     x: state.width + BASE.obstacleWidth,
     gapY,
     gapSize: gap,
     passed: false,
-    bobbing: hardMode && Math.random() < 0.4,
+    bobbing: hardMode && Math.random() < 0.35, // Smoother bobbing chances
     bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 22 + Math.random() * 18,
+    bobAmount: 18 + Math.random() * 12, // Lower bobbing extremes
     glowing: legendaryMode,
     isDouble,
   });
 
-  // Occasionally spawn a collectible coin in the gap.
-  if (Math.random() < 0.55) {
+  // Decide what item to spawn inside the gap (exclusive spawn for cleaner layouts)
+  const itemRoll = Math.random();
+  if (itemRoll < 0.08) {
+    // 8% chance to spawn a Rare Gem!
+    state.gems.push({
+      x: state.width + BASE.obstacleWidth + 40,
+      y: gapY + (Math.random() - 0.5) * (gap * 0.3),
+      collected: false,
+    });
+  } else if (itemRoll < 0.58) {
+    // 50% chance to spawn a coin
     state.coins.push({
       x: state.width + BASE.obstacleWidth + 40,
       y: gapY + (Math.random() - 0.5) * (gap * 0.4),
@@ -177,7 +198,7 @@ export function stepEngine(
   settings: { vibration: boolean },
 ) {
   if (!state.running) return;
-  const dt = Math.min(2.2, dtMs / 16.67); // normalize to ~60fps steps, cap for tab-switch spikes
+  const dt = Math.min(2.2, dtMs / 16.67); // normalize to ~60fps steps
   state.timeMs += dtMs;
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
 
@@ -190,16 +211,25 @@ export function stepEngine(
   const ceilingY = 8;
   const invincible = state.timeMs < state.invincibleUntil;
 
+  // Bound collisions
   if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
-    if (!invincible) {
-      state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
-      callbacks.onShake(10);
-      callbacks.onDeath();
-      state.running = false;
-      return;
-    }
     state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
-    state.fishVY = 0;
+    if (!invincible) {
+      if (state.lives > 1) {
+        state.lives -= 1;
+        state.invincibleUntil = state.timeMs + 2000; // Invincibility grace period
+        state.fishVY = -4.0; // Small upward bounce
+        callbacks.onShake(12);
+        callbacks.onLifeLost(state.lives);
+      } else {
+        callbacks.onShake(10);
+        callbacks.onDeath();
+        state.running = false;
+        return;
+      }
+    } else {
+      state.fishVY = 0;
+    }
   }
 
   // --- Spawn obstacles ---
@@ -215,9 +245,9 @@ export function stepEngine(
   for (const obs of state.obstacles) {
     obs.x -= speed * dt;
     if (obs.bobbing) {
-      obs.bobPhase += dtMs * 0.0028;
-      obs.gapY += Math.sin(obs.bobPhase) * 0.35 * dt;
-      obs.gapY = Math.max(90, Math.min(state.height - 90, obs.gapY));
+      obs.bobPhase += dtMs * 0.0022; // Slower, smoother bobbing speed
+      obs.gapY += Math.sin(obs.bobPhase) * 0.28 * dt;
+      obs.gapY = Math.max(100, Math.min(state.height - 100, obs.gapY));
     }
 
     if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
@@ -234,10 +264,6 @@ export function stepEngine(
 
         let safe: boolean;
         if (obs.isDouble) {
-          // Double obstacle pattern: two separate safe corridors (the main
-          // gap plus a secondary gap below it). The fish must be fully
-          // inside one of the two gaps to be safe -- everything else is a
-          // solid pillar, matching the rendered geometry in drawObstacle.
           const secondTop = bottomGapEdge + 46;
           const secondBottom = secondTop + 40;
           const inGap1 = state.fishY - BASE.fishRadius >= topGapEdge && state.fishY + BASE.fishRadius <= bottomGapEdge;
@@ -250,10 +276,19 @@ export function stepEngine(
         }
 
         if (!safe) {
-          callbacks.onShake(14);
-          callbacks.onDeath();
-          state.running = false;
-          return;
+          if (state.lives > 1) {
+            state.lives -= 1;
+            state.invincibleUntil = state.timeMs + 2000; // 2s invincibility
+            callbacks.onShake(15);
+            callbacks.onLifeLost(state.lives);
+            // Push this obstacle out of the way so the fish can swim through
+            obs.x = -BASE.obstacleWidth * 2;
+          } else {
+            callbacks.onShake(14);
+            callbacks.onDeath();
+            state.running = false;
+            return;
+          }
         }
       }
     }
@@ -285,7 +320,34 @@ export function stepEngine(
       }
     }
   }
-  state.coins = state.coins.filter((c) => c.x > -40 && !(c.collected && Math.random() < 0));
+  state.coins = state.coins.filter((c) => c.x > -40);
+
+  // --- Gems ---
+  for (const gem of state.gems) {
+    gem.x -= speed * dt;
+    if (!gem.collected) {
+      const dx = gem.x - fishX;
+      const dy = gem.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 14) {
+        gem.collected = true;
+        state.lives += 1;
+        callbacks.onGemCollect();
+        for (let i = 0; i < 15; i++) {
+          state.particles.push({
+            x: gem.x,
+            y: gem.y,
+            vx: (Math.random() - 0.5) * 3.5,
+            vy: (Math.random() - 0.5) * 3.5,
+            life: 0,
+            maxLife: 24 + Math.random() * 12,
+            color: '#e040fb', // Sparkling neon pink/magenta
+            size: 2.5 + Math.random() * 3,
+          });
+        }
+      }
+    }
+  }
+  state.gems = state.gems.filter((g) => g.x > -40);
 
   // --- Bubbles (ambient decoration) ---
   for (const b of state.bubbles) {
@@ -409,8 +471,7 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   if (obs.glowing) ctx.restore();
 
   // Double-obstacle: the bottom spire is split into a middle pillar and a
-  // lower pillar with a second safe gap between them (matches the two-gap
-  // collision logic in stepEngine).
+  // lower pillar with a second safe gap between them
   if (obs.isDouble) {
     const secondTop = bottomGapEdge + 46;
     const secondBottom = secondTop + 40;
@@ -440,36 +501,139 @@ function drawFish(
   ctx.shadowColor = skin.colors.glow;
   ctx.shadowBlur = state.score >= 100 ? 26 : 14;
 
-  // Tail
-  ctx.beginPath();
-  ctx.moveTo(-BASE.fishRadius - 2, 0);
-  ctx.lineTo(-BASE.fishRadius - 16, -10);
-  ctx.lineTo(-BASE.fishRadius - 16, 10);
-  ctx.closePath();
-  ctx.fillStyle = skin.colors.fin;
-  ctx.fill();
+  // Custom Skin Characteristics (making skins visually distinct like real fish)
+  if (state.skin === 'ruby') {
+    // --- RUBY FISH: Wavy, flowing double-tail fin (Betta Fish style) ---
+    ctx.beginPath();
+    ctx.moveTo(-BASE.fishRadius - 2, -2);
+    ctx.quadraticCurveTo(-BASE.fishRadius - 14, -18, -BASE.fishRadius - 25, -12);
+    ctx.quadraticCurveTo(-BASE.fishRadius - 18, -2, -BASE.fishRadius - 4, -1);
+    ctx.moveTo(-BASE.fishRadius - 2, 2);
+    ctx.quadraticCurveTo(-BASE.fishRadius - 14, 18, -BASE.fishRadius - 25, 12);
+    ctx.quadraticCurveTo(-BASE.fishRadius - 18, 2, -BASE.fishRadius - 4, 1);
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
 
-  // Body
+    // Elegant long flowing belly fin
+    ctx.beginPath();
+    ctx.moveTo(-4, BASE.fishRadius * 0.6);
+    ctx.quadraticCurveTo(-14, BASE.fishRadius * 1.6, -18, BASE.fishRadius * 1.2);
+    ctx.quadraticCurveTo(-8, BASE.fishRadius * 0.5, 0, BASE.fishRadius * 0.4);
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (state.skin === 'emerald') {
+    // --- EMERALD FISH: Sleek pointy fins (Angelfish style) ---
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-BASE.fishRadius - 2, 0);
+    ctx.lineTo(-BASE.fishRadius - 24, -18);
+    ctx.lineTo(-BASE.fishRadius - 18, 0);
+    ctx.lineTo(-BASE.fishRadius - 24, 18);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // Very long vertical pointy top fin
+    ctx.beginPath();
+    ctx.moveTo(-6, -BASE.fishRadius * 0.6);
+    ctx.lineTo(-12, -BASE.fishRadius * 2.2);
+    ctx.lineTo(4, -BASE.fishRadius * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // Long vertical pointy bottom fin
+    ctx.beginPath();
+    ctx.moveTo(-6, BASE.fishRadius * 0.6);
+    ctx.lineTo(-12, BASE.fishRadius * 2.2);
+    ctx.lineTo(4, BASE.fishRadius * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (state.skin === 'diamond') {
+    // --- DIAMOND FISH: Geometric/Crystal Crown Fin style ---
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-BASE.fishRadius - 2, 0);
+    ctx.lineTo(-BASE.fishRadius - 20, -12);
+    ctx.lineTo(-BASE.fishRadius - 12, -4);
+    ctx.lineTo(-BASE.fishRadius - 20, 0);
+    ctx.lineTo(-BASE.fishRadius - 12, 4);
+    ctx.lineTo(-BASE.fishRadius - 20, 12);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // Crystal spiky crown dorsal fin
+    ctx.beginPath();
+    ctx.moveTo(-6, -BASE.fishRadius * 0.5);
+    ctx.lineTo(-12, -BASE.fishRadius * 1.3);
+    ctx.lineTo(-2, -BASE.fishRadius * 1.0);
+    ctx.lineTo(4, -BASE.fishRadius * 1.5);
+    ctx.lineTo(8, -BASE.fishRadius * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  } else if (state.skin === 'legendary') {
+    // --- LEGENDARY DRAGON FISH: Whiskers + Majestic Long Glowing Fins (Arowana style) ---
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-BASE.fishRadius - 2, 0);
+    ctx.quadraticCurveTo(-BASE.fishRadius - 20, -16, -BASE.fishRadius - 28, 0);
+    ctx.quadraticCurveTo(-BASE.fishRadius - 20, 16, -BASE.fishRadius - 2, 0);
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // Flowing top fin
+    ctx.beginPath();
+    ctx.moveTo(-10, -BASE.fishRadius * 0.5);
+    ctx.quadraticCurveTo(2, -BASE.fishRadius * 1.6, 12, -BASE.fishRadius * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // Whiskers (Barbels) on the snout
+    ctx.beginPath();
+    ctx.moveTo(BASE.fishRadius * 0.8, -2);
+    ctx.quadraticCurveTo(BASE.fishRadius * 1.5, -10, BASE.fishRadius * 1.7, -4);
+    ctx.moveTo(BASE.fishRadius * 0.8, 2);
+    ctx.quadraticCurveTo(BASE.fishRadius * 1.5, 10, BASE.fishRadius * 1.7, 4);
+    ctx.strokeStyle = '#ffd60a';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+  } else {
+    // --- GOLDEN FISH (Default): Classical Fan Tail ---
+    ctx.beginPath();
+    ctx.moveTo(-BASE.fishRadius - 2, 0);
+    ctx.lineTo(-BASE.fishRadius - 16, -10);
+    ctx.lineTo(-BASE.fishRadius - 16, 10);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+
+    // Top fin
+    ctx.beginPath();
+    ctx.moveTo(-2, -BASE.fishRadius * 0.7);
+    ctx.lineTo(6, -BASE.fishRadius * 1.25);
+    ctx.lineTo(12, -BASE.fishRadius * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = skin.colors.fin;
+    ctx.fill();
+  }
+
+  // Draw main fish oval body (Common to all fish skins)
   ctx.beginPath();
   ctx.ellipse(0, 0, BASE.fishRadius, BASE.fishRadius * 0.78, 0, 0, Math.PI * 2);
   ctx.fillStyle = skin.colors.body;
   ctx.fill();
 
-  // Belly highlight
+  // Draw belly highlight
   ctx.beginPath();
   ctx.ellipse(2, 5, BASE.fishRadius * 0.6, BASE.fishRadius * 0.4, 0, 0, Math.PI * 2);
   ctx.fillStyle = skin.colors.belly;
   ctx.fill();
 
-  // Top fin
-  ctx.beginPath();
-  ctx.moveTo(-2, -BASE.fishRadius * 0.7);
-  ctx.lineTo(6, -BASE.fishRadius * 1.25);
-  ctx.lineTo(12, -BASE.fishRadius * 0.55);
-  ctx.closePath();
-  ctx.fillStyle = skin.colors.fin;
-  ctx.fill();
-  ctx.restore();
+  ctx.restore(); // Restore aura
 
   // Eye
   ctx.beginPath();
@@ -500,10 +664,42 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.fillStyle = '#fff8e0';
-  ctx.font = `${coin.bonus ? 11 : 9}px sans-serif`;
+  ctx.font = `bold ${coin.bonus ? 11 : 9}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('$', 0, 0);
+  ctx.restore();
+}
+
+function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
+  if (gem.collected) return;
+  const bob = Math.sin(timeMs * 0.006 + gem.x) * 4;
+  ctx.save();
+  ctx.translate(gem.x, gem.y + bob);
+
+  // Diamond/Crystal shape
+  ctx.beginPath();
+  ctx.moveTo(0, -11);
+  ctx.lineTo(8, 0);
+  ctx.lineTo(0, 11);
+  ctx.lineTo(-8, 0);
+  ctx.closePath();
+
+  ctx.fillStyle = '#e040fb'; // Neon pink/purple
+  ctx.shadowColor = '#f50057';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Sparkle glint
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(-2, -3, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.restore();
 }
 
@@ -532,6 +728,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   drawBackground(ctx, state);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
+  for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
 
   const fishX = width * FISH_X_RATIO;
   const invincible = state.timeMs < state.invincibleUntil;

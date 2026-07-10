@@ -9,6 +9,7 @@ import {
   unlockAchievement,
   updateDailyChallengeProgress,
 } from './storage';
+import { sounds } from './sounds';
 import { createEngine, jump as jumpEngine, renderEngine, stepEngine } from './engine';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
@@ -24,6 +25,7 @@ interface UseGameEngineOptions {
 export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
+  const [lives, setLives] = useState(1); // Expose extra lives state to React HUD
   const stateRef = useRef<EngineState | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
@@ -42,6 +44,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     stateRef.current = createEngine(width, height, skin);
     roundCoinsRef.current = 0;
     setScore(0);
+    setLives(1);
   }, [canvasRef, skin]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
@@ -50,6 +53,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     state.running = true;
     state.fishY = state.height / 2;
     state.fishVY = 0;
+    state.lives = 1; // Reset to 1 life on revive/continue ad
+    setLives(1);
     state.invincibleUntil = state.timeMs + invincibleMs;
     // Push obstacles further out so the player has breathing room after revive.
     for (const obs of state.obstacles) {
@@ -62,6 +67,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setup();
     incrementRoundsPlayed();
     unlockAchievement('first_flight');
+
+    // Play Game Start sound!
+    sounds.playGameStart();
 
     let mounted = true;
     lastTimeRef.current = performance.now();
@@ -79,10 +87,23 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
             state,
             dt,
             {
-              onScore: (s) => setScore(s),
+              onScore: (s) => {
+                setScore(s);
+                // Score Milestone sound! Plays every 10 points
+                if (s > 0 && s % 10 === 0) {
+                  sounds.playScoreMilestone();
+                }
+              },
               onCoinCollect: (amount) => {
                 roundCoinsRef.current += amount;
                 let total = addCoins(amount);
+
+                // Play Coin Collected sound & light vibration
+                sounds.playCoinCollected();
+                if (settings.vibration && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  try { navigator.vibrate(15); } catch {}
+                }
+
                 const { state: challengeState, justCompleted } = updateDailyChallengeProgress('coins', amount);
                 if (justCompleted) {
                   total = addCoins(challengeState.challenge.rewardCoins);
@@ -90,14 +111,50 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 setCoins(total);
                 if (total >= 50) unlockAchievement('coin_collector');
               },
+              onGemCollect: () => {
+                // Expose new lives counter to React UI
+                setLives(state.lives);
+
+                // Play Gem Collected sound & medium vibration
+                sounds.playGemCollected();
+                if (settings.vibration && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  try { navigator.vibrate(40); } catch {}
+                }
+              },
+              onLifeLost: (remainingLives) => {
+                setLives(remainingLives);
+
+                // Play Obstacle Hit sound & stronger vibration
+                sounds.playObstacleHit();
+                if (settings.vibration && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  try { navigator.vibrate(100); } catch {}
+                }
+              },
               onDeath: () => {
                 const finalScore = state.score;
                 const best = getPersonalBest();
-                if (finalScore > best) setPersonalBest(finalScore);
+
+                // Play Game Over sound & strongest vibration
+                sounds.playGameOver();
+                if (settings.vibration && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  try { navigator.vibrate(150); } catch {}
+                }
+
+                if (finalScore > best) {
+                  setPersonalBest(finalScore);
+                  // Check if we just unlocked a skin based on personal best
+                  const thresholds = [25, 50, 100, 200];
+                  const unlockedNow = thresholds.some(t => best < t && finalScore >= t);
+                  if (unlockedNow) {
+                    sounds.playSkinUnlocked();
+                  }
+                }
+
                 if (finalScore >= 10) unlockAchievement('getting_better');
                 if (finalScore >= 25) unlockAchievement('deep_diver');
                 if (finalScore >= 50) unlockAchievement('ocean_master');
                 if (finalScore >= 100) unlockAchievement('legendary_swimmer');
+
                 const scoreProgress = updateDailyChallengeProgress('score', finalScore);
                 if (scoreProgress.justCompleted) {
                   const total = addCoins(scoreProgress.state.challenge.rewardCoins);
@@ -159,6 +216,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   return {
     score,
     coins,
+    lives, // Return lives state to React component
     roundCoins: roundCoinsRef.current,
     doJump,
     reviveAt,

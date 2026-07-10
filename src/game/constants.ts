@@ -1,6 +1,6 @@
 import type { AchievementDef, DailyChallengeDef, SkinDef } from './types';
 
-export const VERSION = 'v1.0.0';
+export const VERSION = 'v1.1.0';
 
 export const STORAGE_KEYS = {
   personalBest: 'gfr_personal_best',
@@ -16,18 +16,18 @@ export const STORAGE_KEYS = {
   gameOverCount: 'gfr_game_over_count',
 } as const;
 
-// Base gameplay tuning. Difficulty scales off these values as score increases.
+// Base gameplay tuning. Made slightly easier for smoother difficulty progression.
 export const BASE = {
-  gravity: 0.55,
-  jumpVelocity: -8.6,
+  gravity: 0.52,          // Slightly lower gravity for more floaty/controlled jump
+  jumpVelocity: -8.2,     // Slightly gentler jump impulse
   maxFallSpeed: 11,
   fishRadius: 18,
   obstacleWidth: 64,
-  baseGap: 190,
-  minGap: 118,
-  baseSpeed: 2.6,
-  maxSpeed: 6.2,
-  spawnInterval: 1650, // ms, decreases with speed
+  baseGap: 215,           // Sizable initial gap
+  minGap: 135,            // Generous minimum gap
+  baseSpeed: 2.1,         // Slower starting speed
+  maxSpeed: 5.2,          // Capped maximum speed
+  spawnInterval: 1850,    // Longer spacing/breathing room between obstacles
 };
 
 export const SKINS: SkinDef[] = [
@@ -81,8 +81,6 @@ export const DAILY_CHALLENGE_POOL: DailyChallengeDef[] = [
   { id: 'reach_hard_mode', description: 'Reach Hard Mode today (score 26+)', target: 1, metric: 'hardMode', rewardCoins: 12 },
 ];
 
-// Sample seed data so the leaderboard doesn't look empty before a real
-// backend exists. These are clearly fictional placeholder entries.
 export const SAMPLE_GLOBAL_SCORES: { name: string; score: number }[] = [
   { name: 'AquaAce', score: 187 },
   { name: 'ReefRunner', score: 154 },
