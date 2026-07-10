@@ -9,7 +9,13 @@ import {
   unlockAchievement,
   updateDailyChallengeProgress,
 } from './storage';
-import { createEngine, jump as jumpEngine, renderEngine, stepEngine } from './engine';
+import {
+  FISH_X_RATIO,
+  createEngine,
+  jump as jumpEngine,
+  renderEngine,
+  stepEngine,
+} from './engine';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
 
@@ -20,8 +26,6 @@ interface UseGameEngineOptions {
   skin: SkinId;
   onGameOver: (finalScore: number) => void;
 }
-
-const REVIVE_BREATHING_ROOM_RATIO = 0.7;
 
 function safeVibrate(pattern: number | number[], enabled: boolean) {
   if (!enabled) return;
@@ -38,6 +42,7 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
 type SoundName =
   | 'jump'
   | 'coin'
+  | 'gem'
   | 'reward'
   | 'achievement'
   | 'hit'
@@ -104,6 +109,12 @@ function playSound(name: SoundName, enabled: boolean) {
       setTimeout(() => playTone(1180, 65, 'triangle', 0.035), 55);
       break;
 
+    case 'gem':
+      playTone(960, 90, 'triangle', 0.045);
+      setTimeout(() => playTone(1280, 100, 'sine', 0.04), 80);
+      setTimeout(() => playTone(1600, 130, 'triangle', 0.035), 170);
+      break;
+
     case 'reward':
       playTone(740, 80, 'triangle', 0.045);
       setTimeout(() => playTone(980, 80, 'triangle', 0.04), 70);
@@ -139,6 +150,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
+  const [lives, setLives] = useState(0);
 
   const stateRef = useRef<EngineState | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -148,6 +160,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+
+  const onGameOverRef = useRef(onGameOver);
+
+  useEffect(() => {
+    onGameOverRef.current = onGameOver;
+  }, [onGameOver]);
 
   const setup = useCallback(() => {
     const canvas = canvasRef.current;
@@ -160,7 +178,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     canvas.width = width;
     canvas.height = height;
 
-    stateRef.current = createEngine(width, height, skin);
+    const engine = createEngine(width, height, skin);
+    stateRef.current = engine;
 
     roundCoinsRef.current = 0;
     lastMilestoneRef.current = 0;
@@ -168,6 +187,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setScore(0);
     setRoundCoins(0);
     setCoins(getCoins());
+    setLives(engine.lives ?? 0);
   }, [canvasRef, skin]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
@@ -175,18 +195,33 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     if (!state) return;
 
     const settings = getSettings();
+    const fishX = state.width * FISH_X_RATIO;
 
     state.running = true;
     state.fishY = state.height / 2;
     state.fishVY = 0;
     state.invincibleUntil = state.timeMs + invincibleMs;
 
-    // Push obstacles further out so the player has breathing room after revive.
-    for (const obs of state.obstacles) {
-      if (obs.x < state.width * 0.6) {
-        obs.x += state.width * REVIVE_BREATHING_ROOM_RATIO;
-      }
-    }
+    /*
+      Clear dangerous obstacles around the revive area.
+
+      Before this fix, the fake rewarded-ad revive could return the player
+      beside an obstacle or inside an almost impossible gap. Keeping the
+      run alive is correct, but the player also needs a safe recovery lane.
+    */
+    state.obstacles = state.o*stacles.filter((obs) => {
+      co*st approximateHalfObstacleWidth = *0;
+      const obsRight = obs.x + *pproximateHalfObstacleWidth;
+     *const obsLeft = obs.x - approximat*HalfObstacleWidth;
+
+      const sa*elyBehindFish = obsRight < fishX -*state.width * 0.25;
+      const fa*Ahead = obsLeft > state.width + 14*;
+
+      return safelyBehindFish |* farAhead;
+    });
+
+    // Give th* player a short breathing room before the next obstacle.
+    state.elapsedSinceSpawn = -850;
 
     playSound('reward', settings.sound);
     safeVibrate([45, 35, 45], settings.vibration);
@@ -223,6 +258,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 setScore(newScore);
 
                 const milestone = Math.floor(newScore / 25);
+
                 if (milestone > lastMilestoneRef.current && newScore > 0) {
                   lastMilestoneRef.current = milestone;
                   playSound('milestone', settings.sound);
@@ -239,7 +275,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 playSound('coin', settings.sound);
                 safeVibrate(18, settings.vibration);
 
-                const { state: challengeState, justCompleted } = updateDailyChallengeProgress('coins', amount);
+                const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
+                  'coins',
+                  amount,
+                );
 
                 if (justCompleted) {
                   total = addCoins(challengeState.challenge.rewardCoins);
@@ -251,6 +290,20 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
                 if (total >= 50) {
                   unlockAchievement('coin_collector');
+                }
+              },
+
+              onGemCollect: (currentLives) => {
+                setLives(currentLives);
+                playSound('gem', settings.sound);
+                safeVibrate([35, 25, 55], settings.vibration);
+              },
+
+              onLifeChange: (currentLives) => {
+                setLives(currentLives);
+
+                if (currentLives <= 0) {
+                  safeVibrate(35, settings.vibration);
                 }
               },
 
@@ -291,7 +344,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   }
                 }
 
-                onGameOver(finalScore);
+                onGameOverRef.current(finalScore);
               },
 
               onShake: (intensity) => {
@@ -308,7 +361,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         }
 
         const ctx = canvas.getContext('2d');
-        if (ctx) renderEngine(ctx, state);
+
+        if (ctx) {
+          renderEngine(ctx, state);
+        }
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -344,7 +400,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       window.removeEventListener('resize', handleResize);
     };
-  }, [active, setup, onGameOver, canvasRef]);
+  }, [active, setup, canvasRef]);
 
   const doJump = useCallback(() => {
     const state = stateRef.current;
@@ -362,6 +418,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     score,
     coins,
     roundCoins,
+    lives,
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
