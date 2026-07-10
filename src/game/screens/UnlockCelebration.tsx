@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { SKINS } from '../constants';
+import { getSelectedSkin, setSelectedSkin } from '../storage';
 import type { SkinId } from '../types';
 
 function FishIcon({ skinId }: { skinId: SkinId }) {
@@ -18,6 +20,7 @@ function FishIcon({ skinId }: { skinId: SkinId }) {
       </svg>
     );
   }
+
   if (skinId === 'ruby') {
     return (
       <svg viewBox="0 0 76 50" width="110" height="74" style={{ overflow: 'visible', filter: `drop-shadow(0 0 16px ${glow})` }}>
@@ -30,6 +33,7 @@ function FishIcon({ skinId }: { skinId: SkinId }) {
       </svg>
     );
   }
+
   if (skinId === 'emerald') {
     return (
       <svg viewBox="0 0 72 48" width="110" height="74" style={{ overflow: 'visible', filter: `drop-shadow(0 0 16px ${glow})` }}>
@@ -42,6 +46,7 @@ function FishIcon({ skinId }: { skinId: SkinId }) {
       </svg>
     );
   }
+
   if (skinId === 'diamond') {
     return (
       <svg viewBox="0 0 72 50" width="110" height="74" style={{ overflow: 'visible', filter: `drop-shadow(0 0 16px ${glow})` }}>
@@ -54,6 +59,7 @@ function FishIcon({ skinId }: { skinId: SkinId }) {
       </svg>
     );
   }
+
   return (
     <svg viewBox="0 0 80 52" width="120" height="78" style={{ overflow: 'visible', filter: `drop-shadow(0 0 18px ${glow})` }}>
       <ellipse cx="42" cy="26" rx="32" ry="22" fill={glow} opacity="0.25" />
@@ -79,10 +85,19 @@ export default function UnlockCelebration({ unlockedIds, onContinue }: Props) {
     .map((id) => SKINS.find((s) => s.id === id))
     .filter(Boolean) as typeof SKINS;
 
+  const [equippedSkin, setEquippedSkin] = useState<SkinId>(() => getSelectedSkin());
+
+  function handleEquip(skinId: SkinId) {
+    setSelectedSkin(skinId);
+    setEquippedSkin(skinId);
+  }
+
   return (
     <div className="screen unlock-screen">
       <div className="unlock-sparkles" aria-hidden="true">✨</div>
+
       <h2 className="screen-title unlock-title">Congratulations!</h2>
+
       <p className="unlock-subtitle">
         {skins.length === 1
           ? 'You unlocked a new fish!'
@@ -90,16 +105,34 @@ export default function UnlockCelebration({ unlockedIds, onContinue }: Props) {
       </p>
 
       <div className="unlock-fish-list">
-        {skins.map((skin) => (
-          <div key={skin.id} className="unlock-fish-card">
-            <FishIcon skinId={skin.id} />
-            <span className="unlock-fish-name">{skin.name}</span>
-            <span className="unlock-fish-score">Score {skin.unlockScore}+</span>
-          </div>
-        ))}
+        {skins.map((skin) => {
+          const isEquipped = equippedSkin === skin.id;
+
+          return (
+            <div key={skin.id} className="unlock-fish-card">
+              <FishIcon skinId={skin.id} />
+
+              <span className="unlock-fish-name">{skin.name}</span>
+
+              <span className="unlock-fish-score">Score {skin.unlockScore}+</span>
+
+              <button
+                className={`btn ${isEquipped ? 'btn-secondary' : 'btn-primary'}`}
+                onClick={() => handleEquip(skin.id)}
+                disabled={isEquipped}
+              >
+                {isEquipped ? 'Equipped' : 'Equip Now'}
+              </button>
+            </div>
+          );
+        })}
       </div>
 
-      <p className="unlock-hint">Go to Settings to equip your new fish!</p>
+      <p className="unlock-hint">
+        {skins.some((skin) => equippedSkin === skin.id)
+          ? 'Your selected fish is ready for the next run!'
+          : 'Equip your new fish now or choose it later from Settings.'}
+      </p>
 
       <button className="btn btn-primary" onClick={onContinue}>
         Awesome!
