@@ -4,6 +4,7 @@
 // Gem improvement: full lives -> +5 score
 // Shop boosts supported: initial shield/magnet/gemBoostActive
 // Visual feedback: Shield bubble + Magnet glow added
+// Fish skins: Real species inspired distinct silhouettes (Butterflyfish, Clownfish, Parrotfish, Mandarin Dragonet, Moorish Idol)
 // -----------------------------------------------------------------------
 
 import { BASE, SKINS, getDifficultyTier } from './constants';
@@ -486,13 +487,17 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const blink = invincible && Math.floor(state.timeMs / 100) % 2 === 0;
   if (blink) return;
+
   const r = BASE.fishRadius;
   const id = skin.id;
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
   const { body, belly, fin, glow } = skin.colors;
+
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
+
+  // Common glow for legendary
   if (id === 'legendary') {
     ctx.save();
     ctx.globalAlpha = 0.28 + pulse * 0.2;
@@ -508,93 +513,365 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.stroke();
     ctx.restore();
   }
+
   ctx.save();
   ctx.shadowColor = glow;
-  ctx.shadowBlur = id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
-  // Tail
-  if (id === 'ruby') {
+  ctx.shadowBlur = id === 'legendary' ? 32 : id === 'diamond' ? 26 : id === 'emerald' ? 20 : 16;
+
+  // ========== UNIQUE FISH SILHOUETTES PER SKIN ==========
+
+  if (id === 'golden') {
+    // === Copperband Butterflyfish style ===
+    // Tall narrow body, pointed snout (long nose), vertical stripes
+    // Tail
     ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.6, -r * 1.3, -r * 2.3, -r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.3, r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.6, r * 1.3, -r * 0.85, 0);
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.7, -r * 1.1, -r * 2.5, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.5, r * 0.3);
+    ctx.quadraticCurveTo(-r * 1.7, r * 1.1, -r * 0.9, 0);
     ctx.closePath();
     ctx.fillStyle = fin;
     ctx.fill();
-  } else if (id === 'legendary') {
+    // Body (taller and narrower)
     ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.quadraticCurveTo(-r * 1.7, -r * 1.25, -r * 2.4, -r * 0.45);
-    ctx.lineTo(-r * 1.8, 0);
-    ctx.quadraticCurveTo(-r * 2.4, r * 0.45, -r * 1.7, r * 1.25);
+    ctx.moveTo(-r * 0.7, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 0.4, -r * 1.1, r * 0.6, -r * 0.95);
+    ctx.quadraticCurveTo(r * 1.1, -r * 0.5, r * 1.15, 0);
+    ctx.quadraticCurveTo(r * 1.1, r * 0.5, r * 0.6, r * 0.95);
+    ctx.quadraticCurveTo(-r * 0.4, r * 1.1, -r * 0.7, r * 0.3);
+    ctx.closePath();
+    const bodyGrad = ctx.createLinearGradient(-r, -r * 0.8, r, r * 0.8);
+    bodyGrad.addColorStop(0, '#fff8e0');
+    bodyGrad.addColorStop(0.3, body);
+    bodyGrad.addColorStop(0.7, '#ffcc66');
+    bodyGrad.addColorStop(1, fin);
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    // Vertical stripes (Butterflyfish signature)
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i < 3; i++) {
+      const xOff = -r * 0.2 + i * r * 0.35;
+      ctx.beginPath();
+      ctx.moveTo(xOff, -r * 0.85);
+      ctx.quadraticCurveTo(xOff + r * 0.05, 0, xOff, r * 0.85);
+      ctx.stroke();
+    }
+    // Long pointed nose/snout
+    ctx.beginPath();
+    ctx.moveTo(r * 1.15, 0);
+    ctx.lineTo(r * 1.65, -r * 0.15);
+    ctx.lineTo(r * 1.65, r * 0.15);
+    ctx.closePath();
+    ctx.fillStyle = '#ffcc66';
+    ctx.fill();
+    ctx.strokeStyle = fin;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Dorsal fin (tall)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.3, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.2, -r * 1.35, r * 0.7, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.4, -r * 0.95, -r * 0.3, -r * 0.9);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Pectoral
+    ctx.beginPath();
+    ctx.moveTo(r * 0.4, r * 0.1);
+    ctx.quadraticCurveTo(r * 1.0, r * 0.35, r * 0.85, r * 0.55);
+    ctx.quadraticCurveTo(r * 0.55, r * 0.35, r * 0.4, r * 0.1);
+    ctx.closePath();
+    ctx.fillStyle = '#ffcc66';
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.75, -r * 0.12, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a1200';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.78, -r * 0.15, 1.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else if (id === 'ruby') {
+    // === Clownfish style ===
+    // Rounded body, white vertical bands with dark borders
+    // Tail (rounded)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 1.55, -r * 1.0, -r * 2.1, -r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.75, 0, -r * 2.1, r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.55, r * 1.0, -r * 0.85, 0);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Main body (rounded)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.75, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.1, -r * 1.05, r * 0.95, -r * 0.6);
+    ctx.quadraticCurveTo(r * 1.15, 0, r * 0.95, r * 0.6);
+    ctx.quadraticCurveTo(r * 0.1, r * 1.05, -r * 0.75, r * 0.85);
+    ctx.closePath();
+    ctx.fillStyle = body;
+    ctx.fill();
+    // White bands with black borders (clownfish signature)
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 3.5;
+    // First white band
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.35, -r * 0.9);
+    ctx.quadraticCurveTo(-r * 0.15, 0, -r * 0.35, r * 0.9);
+    ctx.stroke();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.35, -r * 0.9);
+    ctx.quadraticCurveTo(-r * 0.15, 0, -r * 0.35, r * 0.9);
+    ctx.stroke();
+    // Second white band
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.15, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.35, 0, r * 0.15, r * 0.85);
+    ctx.stroke();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.15, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.35, 0, r * 0.15, r * 0.85);
+    ctx.stroke();
+    // Belly
+    ctx.beginPath();
+    ctx.ellipse(r * 0.25, r * 0.35, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
+    ctx.fillStyle = belly;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Dorsal and anal fins (rounded)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.2, -r * 0.8);
+    ctx.quadraticCurveTo(r * 0.3, -r * 1.2, r * 0.75, -r * 0.7);
+    ctx.quadraticCurveTo(r * 0.45, -r * 0.85, -r * 0.2, -r * 0.8);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.15, r * 0.75);
+    ctx.quadraticCurveTo(r * 0.35, r * 1.15, r * 0.7, r * 0.75);
+    ctx.quadraticCurveTo(r * 0.4, r * 0.85, -r * 0.15, r * 0.75);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.65, -r * 0.1, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a0505';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.68, -r * 0.12, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else if (id === 'emerald') {
+    // === Parrotfish style ===
+    // Beak-like snout, vibrant colors, strong tropical shape
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.8, 0);
+    ctx.quadraticCurveTo(-r * 1.5, -r * 1.15, -r * 2.2, -r * 0.5);
+    ctx.lineTo(-r * 1.9, 0);
+    ctx.quadraticCurveTo(-r * 2.2, r * 0.5, -r * 1.5, r * 1.15);
+    ctx.quadraticCurveTo(-r * 0.8, 0, -r * 0.8, 0);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Body
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.6, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.2, -r * 1.0, r * 1.0, -r * 0.55);
+    ctx.quadraticCurveTo(r * 1.2, 0, r * 1.0, r * 0.55);
+    ctx.quadraticCurveTo(r * 0.2, r * 1.0, -r * 0.6, r * 0.9);
+    ctx.closePath();
+    const bodyGrad = ctx.createLinearGradient(-r * 0.5, -r, r * 0.8, r);
+    bodyGrad.addColorStop(0, '#00b4d8');
+    bodyGrad.addColorStop(0.4, body);
+    bodyGrad.addColorStop(0.7, '#48cae4');
+    bodyGrad.addColorStop(1, '#0077b6');
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    // Beak / snout
+    ctx.beginPath();
+    ctx.moveTo(r * 1.0, -r * 0.25);
+    ctx.lineTo(r * 1.55, -r * 0.05);
+    ctx.lineTo(r * 1.55, r * 0.25);
+    ctx.lineTo(r * 1.0, r * 0.25);
+    ctx.closePath();
+    ctx.fillStyle = '#ff9f1c';
+    ctx.fill();
+    ctx.strokeStyle = '#0077b6';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    // Colorful scale patterns
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i++) {
+      const y = -r * 0.6 + i * r * 0.35;
+      ctx.beginPath();
+      ctx.arc(r * 0.1 + i * r * 0.15, y, r * 0.22, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Dorsal fin (colorful)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.4, -r * 1.3, r * 0.85, -r * 0.65);
+    ctx.quadraticCurveTo(r * 0.5, -r * 0.8, -r * 0.1, -r * 0.85);
+    ctx.closePath();
+    ctx.fillStyle = '#ff9f1c';
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.7, -r * 0.08, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#002820';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.73, -r * 0.1, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else if (id === 'diamond') {
+    // === Mandarin Dragonet style ===
+    // Complex colorful patterns, wide fins, exotic look
+    // Tail (wide and flowing)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.75, 0);
+    ctx.quadraticCurveTo(-r * 1.6, -r * 1.2, -r * 2.3, -r * 0.6);
+    ctx.quadraticCurveTo(-r * 1.8, 0, -r * 2.3, r * 0.6);
+    ctx.quadraticCurveTo(-r * 1.6, r * 1.2, -r * 0.75, 0);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Body
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.55, -r * 0.95);
+    ctx.quadraticCurveTo(r * 0.3, -r * 1.1, r * 1.05, -r * 0.5);
+    ctx.quadraticCurveTo(r * 1.2, 0, r * 1.05, r * 0.5);
+    ctx.quadraticCurveTo(r * 0.3, r * 1.1, -r * 0.55, r * 0.95);
+    ctx.closePath();
+    ctx.fillStyle = body;
+    ctx.fill();
+    // Intricate colorful patterns (swirls and spots)
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.8;
+    // Swirls
+    ctx.beginPath();
+    ctx.arc(r * 0.1, -r * 0.4, r * 0.35, 0, Math.PI * 1.8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(r * 0.4, r * 0.3, r * 0.3, 0, Math.PI * 1.6);
+    ctx.stroke();
+    // Spots
+    ctx.fillStyle = '#ff6d00';
+    ctx.beginPath();
+    ctx.arc(r * 0.25, -r * 0.15, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#48cae4';
+    ctx.beginPath();
+    ctx.arc(r * 0.55, r * 0.1, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffd60a';
+    ctx.beginPath();
+    ctx.arc(r * 0.15, r * 0.45, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Wide flowing fins
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.5, -r * 1.4, r * 1.0, -r * 0.7);
+    ctx.quadraticCurveTo(r * 0.6, -r * 0.85, -r * 0.1, -r * 0.9);
+    ctx.closePath();
+    ctx.fillStyle = '#4361ee';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.05, r * 0.85);
+    ctx.quadraticCurveTo(r * 0.55, r * 1.35, r * 0.95, r * 0.75);
+    ctx.quadraticCurveTo(r * 0.55, r * 0.9, -r * 0.05, r * 0.85);
+    ctx.closePath();
+    ctx.fillStyle = '#4361ee';
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.75, -r * 0.05, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a1a22';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.78, -r * 0.08, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else {
+    // === Legendary: Moorish Idol style ===
+    // Thin elegant body, long dorsal fin, dramatic black/white/yellow
+    // Long elegant dorsal fin (signature)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.2, -r * 0.95);
+    ctx.quadraticCurveTo(r * 0.1, -r * 1.6, r * 0.6, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.35, -r * 1.0, -r * 0.2, -r * 0.95);
     ctx.closePath();
     ctx.fillStyle = '#1a1a1a';
     ctx.fill();
-  } else {
+    ctx.strokeStyle = '#ffd60a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Thin stylish body
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.7, -r * 0.6);
+    ctx.quadraticCurveTo(r * 0.15, -r * 0.75, r * 1.0, -r * 0.3);
+    ctx.quadraticCurveTo(r * 1.15, 0, r * 1.0, r * 0.3);
+    ctx.quadraticCurveTo(r * 0.15, r * 0.75, -r * 0.7, r * 0.6);
+    ctx.closePath();
+    const bodyGrad = ctx.createLinearGradient(-r * 0.5, -r * 0.6, r * 0.8, r * 0.6);
+    bodyGrad.addColorStop(0, '#1a1a1a');
+    bodyGrad.addColorStop(0.35, '#fffbe6');
+    bodyGrad.addColorStop(0.65, '#1a1a1a');
+    bodyGrad.addColorStop(1, '#ffd60a');
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    // Dramatic black/white/yellow pattern
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.4, -r * 0.55);
+    ctx.lineTo(r * 0.3, -r * 0.45);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.25, r * 0.4);
+    ctx.lineTo(r * 0.45, r * 0.35);
+    ctx.stroke();
+    // Tail (elegant)
     ctx.beginPath();
     ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.45, -r * 0.95, -r * 1.95, -r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.55, 0, -r * 1.95, r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.45, r * 0.95, -r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 1.65, -r * 0.9, -r * 2.4, -r * 0.35);
+    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.4, r * 0.35);
+    ctx.quadraticCurveTo(-r * 1.65, r * 0.9, -r * 0.85, 0);
     ctx.closePath();
-    ctx.fillStyle = fin;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd60a';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.7, -r * 0.08, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a1200';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.73, -r * 0.1, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
     ctx.fill();
   }
-  // Body
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.9, 0);
-  ctx.quadraticCurveTo(-r * 0.55, -r * 0.95, r * 0.15, -r * 0.88);
-  ctx.quadraticCurveTo(r * 0.95, -r * 0.5, r * 1.05, 0);
-  ctx.quadraticCurveTo(r * 0.95, r * 0.5, r * 0.15, r * 0.88);
-  ctx.quadraticCurveTo(-r * 0.55, r * 0.95, -r * 0.9, 0);
-  ctx.closePath();
-  const bodyGrad = ctx.createLinearGradient(-r, -r, r, r);
-  if (id === 'legendary') {
-    bodyGrad.addColorStop(0, '#1a1a1a');
-    bodyGrad.addColorStop(0.5, '#ffd60a');
-    bodyGrad.addColorStop(1, '#1a1a1a');
-  } else {
-    bodyGrad.addColorStop(0, belly);
-    bodyGrad.addColorStop(0.4, body);
-    bodyGrad.addColorStop(1, fin);
-  }
-  ctx.fillStyle = bodyGrad;
-  ctx.fill();
-  // Belly
-  ctx.beginPath();
-  ctx.ellipse(r * 0.1, r * 0.28, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
-  ctx.fillStyle = belly;
-  ctx.globalAlpha = 0.85;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  // Dorsal
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.15, -r * 0.7);
-  ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
-  ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = id === 'legendary' ? '#ffd60a' : fin;
-  ctx.fill();
-  // Pectoral
-  ctx.beginPath();
-  ctx.moveTo(r * 0.25, r * 0.1);
-  ctx.quadraticCurveTo(r * 1.05, -r * 0.2, r * 1.1, r * 0.35);
-  ctx.quadraticCurveTo(r * 0.7, r * 0.3, r * 0.25, r * 0.1);
-  ctx.closePath();
-  ctx.fillStyle = fin;
-  ctx.fill();
-  // Eye
-  ctx.beginPath();
-  ctx.arc(r * 0.55, -r * 0.15, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a1200';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
 
-  // === VISUAL POWER-UP INDICATORS ===
-  // Shield active: pulsing blue protective bubble
+  // === VISUAL POWER-UP INDICATORS (keep from previous) ===
   if (state.shieldCharges > 0) {
     const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
     ctx.save();
@@ -610,7 +887,6 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.restore();
   }
 
-  // Magnet active: enhanced orange magnetic glow + field
   if (state.magnetUntil > state.timeMs) {
     const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
     ctx.save();
@@ -743,7 +1019,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     const dx = (Math.random() - 0.5) * state.shakeIntensity;
     const dy = (Math.random() - 0.5) * state.shakeIntensity;
     ctx.translate(dx, dy);
-    }
+  }
   drawBackground(ctx, state);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
