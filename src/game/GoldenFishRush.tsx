@@ -14,6 +14,7 @@ import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
+import Fish3D from './Fish3D';
 import {
   getSelectedSkin,
   incrementGameOverCount,
@@ -43,6 +44,9 @@ export default function GoldenFishRush() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
   const backListenerRef = useRef<any>(null);
+
+  // Expose fish state for 3D sync (simplified for demo)
+  const [fishState, setFishState] = useState({ x: 0, y: 0, rotation: 0 });
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
@@ -110,13 +114,20 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt } = useGameEngine({
+  const { score, lives, doJump, reviveAt, fishPosition } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
     onGameOver: handleGameOver,
   });
+
+  // Sync fish position for 3D layer
+  useEffect(() => {
+    if (fishPosition) {
+      setFishState(fishPosition);
+    }
+  }, [fishPosition]);
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
@@ -139,7 +150,7 @@ export default function GoldenFishRush() {
     unlockAchievement('comeback');
     reviveAt(REVIVE_INVINCIBILITY_MS);
     setReviveCountdown(3);
-    setScreen('playing'); // Immediately switch so ad modal closes cleanly
+    setScreen('playing');
   }, [reviveAt]);
 
   const handleSkipAd = useCallback(() => {
@@ -215,6 +226,8 @@ export default function GoldenFishRush() {
     setScreen('menu');
   }, []);
 
+  const show3DFish = screen === 'playing' || screen === 'paused';
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -224,6 +237,18 @@ export default function GoldenFishRush() {
           onPointerDown={handlePointerDown}
           onClick={handlePointerDown}
         />
+
+        {/* Real 3D Fish Layer - overlays the 2D canvas */}
+        {show3DFish && (
+          <Fish3D
+            skin={skin}
+            x={fishState.x}
+            y={fishState.y}
+            rotation={fishState.rotation}
+            width={window.innerWidth}
+            height={window.innerHeight}
+          />
+        )}
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
