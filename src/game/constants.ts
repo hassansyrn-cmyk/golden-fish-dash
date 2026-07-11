@@ -1,4 +1,4 @@
-import type { AchievementDef, DailyChallengeDef, SkinDef } from './types';
+import type { AchievementDef, DailyChallengeDef, SkinDef, SkinId } from './types';
 
 export const VERSION = 'v1.0.0';
 
