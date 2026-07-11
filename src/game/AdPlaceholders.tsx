@@ -28,8 +28,6 @@
 //
 // -----------------------------------------------------------------------
 
-import { useEffect } from 'react';
-
 /**
  * 3. BANNER AD INTEGRATION
  * To show a real Banner Ad:

@@ -42,7 +42,7 @@ interface Props {
 
 export default function ShopScreen({ onBack }: Props) {
   const [coins, setCoins] = useState(getCoins());
-  const [inventory, setInventory] = useState(getShopInventory());
+  const [, setInventory] = useState(getShopInventory());
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {

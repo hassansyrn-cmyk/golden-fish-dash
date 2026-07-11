@@ -23,7 +23,7 @@ const REWARD_CARDS = [
 ];
 
 export default function DailyRewardsScreen({ onBack }: Props) {
-  const [state, setState] = useState<DailyRewardState>(getDailyRewardState());
+  const [, setState] = useState<DailyRewardState>(getDailyRewardState());
   const [canClaim, setCanClaim] = useState(canClaimDailyReward());
   const [currentReward, setCurrentReward] = useState(getCurrentDailyReward());
   const [message, setMessage] = useState<string | null>(null);

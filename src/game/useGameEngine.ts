@@ -187,22 +187,18 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     // This runs every time a new engine is created for a run.
     // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
-    let applied = false;
 
     if (inv.shield > 0) {
       consumeShopItem('shield');
       engine.shieldCharges = 1;
-      applied = true;
     }
     if (inv.magnet > 0) {
       consumeShopItem('magnet');
       engine.magnetUntil = engine.timeMs + 8000;
-      applied = true;
     }
     if (inv.gemBoost > 0) {
       consumeShopItem('gemBoost');
       engine.gemBoostActive = true;
-      applied = true;
     }
 
     roundCoinsRef.current = 0;

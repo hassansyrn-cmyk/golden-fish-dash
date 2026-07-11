@@ -19,9 +19,6 @@ import {
   incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
-  getShopItemCount,
-  consumeShopItem,
-  getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
@@ -29,7 +26,6 @@ import { Capacitor } from '@capacitor/core';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
-const MAGNET_SHOP_DURATION = 8000;
 
 export default function GoldenFishRush() {
   const [screen, setScreen] = useState<ScreenName>('loading');
