@@ -49,7 +49,6 @@ export default function GoldenFishRush() {
   }, []);
 
   // Android hardware back button handling (Capacitor)
-  // Only active on native platforms (Android/iOS). Safe on web.
   useEffect(() => {
     const setupBackButton = async () => {
       if (backListenerRef.current) {
@@ -104,7 +103,7 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt } = useGameEngine({
+  const { score, lives, doJump, reviveAt, applyShopBoosts } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -122,21 +121,21 @@ export default function GoldenFishRush() {
 
     const inv = getShopInventory();
 
-    if (inv.shield > 0) {
-      consumeShopItem('shield');
-      reviveAt(0);
-    }
+    const hadShield = inv.shield > 0;
+    const hadMagnet = inv.magnet > 0;
+    const hadGemBoost = inv.gemBoost > 0;
 
-    if (inv.magnet > 0) {
-      consumeShopItem('magnet');
-    }
+    if (hadShield) consumeShopItem('shield');
+    if (hadMagnet) consumeShopItem('magnet');
+    if (hadGemBoost) consumeShopItem('gemBoost');
 
-    if (inv.gemBoost > 0) {
-      consumeShopItem('gemBoost');
+    // Apply the purchased boosts to the engine state
+    if (applyShopBoosts) {
+      applyShopBoosts(hadShield, hadMagnet, hadGemBoost);
     }
 
     setScreen('playing');
-  }, [reviveAt]);
+  }, [reviveAt, applyShopBoosts]);
 
   const handleWatchAd = useCallback(() => {
     setScreen('continueAd');
@@ -148,6 +147,7 @@ export default function GoldenFishRush() {
     unlockAchievement('comeback');
     reviveAt(REVIVE_INVINCIBILITY_MS);
     setReviveCountdown(3);
+    setScreen('playing'); // Immediately switch to game so ad modal closes and revive overlay shows cleanly without overlapping
   }, [reviveAt]);
 
   const handleSkipAd = useCallback(() => {
