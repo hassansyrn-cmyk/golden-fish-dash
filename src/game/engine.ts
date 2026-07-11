@@ -1111,7 +1111,7 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   ctx.save();
   ctx.translate(coin.x, coin.y + bob);
   ctx.beginPath();
-  ctx.arc(0, 0, coin.bonus ? 11, 9, 0, Math.PI * 2);
+  ctx.arc(0, 0, coin.bonus ? 11 : 9, 0, Math.PI * 2);
   ctx.fillStyle = coin.bonus ? '#fbbf24' : '#fde047';
   ctx.shadowColor = coin.bonus ? '#f59e0b' : '#fef08c';
   ctx.shadowBlur = 8;
