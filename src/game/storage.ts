@@ -15,11 +15,12 @@ import {
 } from './constants';
 import type {
   DailyChallengeState,
+  DailyRewardState,
   LeaderboardEntry,
   Settings,
-  SkinId,
   ShopInventory,
   ShopItemId,
+  SkinId,
 } from './types';
 import { submitLeaderboardScore as submitToFirebase, fetchGlobalLeaderboard as fetchFromFirebase } from './firebaseLeaderboard';
 
@@ -160,7 +161,6 @@ export function getShopItemCount(itemId: ShopItemId): number {
   const inv = getShopInventory();
   return inv[itemId] ?? 0;
 }
-
 export function buyShopItem(itemId: ShopItemId, cost: number): boolean {
   const currentCoins = getCoins();
   if (currentCoins < cost) {
@@ -172,7 +172,6 @@ export function buyShopItem(itemId: ShopItemId, cost: number): boolean {
   saveShopInventory(newInv);
   return true;
 }
-
 export function consumeShopItem(itemId: ShopItemId): boolean {
   const inv = getShopInventory();
   const current = inv[itemId] ?? 0;
@@ -182,6 +181,14 @@ export function consumeShopItem(itemId: ShopItemId): boolean {
   const newInv: ShopInventory = { ...inv, [itemId]: current - 1 };
   saveShopInventory(newInv);
   return true;
+}
+
+// Helper to add free shop item (used by daily rewards)
+function addShopItem(itemId: ShopItemId, count: number = 1): ShopInventory {
+  const inv = getShopInventory();
+  const newInv: ShopInventory = { ...inv, [itemId]: (inv[itemId] ?? 0) + count };
+  saveShopInventory(newInv);
+  return newInv;
 }
 
 // ---- Local leaderboard ----
@@ -309,4 +316,81 @@ export function updateDailyChallengeProgress(metric: 'score' | 'coins' | 'hardMo
   const next: DailyChallengeState = { ...state, progress, completed };
   writeJSON(STORAGE_KEYS.dailyChallenge, next);
   return { state: next, justCompleted: completed };
+}
+
+// ---- Daily Rewards (7-day cycle) ----
+// Rewards cycle: Day 1-7 then loop
+// Uses dateKey for calendar day check. Safe reset on corruption.
+
+const DAILY_REWARDS: Array<{ day: number; type: 'coins' | ShopItemId; amount: number; label: string }> = [
+  { day: 1, type: 'coins', amount: 10, label: '10 Coins' },
+  { day: 2, type: 'coins', amount: 15, label: '15 Coins' },
+  { day: 3, type: 'shield', amount: 1, label: 'Shield' },
+  { day: 4, type: 'coins', amount: 25, label: '25 Coins' },
+  { day: 5, type: 'magnet', amount: 1, label: 'Coin Magnet' },
+  { day: 6, type: 'gemBoost', amount: 1, label: 'Gem Boost' },
+  { day: 7, type: 'continueToken', amount: 1, label: 'Continue Token' },
+];
+
+const DEFAULT_DAILY_REWARD: DailyRewardState = { lastClaimDate: '', streakDay: 1 };
+
+export function getDailyRewardState(): DailyRewardState {
+  return readJSON<DailyRewardState>(STORAGE_KEYS.dailyReward, DEFAULT_DAILY_REWARD);
+}
+
+export function canClaimDailyReward(): boolean {
+  const state = getDailyRewardState();
+  const today = dateKey();
+  return state.lastClaimDate !== today;
+}
+
+export function getCurrentDailyReward(): { day: number; label: string; type: string; amount: number } {
+  const state = getDailyRewardState();
+  const day = ((state.streakDay - 1) % 7) + 1;
+  const reward = DAILY_REWARDS.find((r) => r.day === day) || DAILY_REWARDS[0];
+  return { day, label: reward.label, type: reward.type, amount: reward.amount };
+}
+
+export function claimDailyReward(): { success: boolean; day: number; label: string; message: string } {
+  if (!canClaimDailyReward()) {
+    return { success: false, day: 0, label: '', message: 'Already claimed today' };
+  }
+
+  const today = dateKey();
+  const yesterday = dateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+
+  const state = getDailyRewardState();
+  let newStreak = 1;
+  if (state.lastClaimDate === yesterday) {
+    newStreak = state.streakDay + 1;
+    if (newStreak > 7) newStreak = 1;
+  }
+
+  const day = ((state.streakDay - 1) % 7) + 1; // reward for current streak position
+  const rewardDef = DAILY_REWARDS.find((r) => r.day === day) || DAILY_REWARDS[0];
+
+  let message = '';
+
+  if (rewardDef.type === 'coins') {
+    addCoins(rewardDef.amount);
+    message = `+${rewardDef.amount} Coins added!`;
+  } else {
+    const itemId = rewardDef.type as ShopItemId;
+    addShopItem(itemId, rewardDef.amount);
+    const itemName = rewardDef.label;
+    message = `${itemName} added to your inventory!`;
+  }
+
+  const newState: DailyRewardState = {
+    lastClaimDate: today,
+    streakDay: newStreak,
+  };
+  writeJSON(STORAGE_KEYS.dailyReward, newState);
+
+  return {
+    success: true,
+    day,
+    label: rewardDef.label,
+    message,
+  };
 }
