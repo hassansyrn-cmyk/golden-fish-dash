@@ -35,7 +35,7 @@ export const BASE = {
 export const SKINS: SkinDef[] = [
   {
     id: 'golden',
-    name: 'Goldfish',
+    name: 'Butterfly Gold',
     unlockScore: 0,
     colors: {
       body: '#ff9f1c',
@@ -43,10 +43,12 @@ export const SKINS: SkinDef[] = [
       fin: '#ff7b00',
       glow: '#ffd166',
     },
+    description: 'Balanced starter fish inspired by the Copperband Butterflyfish. Tall, elegant, and beginner-friendly.',
+    ability: '+5% coin pickup radius',
   },
   {
     id: 'ruby',
-    name: 'Betta',
+    name: 'Coral Clown',
     unlockScore: 25,
     colors: {
       body: '#c1121f',
@@ -54,10 +56,12 @@ export const SKINS: SkinDef[] = [
       fin: '#780000',
       glow: '#ff4d6d',
     },
+    description: 'Vibrant Clownfish-inspired skin. Earns small coin bonuses as you collect.',
+    ability: 'Every 5 coins collected in a run gives +1 extra coin',
   },
   {
     id: 'emerald',
-    name: 'Mandarin',
+    name: 'Emerald Parrotfish',
     unlockScore: 50,
     colors: {
       body: '#0077b6',
@@ -65,10 +69,12 @@ export const SKINS: SkinDef[] = [
       fin: '#00b4d8',
       glow: '#48cae4',
     },
+    description: 'Colorful Parrotfish-inspired skin. Slightly increases coin spawns.',
+    ability: '+10% coin spawn chance',
   },
   {
     id: 'diamond',
-    name: 'Discus',
+    name: 'Mandarin Jewel',
     unlockScore: 100,
     colors: {
       body: '#4cc9f0',
@@ -76,10 +82,12 @@ export const SKINS: SkinDef[] = [
       fin: '#4361ee',
       glow: '#a5d8ff',
     },
+    description: 'Exotic Mandarin Dragonet-inspired skin. Attracts rare gems slightly more often.',
+    ability: '+20% gem spawn chance (balanced)',
   },
   {
     id: 'legendary',
-    name: 'Moorish Idol',
+    name: 'Moorish Legend',
     unlockScore: 200,
     colors: {
       body: '#ffd60a',
@@ -87,8 +95,15 @@ export const SKINS: SkinDef[] = [
       fin: '#1a1a1a',
       glow: '#ffe066',
     },
+    description: 'Dramatic Moorish Idol-inspired legendary skin. Most beautiful and rare.',
+    ability: 'Full-lives gem gives +1 bonus score',
   },
 ];
+
+export function getSkinAbility(skinId: SkinId): string {
+  const skin = SKINS.find((s) => s.id === skinId);
+  return skin?.ability || '';
+}
 
 export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'first_flight', name: 'First Flight', description: 'Play your first game.' },
