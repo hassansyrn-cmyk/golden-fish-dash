@@ -4,6 +4,7 @@
 // Gem improvement: full lives -> +5 score
 // Shop boosts supported: initial shield/magnet/gemBoostActive
 // Visual feedback: Shield bubble + Magnet glow added
+// Now using PNG fish sprites instead of procedural drawing
 // -----------------------------------------------------------------------
 
 import { BASE, SKINS, getDifficultyTier } from './constants';
@@ -103,6 +104,26 @@ const MAX_EXTRA_LIVES = 2;
 const GEM_SPAWN_CHANCE = 0.09;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
+
+// Fish PNG sprite cache and loader
+const fishImageCache: Partial<Record<SkinId, HTMLImageElement>> = {};
+
+function getFishImage(skinId: SkinId): HTMLImageElement | null {
+  if (fishImageCache[skinId]) {
+    return fishImageCache[skinId]!;
+  }
+  const img = new Image();
+  const map: Record<SkinId, string> = {
+    golden: '/fish-skins/butterfly-gold.png',
+    ruby: '/fish-skins/coral-clown.png',
+    emerald: '/fish-skins/emerald-parrotfish.png',
+    diamond: '/fish-skins/mandarin-jewel.png',
+    legendary: '/fish-skins/moorish-legend.png',
+  };
+  img.src = map[skinId];
+  fishImageCache[skinId] = img;
+  return img;
+}
 
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
   const bubbles: Bubble[] = Array.from({ length: 18 }, () => ({
@@ -486,115 +507,47 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const blink = invincible && Math.floor(state.timeMs / 100) % 2 === 0;
   if (blink) return;
+
   const r = BASE.fishRadius;
   const id = skin.id;
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
-  const { body, belly, fin, glow } = skin.colors;
+
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
+
+  // Legendary subtle golden aura behind the sprite
   if (id === 'legendary') {
     ctx.save();
-    ctx.globalAlpha = 0.28 + pulse * 0.2;
+    ctx.globalAlpha = 0.25 + pulse * 0.15;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.9, r * 1.35, 0, 0, Math.PI * 2);
-    ctx.fillStyle = glow;
+    ctx.ellipse(0, 0, r * 2.1, r * 1.5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffe066';
     ctx.fill();
-    ctx.globalAlpha = 0.5 + pulse * 0.25;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.6, r * 1.12, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = glow;
-    ctx.lineWidth = 3;
-    ctx.stroke();
     ctx.restore();
   }
-  ctx.save();
-  ctx.shadowColor = glow;
-  ctx.shadowBlur = id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
-  // Tail
-  if (id === 'ruby') {
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.6, -r * 1.3, -r * 2.3, -r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.3, r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.6, r * 1.3, -r * 0.85, 0);
-    ctx.closePath();
-    ctx.fillStyle = fin;
-    ctx.fill();
-  } else if (id === 'legendary') {
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.quadraticCurveTo(-r * 1.7, -r * 1.25, -r * 2.4, -r * 0.45);
-    ctx.lineTo(-r * 1.8, 0);
-    ctx.quadraticCurveTo(-r * 2.4, r * 0.45, -r * 1.7, r * 1.25);
-    ctx.closePath();
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fill();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.45, -r * 0.95, -r * 1.95, -r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.55, 0, -r * 1.95, r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.45, r * 0.95, -r * 0.85, 0);
-    ctx.closePath();
-    ctx.fillStyle = fin;
-    ctx.fill();
-  }
-  // Body
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.9, 0);
-  ctx.quadraticCurveTo(-r * 0.55, -r * 0.95, r * 0.15, -r * 0.88);
-  ctx.quadraticCurveTo(r * 0.95, -r * 0.5, r * 1.05, 0);
-  ctx.quadraticCurveTo(r * 0.95, r * 0.5, r * 0.15, r * 0.88);
-  ctx.quadraticCurveTo(-r * 0.55, r * 0.95, -r * 0.9, 0);
-  ctx.closePath();
-  const bodyGrad = ctx.createLinearGradient(-r, -r, r, r);
-  if (id === 'legendary') {
-    bodyGrad.addColorStop(0, '#1a1a1a');
-    bodyGrad.addColorStop(0.5, '#ffd60a');
-    bodyGrad.addColorStop(1, '#1a1a1a');
-  } else {
-    bodyGrad.addColorStop(0, belly);
-    bodyGrad.addColorStop(0.4, body);
-    bodyGrad.addColorStop(1, fin);
-  }
-  ctx.fillStyle = bodyGrad;
-  ctx.fill();
-  // Belly
-  ctx.beginPath();
-  ctx.ellipse(r * 0.1, r * 0.28, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
-  ctx.fillStyle = belly;
-  ctx.globalAlpha = 0.85;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  // Dorsal
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.15, -r * 0.7);
-  ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
-  ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = id === 'legendary' ? '#ffd60a' : fin;
-  ctx.fill();
-  // Pectoral
-  ctx.beginPath();
-  ctx.moveTo(r * 0.25, r * 0.1);
-  ctx.quadraticCurveTo(r * 1.05, -r * 0.2, r * 1.1, r * 0.35);
-  ctx.quadraticCurveTo(r * 0.7, r * 0.3, r * 0.25, r * 0.1);
-  ctx.closePath();
-  ctx.fillStyle = fin;
-  ctx.fill();
-  // Eye
-  ctx.beginPath();
-  ctx.arc(r * 0.55, -r * 0.15, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a1200';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
 
-  // === VISUAL POWER-UP INDICATORS ===
-  // Shield active: pulsing blue protective bubble
+  // Draw the PNG fish sprite
+  const fishImg = getFishImage(id);
+  if (fishImg && fishImg.complete && fishImg.naturalWidth > 0) {
+    // Scale sprite to fit nicely around the collision radius (sprites are larger)
+    const targetWidth = r * 2.6;
+    const scale = targetWidth / fishImg.width;
+    const drawW = fishImg.width * scale;
+    const drawH = fishImg.height * scale;
+    ctx.drawImage(fishImg, -drawW / 2, -drawH / 2, drawW, drawH);
+  } else {
+    // Fallback simple shape while image loads
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = skin.colors.body;
+    ctx.fill();
+    ctx.strokeStyle = skin.colors.fin;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // === VISUAL POWER-UP INDICATORS (drawn on top of sprite) ===
   if (state.shieldCharges > 0) {
     const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
     ctx.save();
@@ -610,22 +563,20 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.restore();
   }
 
-  // Magnet active: enhanced orange magnetic glow + field
   if (state.magnetUntil > state.timeMs) {
     const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
     ctx.save();
     ctx.shadowColor = '#ff6d00';
-    ctx.shadowBlur = 32 + magPulse * 14;
-    ctx.globalAlpha = 0.4 + magPulse * 0.25;
+    ctx.shadowBlur = 28 + magPulse * 12;
+    ctx.globalAlpha = 0.35 + magPulse * 0.2;
     ctx.beginPath();
-    ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2);
     ctx.strokeStyle = '#ff9500';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.2;
     ctx.stroke();
     ctx.restore();
   }
 
-  ctx.restore();
   ctx.restore();
 }
 
@@ -743,7 +694,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     const dx = (Math.random() - 0.5) * state.shakeIntensity;
     const dy = (Math.random() - 0.5) * state.shakeIntensity;
     ctx.translate(dx, dy);
-    }
+  }
   drawBackground(ctx, state);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
