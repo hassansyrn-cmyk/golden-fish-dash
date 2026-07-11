@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getDailyChallenge, getGlobalBestScore, getPersonalBest, getCoins } from '../storage';
+import { getDailyChallenge, getGlobalBestScore, getPersonalBest, getCoins, canClaimDailyReward } from '../storage';
 
 interface Props {
   onPlay: () => void;
@@ -7,6 +7,7 @@ interface Props {
   onHowTo: () => void;
   onSettings: () => void;
   onShop: () => void;
+  onDailyRewards: () => void;
 }
 
 /**
@@ -60,17 +61,26 @@ function MenuFish() {
   );
 }
 
-export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings, onShop }: Props) {
+export default function MainMenu({
+  onPlay,
+  onLeaderboard,
+  onHowTo,
+  onSettings,
+  onShop,
+  onDailyRewards,
+}: Props) {
   const [best, setBest] = useState(0);
   const [globalBest, setGlobalBest] = useState(0);
   const [daily, setDaily] = useState(getDailyChallenge());
   const [coins, setCoins] = useState(getCoins());
+  const [dailyRewardAvailable, setDailyRewardAvailable] = useState(canClaimDailyReward());
 
   useEffect(() => {
     setBest(getPersonalBest());
     setGlobalBest(getGlobalBestScore());
     setDaily(getDailyChallenge());
     setCoins(getCoins());
+    setDailyRewardAvailable(canClaimDailyReward());
   }, []);
 
   return (
@@ -119,6 +129,15 @@ export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings, o
         <button className="btn btn-primary" onClick={onPlay}>
           Play
         </button>
+
+        {/* Daily Rewards button - noticeable when available */}
+        <button
+          className={`btn ${dailyRewardAvailable ? 'btn-primary daily-reward-btn' : 'btn-secondary'}`}
+          onClick={onDailyRewards}
+        >
+          {dailyRewardAvailable ? '🎁 Daily Reward!' : 'Daily Rewards'}
+        </button>
+
         <button className="btn btn-secondary" onClick={onLeaderboard}>
           Leaderboard
         </button>
