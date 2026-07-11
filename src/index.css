@@ -904,7 +904,144 @@ html, body, #root {
   max-width: 400px;
 }
 
-/* ... existing shop styles ... */
+/* ===================== Daily Rewards Screen Styles ===================== */
+.daily-rewards-screen {
+  padding: 20px;
+  gap: 18px;
+  justify-content: flex-start;
+  padding-top: max(60px, env(safe-area-inset-top) + 30px);
+}
+
+.daily-rewards-subtitle {
+  color: #9fdcf2;
+  font-size: 0.95rem;
+  max-width: 320px;
+  margin: 0 0 8px;
+}
+
+.daily-reward-message {
+  background: rgba(79, 227, 193, 0.15);
+  color: #4fe3c1;
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  animation: gfr-pop 0.3s ease-out;
+}
+
+.daily-reward-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 360px;
+}
+
+@media (min-width: 380px) {
+  .daily-reward-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.daily-reward-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 118px;
+  transition: all 0.2s ease;
+}
+
+.daily-reward-card-active {
+  border-color: #ffd60a;
+  background: rgba(255, 214, 10, 0.12);
+  transform: scale(1.03);
+  box-shadow: 0 0 0 3px rgba(255, 214, 10, 0.2);
+}
+
+.daily-reward-card-claimed {
+  opacity: 0.6;
+  border-color: #4fe3c1;
+}
+
+.daily-reward-day {
+  font-size: 0.75rem;
+  color: #9fdcf2;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.daily-reward-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.daily-reward-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+}
+
+.daily-reward-status {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  margin-top: 4px;
+}
+
+.daily-reward-status.today {
+  background: #ffd60a;
+  color: #241800;
+  font-weight: 700;
+}
+
+.daily-reward-status.claimed {
+  background: rgba(79, 227, 193, 0.2);
+  color: #4fe3c1;
+}
+
+.daily-reward-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 12px;
+}
+
+.daily-reward-claim-btn {
+  background: linear-gradient(180deg, #ffe066, #ffb703);
+  color: #241800;
+  border: none;
+  border-radius: 16px;
+  padding: 16px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.daily-reward-claim-btn:disabled {
+  background: rgba(255, 255, 255, 0.12);
+  color: #9fdcf2;
+  cursor: not-allowed;
+  font-weight: 700;
+}
+
+.daily-rewards-note {
+  font-size: 0.75rem;
+  color: #9fdcf2;
+  max-width: 300px;
+  margin-top: 8px;
+}
+
+/* ... existing shop styles continue ... */
 
 @layer utilities {
   input[type='search']::-webkit-search-cancel-button { @apply hidden; }
@@ -945,7 +1082,7 @@ html, body, #root {
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
-  .border.active-elevate-2:not(.no-active-interaction-elevate)::after {
+  .border.active-elevate-2:active:not(.no-active-interaction-elevate)::after {
     inset: -1px;
   }
 }
