@@ -52,7 +52,8 @@ export type ScreenName =
   | 'gameover'
   | 'leaderboard'
   | 'settings'
-  | 'shop';
+  | 'shop'
+  | 'dailyRewards';
 
 export type PowerUpType = 'shield' | 'magnet';
 
@@ -68,4 +69,9 @@ export interface ShopInventory {
   magnet: number;
   gemBoost: number;
   continueToken: number;
+}
+
+export interface DailyRewardState {
+  lastClaimDate: string; // YYYY-MM-DD
+  streakDay: number; // 1 to 7, loops back
 }
