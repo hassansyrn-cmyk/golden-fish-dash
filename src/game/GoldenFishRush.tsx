@@ -103,7 +103,7 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt, applyShopBoosts } = useGameEngine({
+  const { score, lives, doJump, reviveAt } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -111,7 +111,7 @@ export default function GoldenFishRush() {
     onGameOver: handleGameOver,
   });
 
-  // Consume shop items and apply boosts at run start
+  // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
@@ -119,23 +119,8 @@ export default function GoldenFishRush() {
     setShowInterstitial(false);
     setNewUnlocks(null);
 
-    const inv = getShopInventory();
-
-    const hadShield = inv.shield > 0;
-    const hadMagnet = inv.magnet > 0;
-    const hadGemBoost = inv.gemBoost > 0;
-
-    if (hadShield) consumeShopItem('shield');
-    if (hadMagnet) consumeShopItem('magnet');
-    if (hadGemBoost) consumeShopItem('gemBoost');
-
-    // Apply the purchased boosts to the engine state
-    if (applyShopBoosts) {
-      applyShopBoosts(hadShield, hadMagnet, hadGemBoost);
-    }
-
     setScreen('playing');
-  }, [reviveAt, applyShopBoosts]);
+  }, []);
 
   const handleWatchAd = useCallback(() => {
     setScreen('continueAd');
@@ -147,7 +132,7 @@ export default function GoldenFishRush() {
     unlockAchievement('comeback');
     reviveAt(REVIVE_INVINCIBILITY_MS);
     setReviveCountdown(3);
-    setScreen('playing'); // Immediately switch to game so ad modal closes and revive overlay shows cleanly without overlapping
+    setScreen('playing'); // Immediately switch so ad modal closes cleanly
   }, [reviveAt]);
 
   const handleSkipAd = useCallback(() => {
