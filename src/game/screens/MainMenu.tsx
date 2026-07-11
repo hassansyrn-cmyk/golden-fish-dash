@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getDailyChallenge, getGlobalBestScore, getPersonalBest } from '../storage';
+import { getDailyChallenge, getGlobalBestScore, getPersonalBest, getCoins } from '../storage';
 
 interface Props {
   onPlay: () => void;
@@ -64,11 +64,13 @@ export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings, o
   const [best, setBest] = useState(0);
   const [globalBest, setGlobalBest] = useState(0);
   const [daily, setDaily] = useState(getDailyChallenge());
+  const [coins, setCoins] = useState(getCoins());
 
   useEffect(() => {
     setBest(getPersonalBest());
     setGlobalBest(getGlobalBestScore());
     setDaily(getDailyChallenge());
+    setCoins(getCoins());
   }, []);
 
   return (
@@ -78,6 +80,13 @@ export default function MainMenu({ onPlay, onLeaderboard, onHowTo, onSettings, o
         Golden <span className="game-title-accent">Fish Rush</span>
       </h1>
       <p className="menu-tagline">Tap. Dodge. Rise.</p>
+
+      {/* Clear small coin balance for verification */}
+      <div className="menu-coins">
+        <span className="coin-icon">🪙</span>
+        <span className="coin-value">{coins}</span>
+        <span className="coin-label">Coins</span>
+      </div>
 
       <div className="menu-stats">
         <div className="stat-pill">
