@@ -75,3 +75,15 @@ export interface DailyRewardState {
   lastClaimDate: string; // YYYY-MM-DD
   streakDay: number; // 1 to 7, loops back
 }
+
+// Extra details for custom enhancements:
+export interface FloatingText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  size: number;
+  createdAt: number; // game time elapsed or timestamp
+  durationMs: number;
+}

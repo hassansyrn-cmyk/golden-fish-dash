@@ -238,6 +238,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       return safelyBehindFish || farAhead;
     });
 
+    state.sharks = state.sharks.filter((shark) => {
+      return shark.x < fishX - 80 || shark.x > state.width + 100;
+    });
+
     state.elapsedSinceSpawn = -850;
 
     playSound('reward', settings.sound);
@@ -371,6 +375,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   playSound('hit', settings.sound);
                   safeVibrate(55, settings.vibration);
                 }
+              },
+
+              onRedFlash: () => {
+                state.isRedFlashing = true;
+                state.redFlashTimer = 180; // flash screen in ms
               },
             },
             { vibration: settings.vibration },
