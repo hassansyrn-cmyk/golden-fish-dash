@@ -12,25 +12,25 @@ interface ShopItem {
 const SHOP_ITEMS: ShopItem[] = [
   {
     id: 'shield',
-    name: 'Shield',
+    name: '🛡️ Shield',
     description: 'Start run with 1 shield charge. Protects from one hit.',
     cost: 20,
   },
   {
     id: 'magnet',
-    name: 'Coin Magnet',
+    name: '🧲 Coin Magnet',
     description: 'Start run with magnet active for ~8s. Pulls nearby coins.',
     cost: 25,
   },
   {
     id: 'gemBoost',
-    name: 'Gem Boost',
+    name: '💎 Gem Boost',
     description: 'Increase gem spawn chance for this run.',
     cost: 30,
   },
   {
     id: 'continueToken',
-    name: 'Continue Token',
+    name: '🔄 Continue Token',
     description: 'Use on Game Over to revive without ad (one per run).',
     cost: 40,
   },
@@ -70,7 +70,7 @@ export default function ShopScreen({ onBack }: Props) {
   const getOwned = (id: ShopItemId) => getShopItemCount(id);
 
   return (
-    <div className="screen shop-screen">
+    <div className="screen shop-screen" style={{ paddingTop: 'max(50px, env(safe-area-inset-top) + 20px)' }}>
       <div className="shop-header">
         <button className="btn btn-secondary" onClick={onBack}>
           ← Back
