@@ -219,6 +219,21 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     safeVibrate([45, 35, 45], settings.vibration);
   }, []);
 
+  const applyShopBoosts = useCallback((hadShield: boolean, hadMagnet: boolean, hadGemBoost: boolean) => {
+    const state = stateRef.current;
+    if (!state) return;
+
+    if (hadShield) {
+      state.shieldCharges = Math.min(3, (state.shieldCharges || 0) + 1);
+    }
+    if (hadMagnet) {
+      state.magnetUntil = state.timeMs + 8000;
+    }
+    if (hadGemBoost) {
+      state.gemBoostActive = true;
+    }
+  }, []);
+
   useEffect(() => {
     if (!active) return;
 
@@ -415,6 +430,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
     reviveAt,
+    applyShopBoosts,
     getFinalScore: () => stateRef.current?.score ?? 0,
   };
 }
