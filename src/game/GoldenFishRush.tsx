@@ -23,6 +23,7 @@ import {
   getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
+import { App } from '@capacitor/app';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
@@ -39,11 +40,48 @@ export default function GoldenFishRush() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
+  const backListenerRef = useRef<any>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
     return () => clearTimeout(timer);
   }, []);
+
+  // Android hardware back button handling (Capacitor)
+  useEffect(() => {
+    const setupBackButton = async () => {
+      if (backListenerRef.current) {
+        backListenerRef.current.remove();
+      }
+
+      backListenerRef.current = await App.addListener('backButton', () => {
+        if (screen === 'shop' || screen === 'settings' || screen === 'leaderboard' || screen === 'howto') {
+          setScreen('menu');
+        } else if (screen === 'playing') {
+          setScreen('paused');
+        } else if (screen === 'paused') {
+          setScreen('playing');
+        } else if (screen === 'continueAd') {
+          setScreen('gameover');
+        } else if (screen === 'menu') {
+          // Allow default exit behavior on main menu
+          // Do nothing extra to let app exit if desired
+        } else {
+          // Safe default for other screens
+          setScreen('menu');
+        }
+      });
+    };
+
+    setupBackButton();
+
+    return () => {
+      if (backListenerRef.current) {
+        backListenerRef.current.remove();
+        backListenerRef.current = null;
+      }
+    };
+  }, [screen]);
 
   const handleGameOver = useCallback(
     (score: number) => {
@@ -77,26 +115,19 @@ export default function GoldenFishRush() {
     setShowInterstitial(false);
     setNewUnlocks(null);
 
-    // Shop item consumption and boost application
     const inv = getShopInventory();
 
-    // Shield: consume and start with 1 shield charge (uses existing engine shield system)
     if (inv.shield > 0) {
       consumeShopItem('shield');
-      // Apply initial shield via reviveAt logic or engine state (existing system supports it)
-      reviveAt(0); // trigger initial state if needed, or engine handles via previous powerup
+      reviveAt(0);
     }
 
-    // Magnet: consume and start with 8s magnet (existing system)
     if (inv.magnet > 0) {
       consumeShopItem('magnet');
-      // Magnet activated via existing magnetUntil in engine
     }
 
-    // Gem Boost: consume and increase spawn chance for run (engine supports via flag or chance)
     if (inv.gemBoost > 0) {
       consumeShopItem('gemBoost');
-      // Note: engine gem chance doubled for this run (minimal change in engine)
     }
 
     setScreen('playing');
