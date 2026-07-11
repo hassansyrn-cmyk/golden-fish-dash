@@ -9,6 +9,7 @@ import PauseScreen from './screens/PauseScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import AchievementsModal from './screens/AchievementsModal';
 import UnlockCelebration from './screens/UnlockCelebration';
+import ShopScreen from './screens/ShopScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
@@ -17,11 +18,17 @@ import {
   incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
+  getShopItemCount,
+  consumeShopItem,
+  getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
+import { App } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
+const MAGNET_SHOP_DURATION = 8000;
 
 export default function GoldenFishRush() {
   const [screen, setScreen] = useState<ScreenName>('loading');
@@ -34,11 +41,51 @@ export default function GoldenFishRush() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
+  const backListenerRef = useRef<any>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
     return () => clearTimeout(timer);
   }, []);
+
+  // Android hardware back button handling (Capacitor)
+  useEffect(() => {
+    const setupBackButton = async () => {
+      if (backListenerRef.current) {
+        backListenerRef.current.remove();
+        backListenerRef.current = null;
+      }
+
+      if (!Capacitor.isNativePlatform()) {
+        return;
+      }
+
+      backListenerRef.current = await App.addListener('backButton', () => {
+        if (screen === 'shop' || screen === 'settings' || screen === 'leaderboard' || screen === 'howto') {
+          setScreen('menu');
+        } else if (screen === 'playing') {
+          setScreen('paused');
+        } else if (screen === 'paused') {
+          setScreen('playing');
+        } else if (screen === 'continueAd') {
+          setScreen('gameover');
+        } else if (screen === 'menu') {
+          // Allow default exit behavior on main menu
+        } else {
+          setScreen('menu');
+        }
+      });
+    };
+
+    setupBackButton();
+
+    return () => {
+      if (backListenerRef.current) {
+        backListenerRef.current.remove();
+        backListenerRef.current = null;
+      }
+    };
+  }, [screen]);
 
   const handleGameOver = useCallback(
     (score: number) => {
@@ -56,7 +103,7 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt, shieldCharges, magnetRemainingMs } = useGameEngine({
+  const { score, lives, doJump, reviveAt } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -64,12 +111,14 @@ export default function GoldenFishRush() {
     onGameOver: handleGameOver,
   });
 
+  // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
     setShowInterstitial(false);
     setNewUnlocks(null);
+
     setScreen('playing');
   }, []);
 
@@ -83,6 +132,7 @@ export default function GoldenFishRush() {
     unlockAchievement('comeback');
     reviveAt(REVIVE_INVINCIBILITY_MS);
     setReviveCountdown(3);
+    setScreen('playing'); // Immediately switch so ad modal closes cleanly
   }, [reviveAt]);
 
   const handleSkipAd = useCallback(() => {
@@ -142,6 +192,14 @@ export default function GoldenFishRush() {
 
   const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
 
+  const handleOpenShop = useCallback(() => {
+    setScreen('shop');
+  }, []);
+
+  const handleShopBack = useCallback(() => {
+    setScreen('menu');
+  }, []);
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -163,13 +221,6 @@ export default function GoldenFishRush() {
                   {index < visibleLives ? '♥' : '♡'}
                 </span>
               ))}
-              {/* Power-up indicators - small, left-aligned with hearts, non-intrusive */}
-              {shieldCharges > 0 && (
-                <span style={{ marginLeft: '10px', fontSize: '14px', verticalAlign: 'middle' }} title="Shield charges">🛡️{shieldCharges}</span>
-              )}
-              {magnetRemainingMs > 0 && (
-                <span style={{ marginLeft: '8px', fontSize: '14px', verticalAlign: 'middle' }} title="Coin Magnet active">🧲 {Math.ceil(magnetRemainingMs / 1000)}s</span>
-              )}
             </div>
 
             <div className="hud-score">{score}</div>
@@ -203,6 +254,7 @@ export default function GoldenFishRush() {
             onLeaderboard={() => setScreen('leaderboard')}
             onHowTo={() => setScreen('howto')}
             onSettings={() => setScreen('settings')}
+            onShop={handleOpenShop}
           />
         )}
 
@@ -211,6 +263,8 @@ export default function GoldenFishRush() {
         {screen === 'settings' && <SettingsScreen onBack={() => setScreen('menu')} />}
 
         {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('menu')} />}
+
+        {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
 
         {screen === 'paused' && (
           <PauseScreen
@@ -238,6 +292,7 @@ export default function GoldenFishRush() {
             onLeaderboard={() => setScreen('leaderboard')}
             onMenu={() => setScreen('menu')}
             onNewUnlocks={handleNewUnlocks}
+            onShop={handleOpenShop}
           />
         )}
 

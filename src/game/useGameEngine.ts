@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   addCoins,
+  consumeShopItem,
   getCoins,
   getPersonalBest,
   getSettings,
+  getShopInventory,
   incrementRoundsPlayed,
   setPersonalBest,
   unlockAchievement,
@@ -181,6 +183,28 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const engine = createEngine(width, height, skin);
     stateRef.current = engine;
 
+    // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
+    // This runs every time a new engine is created for a run.
+    // It checks current inventory, applies the boosts, and consumes the items.
+    const inv = getShopInventory();
+    let applied = false;
+
+    if (inv.shield > 0) {
+      consumeShopItem('shield');
+      engine.shieldCharges = 1;
+      applied = true;
+    }
+    if (inv.magnet > 0) {
+      consumeShopItem('magnet');
+      engine.magnetUntil = engine.timeMs + 8000;
+      applied = true;
+    }
+    if (inv.gemBoost > 0) {
+      consumeShopItem('gemBoost');
+      engine.gemBoostActive = true;
+      applied = true;
+    }
+
     roundCoinsRef.current = 0;
     lastMilestoneRef.current = 0;
 
@@ -201,6 +225,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     state.fishY = state.height / 2;
     state.fishVY = 0;
     state.invincibleUntil = state.timeMs + invincibleMs;
+    state.shakeIntensity = 0; // Reset any camera shake so revive countdown is smooth (no background tremble)
 
     state.obstacles = state.obstacles.filter((obs) => {
       const approximateHalfObstacleWidth = 20;

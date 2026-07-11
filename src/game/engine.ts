@@ -2,6 +2,8 @@
 // Core canvas game engine for Golden Fish Rush.
 // Power-ups: Shield (protects one hit + invincibility) and Magnet (pulls nearby coins)
 // Gem improvement: full lives -> +5 score
+// Shop boosts supported: initial shield/magnet/gemBoostActive
+// Visual feedback: Shield bubble + Magnet glow added
 // -----------------------------------------------------------------------
 
 import { BASE, SKINS, getDifficultyTier } from './constants';
@@ -93,6 +95,7 @@ export interface EngineState {
   maxLives: number;
   shieldCharges: number;
   magnetUntil: number;
+  gemBoostActive: boolean;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -113,7 +116,7 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: 0, running: true,
     invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
-    lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0,
+    lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
   };
 }
 
@@ -166,14 +169,16 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, bonus: score >= 60 && Math.random() < 0.22,
     });
   }
-  if (Math.random() < GEM_SPAWN_CHANCE) {
+  // Gem spawn (boosted if shop gemBoostActive)
+  const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
+  if (Math.random() < gemChance) {
     state.gems.push({
       x: state.width + BASE.obstacleWidth + 88, y: gapY + (Math.random() - 0.5) * (gap * 0.28),
       collected: false, pulse: Math.random() * Math.PI * 2,
     });
   }
-  // Rare power-up spawn (shield or magnet)
-  if (Math.random() < 0.035) {
+  // Rare power-up spawn (shield or magnet) - increased slightly for better shop value
+  if (Math.random() < 0.06) {
     const type: 'shield' | 'magnet' = Math.random() < 0.5 ? 'shield' : 'magnet';
     const puY = gapY + (Math.random() - 0.5) * (gap * 0.25);
     state.powerUps.push({
@@ -587,6 +592,39 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
+
+  // === VISUAL POWER-UP INDICATORS ===
+  // Shield active: pulsing blue protective bubble
+  if (state.shieldCharges > 0) {
+    const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.22 + shieldPulse * 0.18;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.65, 0, Math.PI * 2);
+    ctx.fillStyle = '#4fc3f7';
+    ctx.fill();
+    ctx.globalAlpha = 0.65 + shieldPulse * 0.25;
+    ctx.strokeStyle = '#e3f2fd';
+    ctx.lineWidth = 3.5 + shieldPulse * 1.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Magnet active: enhanced orange magnetic glow + field
+  if (state.magnetUntil > state.timeMs) {
+    const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
+    ctx.save();
+    ctx.shadowColor = '#ff6d00';
+    ctx.shadowBlur = 32 + magPulse * 14;
+    ctx.globalAlpha = 0.4 + magPulse * 0.25;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ff9500';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   ctx.restore();
   ctx.restore();
 }
@@ -705,7 +743,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     const dx = (Math.random() - 0.5) * state.shakeIntensity;
     const dy = (Math.random() - 0.5) * state.shakeIntensity;
     ctx.translate(dx, dy);
-  }
+    }
   drawBackground(ctx, state);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);

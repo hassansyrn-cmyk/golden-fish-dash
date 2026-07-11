@@ -51,11 +51,21 @@ export type ScreenName =
   | 'continueAd'
   | 'gameover'
   | 'leaderboard'
-  | 'settings';
+  | 'settings'
+  | 'shop';
 
 export type PowerUpType = 'shield' | 'magnet';
 
 export interface PowerUpState {
   shieldCharges: number;
   magnetUntil: number; // timestamp when magnet expires, 0 if inactive
+}
+
+export type ShopItemId = 'shield' | 'magnet' | 'gemBoost' | 'continueToken';
+
+export interface ShopInventory {
+  shield: number;
+  magnet: number;
+  gemBoost: number;
+  continueToken: number;
 }
