@@ -23,6 +23,7 @@ import {
   getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
+import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
@@ -47,46 +48,34 @@ export default function GoldenFishRush() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Android hardware back button handling (Capacitor) - only on native platforms
-  // Uses dynamic import to avoid Rollup/Vite resolution error during web build
+  // Android hardware back button handling (Capacitor)
+  // Only active on native platforms (Android/iOS). Safe on web.
   useEffect(() => {
     const setupBackButton = async () => {
-      // Clean up previous listener
       if (backListenerRef.current) {
         backListenerRef.current.remove();
         backListenerRef.current = null;
       }
 
-      // Only activate back button handling when running inside Capacitor (Android/iOS)
       if (!Capacitor.isNativePlatform()) {
         return;
       }
 
-      try {
-        // Dynamic import so web build (vite) does not fail when @capacitor/app is not in node_modules
-        const { App } = await import('@capacitor/app');
-
-        backListenerRef.current = await App.addListener('backButton', () => {
-          if (screen === 'shop' || screen === 'settings' || screen === 'leaderboard' || screen === 'howto') {
-            setScreen('menu');
-          } else if (screen === 'playing') {
-            setScreen('paused');
-          } else if (screen === 'paused') {
-            setScreen('playing');
-          } else if (screen === 'continueAd') {
-            setScreen('gameover');
-          } else if (screen === 'menu') {
-            // Allow default exit behavior on main menu (do nothing special)
-          } else {
-            // Safe default for other screens
-            setScreen('menu');
-          }
-        });
-      } catch (err) {
-        // Plugin not installed or not available in this environment - fail silently
-        // (Android build via Capacitor will have it after cap sync if added)
-        console.warn('[GoldenFishRush] Capacitor backButton plugin unavailable:', err);
-      }
+      backListenerRef.current = await App.addListener('backButton', () => {
+        if (screen === 'shop' || screen === 'settings' || screen === 'leaderboard' || screen === 'howto') {
+          setScreen('menu');
+        } else if (screen === 'playing') {
+          setScreen('paused');
+        } else if (screen === 'paused') {
+          setScreen('playing');
+        } else if (screen === 'continueAd') {
+          setScreen('gameover');
+        } else if (screen === 'menu') {
+          // Allow default exit behavior on main menu
+        } else {
+          setScreen('menu');
+        }
+      });
     };
 
     setupBackButton();
