@@ -171,6 +171,11 @@ export default function SettingsScreen({ onBack }: Props) {
     setConfirmReset(false);
   }
 
+  const openPrivacyPolicy = () => {
+    // Works on both web and Capacitor Android
+    window.open('/privacy.html', '_blank');
+  };
+
   return (
     <div className="screen settings-screen">
       <h2 className="screen-title">Settings</h2>
@@ -250,9 +255,18 @@ export default function SettingsScreen({ onBack }: Props) {
         )}
       </div>
 
-      <p className="privacy-note">This demo stores your game progress locally on your device.</p>
+      <div className="mt-4 flex flex-col gap-3">
+        <p className="privacy-note">This demo stores your game progress locally on your device.</p>
+        
+        <button 
+          onClick={openPrivacyPolicy}
+          className="btn btn-secondary text-sm py-2"
+        >
+          Privacy Policy
+        </button>
+      </div>
 
-      <button className="btn btn-primary" onClick={onBack}>
+      <button className="btn btn-primary mt-4" onClick={onBack}>
         Back
       </button>
     </div>
