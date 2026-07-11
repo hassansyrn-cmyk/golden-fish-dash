@@ -3,7 +3,8 @@
 // Power-ups: Shield (protects one hit + invincibility) and Magnet (pulls nearby coins)
 // Gem improvement: full lives -> +5 score
 // Shop boosts supported: initial shield/magnet/gemBoostActive
-// Visual feedback: Shield bubble + Magnet glow added
+// Animated procedural fish: tail, fins, body breathing for alive feeling
+// Safe lightweight 2D canvas animation (no Three.js, good mobile perf)
 // -----------------------------------------------------------------------
 
 import { BASE, SKINS, getDifficultyTier } from './constants';
@@ -486,13 +487,21 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const blink = invincible && Math.floor(state.timeMs / 100) % 2 === 0;
   if (blink) return;
+
   const r = BASE.fishRadius;
   const id = skin.id;
+  const t = state.timeMs * 0.003; // animation time
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
   const { body, belly, fin, glow } = skin.colors;
+
+  // Subtle rotation (clamped for natural feel)
+  const rot = Math.max(-0.25, Math.min(0.35, state.fishRotation));
+
   ctx.save();
   ctx.translate(fishX, state.fishY);
-  ctx.rotate(state.fishRotation);
+  ctx.rotate(rot);
+
+  // Legendary golden aura
   if (id === 'legendary') {
     ctx.save();
     ctx.globalAlpha = 0.28 + pulse * 0.2;
@@ -508,93 +517,352 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.stroke();
     ctx.restore();
   }
+
   ctx.save();
   ctx.shadowColor = glow;
-  ctx.shadowBlur = id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
-  // Tail
-  if (id === 'ruby') {
+  ctx.shadowBlur = id === 'legendary' ? 32 : id === 'diamond' ? 26 : id === 'emerald' ? 20 : 16;
+
+  // ========== ANIMATED SPECIES-SPECIFIC SILHOUETTES ==========
+
+  if (id === 'golden') {
+    // Butterflyfish - tall narrow body, pointed nose, vertical stripes, animated tail
+    const tailSwing = Math.sin(t * 4.5) * 0.18;
+    // Tail
     ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.6, -r * 1.3, -r * 2.3, -r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.3, r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.6, r * 1.3, -r * 0.85, 0);
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.7 + tailSwing, -r * 1.1, -r * 2.5 + tailSwing * 1.5, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.5 + tailSwing * 1.5, r * 0.3);
+    ctx.quadraticCurveTo(-r * 1.7 - tailSwing, r * 1.1, -r * 0.9, 0);
     ctx.closePath();
     ctx.fillStyle = fin;
     ctx.fill();
-  } else if (id === 'legendary') {
+    // Body (taller)
     ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.quadraticCurveTo(-r * 1.7, -r * 1.25, -r * 2.4, -r * 0.45);
-    ctx.lineTo(-r * 1.8, 0);
-    ctx.quadraticCurveTo(-r * 2.4, r * 0.45, -r * 1.7, r * 1.25);
+    ctx.moveTo(-r * 0.7, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 0.4, -r * 1.1, r * 0.6, -r * 0.95);
+    ctx.quadraticCurveTo(r * 1.1, -r * 0.5, r * 1.15, 0);
+    ctx.quadraticCurveTo(r * 1.1, r * 0.5, r * 0.6, r * 0.95);
+    ctx.quadraticCurveTo(-r * 0.4, r * 1.1, -r * 0.7, r * 0.3);
+    ctx.closePath();
+    const bodyGrad = ctx.createLinearGradient(-r, -r * 0.8, r, r * 0.8);
+    bodyGrad.addColorStop(0, '#fff8e0');
+    bodyGrad.addColorStop(0.3, body);
+    bodyGrad.addColorStop(0.7, '#ffcc66');
+    bodyGrad.addColorStop(1, fin);
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    // Animated vertical stripes
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 2.2;
+    for (let i = 0; i < 3; i++) {
+      const xOff = -r * 0.2 + i * r * 0.35;
+      const sway = Math.sin(t * 3 + i) * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(xOff + sway, -r * 0.85);
+      ctx.quadraticCurveTo(xOff + sway * 0.6, 0, xOff + sway, r * 0.85);
+      ctx.stroke();
+    }
+    // Long pointed nose
+    ctx.beginPath();
+    ctx.moveTo(r * 1.15, 0);
+    ctx.lineTo(r * 1.65, -r * 0.15);
+    ctx.lineTo(r * 1.65, r * 0.15);
+    ctx.closePath();
+    ctx.fillStyle = '#ffcc66';
+    ctx.fill();
+    // Dorsal fin (subtle movement)
+    const dorsalWave = Math.sin(t * 3.2) * 2;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.3, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.2, -r * 1.35 + dorsalWave, r * 0.7, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.4, -r * 0.95, -r * 0.3, -r * 0.9);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Pectoral fin
+    ctx.beginPath();
+    ctx.moveTo(r * 0.4, r * 0.1);
+    ctx.quadraticCurveTo(r * 1.0, r * 0.35, r * 0.85, r * 0.55);
+    ctx.quadraticCurveTo(r * 0.55, r * 0.35, r * 0.4, r * 0.1);
+    ctx.closePath();
+    ctx.fillStyle = '#ffcc66';
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.75, -r * 0.12, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a1200';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.78, -r * 0.15, 1.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else if (id === 'ruby') {
+    // Clownfish - rounded body, white bands, animated tail and fins
+    const tailSwing = Math.sin(t * 5) * 0.22;
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 1.55 + tailSwing, -r * 1.0, -r * 2.1 + tailSwing * 1.3, -r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.75, 0, -r * 2.1 + tailSwing * 1.3, r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.55 - tailSwing, r * 1.0, -r * 0.85, 0);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Body
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.75, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.1, -r * 1.05, r * 0.95, -r * 0.6);
+    ctx.quadraticCurveTo(r * 1.15, 0, r * 0.95, r * 0.6);
+    ctx.quadraticCurveTo(r * 0.1, r * 1.05, -r * 0.75, r * 0.85);
+    ctx.closePath();
+    ctx.fillStyle = body;
+    ctx.fill();
+    // Animated white bands
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.8;
+    const band1 = Math.sin(t * 2.8) * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.35 + band1, -r * 0.9);
+    ctx.quadraticCurveTo(-r * 0.15 + band1 * 0.5, 0, -r * 0.35 + band1, r * 0.9);
+    ctx.stroke();
+    const band2 = Math.sin(t * 3.1 + 1.2) * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.15 + band2, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.35 + band2 * 0.5, 0, r * 0.15 + band2, r * 0.85);
+    ctx.stroke();
+    // Belly
+    ctx.beginPath();
+    ctx.ellipse(r * 0.25, r * 0.35, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
+    ctx.fillStyle = belly;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Dorsal and anal fins (animated)
+    const finWave = Math.sin(t * 4) * 3;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.2, -r * 0.8);
+    ctx.quadraticCurveTo(r * 0.3, -r * 1.2 + finWave, r * 0.75, -r * 0.7);
+    ctx.quadraticCurveTo(r * 0.45, -r * 0.85, -r * 0.2, -r * 0.8);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.15, r * 0.75);
+    ctx.quadraticCurveTo(r * 0.35, r * 1.15 - finWave * 0.6, r * 0.7, r * 0.75);
+    ctx.quadraticCurveTo(r * 0.4, r * 0.85, -r * 0.15, r * 0.75);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.65, -r * 0.1, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a0505';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.68, -r * 0.12, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else if (id === 'emerald') {
+    // Parrotfish - beak, colorful, animated tail and body pulse
+    const tailSwing = Math.sin(t * 4.2) * 0.2;
+    const bodyPulse = 1 + Math.sin(t * 2.5) * 0.03;
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.8, 0);
+    ctx.quadraticCurveTo(-r * 1.5 + tailSwing, -r * 1.15, -r * 2.2 + tailSwing * 1.2, -r * 0.5);
+    ctx.lineTo(-r * 1.9, 0);
+    ctx.quadraticCurveTo(-r * 2.2 + tailSwing * 1.2, r * 0.5, -r * 1.5 - tailSwing, r * 1.15);
+    ctx.quadraticCurveTo(-r * 0.8, 0, -r * 0.8, 0);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Body with breathing
+    ctx.save();
+    ctx.scale(bodyPulse, 1);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.6, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.2, -r * 1.0, r * 1.0, -r * 0.55);
+    ctx.quadraticCurveTo(r * 1.2, 0, r * 1.0, r * 0.55);
+    ctx.quadraticCurveTo(r * 0.2, r * 1.0, -r * 0.6, r * 0.9);
+    ctx.closePath();
+    const bodyGrad = ctx.createLinearGradient(-r * 0.5, -r, r * 0.8, r);
+    bodyGrad.addColorStop(0, '#00b4d8');
+    bodyGrad.addColorStop(0.4, body);
+    bodyGrad.addColorStop(0.7, '#48cae4');
+    bodyGrad.addColorStop(1, '#0077b6');
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.restore();
+    // Beak
+    ctx.beginPath();
+    ctx.moveTo(r * 1.0, -r * 0.25);
+    ctx.lineTo(r * 1.55, -r * 0.05);
+    ctx.lineTo(r * 1.55, r * 0.25);
+    ctx.lineTo(r * 1.0, r * 0.25);
+    ctx.closePath();
+    ctx.fillStyle = '#ff9f1c';
+    ctx.fill();
+    // Colorful scale patterns (subtle animation)
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+    ctx.lineWidth = 1.1;
+    for (let i = 0; i < 4; i++) {
+      const y = -r * 0.6 + i * r * 0.35;
+      const sway = Math.sin(t * 2.2 + i) * 1.2;
+      ctx.beginPath();
+      ctx.arc(r * 0.1 + i * r * 0.15 + sway, y, r * 0.22, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Dorsal fin animated
+    const dorsalWave = Math.sin(t * 3.8) * 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 0.85);
+    ctx.quadraticCurveTo(r * 0.4, -r * 1.3 + dorsalWave, r * 0.85, -r * 0.65);
+    ctx.quadraticCurveTo(r * 0.5, -r * 0.8, -r * 0.1, -r * 0.85);
+    ctx.closePath();
+    ctx.fillStyle = '#ff9f1c';
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.7, -r * 0.08, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#002820';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.73, -r * 0.1, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else if (id === 'diamond') {
+    // Mandarin Dragonet - complex patterns, wide fins, animated
+    const tailSwing = Math.sin(t * 4.8) * 0.19;
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.75, 0);
+    ctx.quadraticCurveTo(-r * 1.6 + tailSwing, -r * 1.2, -r * 2.3 + tailSwing * 1.4, -r * 0.6);
+    ctx.quadraticCurveTo(-r * 1.8, 0, -r * 2.3 + tailSwing * 1.4, r * 0.6);
+    ctx.quadraticCurveTo(-r * 1.6 - tailSwing, r * 1.2, -r * 0.75, 0);
+    ctx.closePath();
+    ctx.fillStyle = fin;
+    ctx.fill();
+    // Body
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.55, -r * 0.95);
+    ctx.quadraticCurveTo(r * 0.3, -r * 1.1, r * 1.05, -r * 0.5);
+    ctx.quadraticCurveTo(r * 1.2, 0, r * 1.05, r * 0.5);
+    ctx.quadraticCurveTo(r * 0.3, r * 1.1, -r * 0.55, r * 0.95);
+    ctx.closePath();
+    ctx.fillStyle = body;
+    ctx.fill();
+    // Intricate patterns with subtle animation
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.6;
+    const swirl = Math.sin(t * 2) * 0.8;
+    ctx.beginPath();
+    ctx.arc(r * 0.1 + swirl, -r * 0.4, r * 0.35, 0, Math.PI * 1.8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(r * 0.4 - swirl * 0.5, r * 0.3, r * 0.3, 0, Math.PI * 1.6);
+    ctx.stroke();
+    // Colored spots
+    ctx.fillStyle = '#ff6d00';
+    ctx.beginPath();
+    ctx.arc(r * 0.25, -r * 0.15, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#48cae4';
+    ctx.beginPath();
+    ctx.arc(r * 0.55, r * 0.1, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+    // Wide flowing fins (animated)
+    const finWave = Math.sin(t * 3.5) * 4;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.5, -r * 1.4 + finWave, r * 1.0, -r * 0.7);
+    ctx.quadraticCurveTo(r * 0.6, -r * 0.85, -r * 0.1, -r * 0.9);
+    ctx.closePath();
+    ctx.fillStyle = '#4361ee';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.05, r * 0.85);
+    ctx.quadraticCurveTo(r * 0.55, r * 1.35 - finWave * 0.7, r * 0.95, r * 0.75);
+    ctx.quadraticCurveTo(r * 0.55, r * 0.9, -r * 0.05, r * 0.85);
+    ctx.closePath();
+    ctx.fillStyle = '#4361ee';
+    ctx.fill();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.75, -r * 0.05, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a1a22';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.78, -r * 0.08, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+  } else {
+    // Legendary - Moorish Idol - long dorsal, dramatic pattern, elegant animated tail
+    const tailSwing = Math.sin(t * 3.8) * 0.17;
+    const dorsalWave = Math.sin(t * 2.8) * 5;
+    // Long elegant dorsal fin (animated)
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.2, -r * 0.95);
+    ctx.quadraticCurveTo(r * 0.1, -r * 1.6 + dorsalWave, r * 0.6, -r * 0.9);
+    ctx.quadraticCurveTo(r * 0.35, -r * 1.0, -r * 0.2, -r * 0.95);
     ctx.closePath();
     ctx.fillStyle = '#1a1a1a';
     ctx.fill();
-  } else {
+    ctx.strokeStyle = '#ffd60a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Thin stylish body
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.7, -r * 0.6);
+    ctx.quadraticCurveTo(r * 0.15, -r * 0.75, r * 1.0, -r * 0.3);
+    ctx.quadraticCurveTo(r * 1.15, 0, r * 1.0, r * 0.3);
+    ctx.quadraticCurveTo(r * 0.15, r * 0.75, -r * 0.7, r * 0.6);
+    ctx.closePath();
+    const bodyGrad = ctx.createLinearGradient(-r * 0.5, -r * 0.6, r * 0.8, r * 0.6);
+    bodyGrad.addColorStop(0, '#1a1a1a');
+    bodyGrad.addColorStop(0.35, '#fffbe6');
+    bodyGrad.addColorStop(0.65, '#1a1a1a');
+    bodyGrad.addColorStop(1, '#ffd60a');
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    // Dramatic pattern lines
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.3;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.4, -r * 0.55);
+    ctx.lineTo(r * 0.3, -r * 0.45);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.25, r * 0.4);
+    ctx.lineTo(r * 0.45, r * 0.35);
+    ctx.stroke();
+    // Elegant tail
     ctx.beginPath();
     ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.45, -r * 0.95, -r * 1.95, -r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.55, 0, -r * 1.95, r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.45, r * 0.95, -r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 1.65 + tailSwing, -r * 0.9, -r * 2.4 + tailSwing * 1.3, -r * 0.35);
+    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.4 + tailSwing * 1.3, r * 0.35);
+    ctx.quadraticCurveTo(-r * 1.65 - tailSwing, r * 0.9, -r * 0.85, 0);
     ctx.closePath();
-    ctx.fillStyle = fin;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd60a';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    // Eye
+    ctx.beginPath();
+    ctx.arc(r * 0.7, -r * 0.08, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a1200';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.73, -r * 0.1, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
     ctx.fill();
   }
-  // Body
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.9, 0);
-  ctx.quadraticCurveTo(-r * 0.55, -r * 0.95, r * 0.15, -r * 0.88);
-  ctx.quadraticCurveTo(r * 0.95, -r * 0.5, r * 1.05, 0);
-  ctx.quadraticCurveTo(r * 0.95, r * 0.5, r * 0.15, r * 0.88);
-  ctx.quadraticCurveTo(-r * 0.55, r * 0.95, -r * 0.9, 0);
-  ctx.closePath();
-  const bodyGrad = ctx.createLinearGradient(-r, -r, r, r);
-  if (id === 'legendary') {
-    bodyGrad.addColorStop(0, '#1a1a1a');
-    bodyGrad.addColorStop(0.5, '#ffd60a');
-    bodyGrad.addColorStop(1, '#1a1a1a');
-  } else {
-    bodyGrad.addColorStop(0, belly);
-    bodyGrad.addColorStop(0.4, body);
-    bodyGrad.addColorStop(1, fin);
-  }
-  ctx.fillStyle = bodyGrad;
-  ctx.fill();
-  // Belly
-  ctx.beginPath();
-  ctx.ellipse(r * 0.1, r * 0.28, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
-  ctx.fillStyle = belly;
-  ctx.globalAlpha = 0.85;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  // Dorsal
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.15, -r * 0.7);
-  ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
-  ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = id === 'legendary' ? '#ffd60a' : fin;
-  ctx.fill();
-  // Pectoral
-  ctx.beginPath();
-  ctx.moveTo(r * 0.25, r * 0.1);
-  ctx.quadraticCurveTo(r * 1.05, -r * 0.2, r * 1.1, r * 0.35);
-  ctx.quadraticCurveTo(r * 0.7, r * 0.3, r * 0.25, r * 0.1);
-  ctx.closePath();
-  ctx.fillStyle = fin;
-  ctx.fill();
-  // Eye
-  ctx.beginPath();
-  ctx.arc(r * 0.55, -r * 0.15, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a1200';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
 
   // === VISUAL POWER-UP INDICATORS ===
-  // Shield active: pulsing blue protective bubble
   if (state.shieldCharges > 0) {
     const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
     ctx.save();
@@ -610,17 +878,16 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.restore();
   }
 
-  // Magnet active: enhanced orange magnetic glow + field
   if (state.magnetUntil > state.timeMs) {
     const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
     ctx.save();
     ctx.shadowColor = '#ff6d00';
-    ctx.shadowBlur = 32 + magPulse * 14;
-    ctx.globalAlpha = 0.4 + magPulse * 0.25;
+    ctx.shadowBlur = 28 + magPulse * 12;
+    ctx.globalAlpha = 0.35 + magPulse * 0.2;
     ctx.beginPath();
-    ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2);
     ctx.strokeStyle = '#ff9500';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.2;
     ctx.stroke();
     ctx.restore();
   }
@@ -743,7 +1010,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     const dx = (Math.random() - 0.5) * state.shakeIntensity;
     const dy = (Math.random() - 0.5) * state.shakeIntensity;
     ctx.translate(dx, dy);
-    }
+  }
   drawBackground(ctx, state);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
