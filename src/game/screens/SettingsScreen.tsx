@@ -30,21 +30,24 @@ function SkinPreview({ skinId }: { skinId: SkinId }) {
       className="skin-fish-preview"
       style={{
         position: 'relative',
-        width: 72,
-        height: 52,
+        width: 92,
+        height: 66,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        filter: `drop-shadow(0 0 12px ${skin.colors.glow})`,
+        filter: `drop-shadow(0 0 14px ${skin.colors.glow})`,
       }}
       aria-hidden="true"
     >
       <img
         src={map[skinId]}
         alt={skin.name}
-        width={72}
-        height={52}
-        style={{ objectFit: 'contain' }}
+        style={{ 
+          width: '82px', 
+          height: 'auto', 
+          maxHeight: '58px',
+          objectFit: 'contain' 
+        }}
       />
     </div>
   );

@@ -14,13 +14,24 @@ function FishIcon({ skinId }: { skinId: SkinId }) {
   };
 
   return (
-    <div style={{ filter: `drop-shadow(0 0 18px ${skin.colors.glow})` }}>
+    <div 
+      style={{ 
+        filter: `drop-shadow(0 0 20px ${skin.colors.glow})`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%'
+      }}
+    >
       <img
         src={map[skinId]}
         alt={skin.name}
-        width={120}
-        height={85}
-        style={{ objectFit: 'contain' }}
+        style={{ 
+          width: '148px', 
+          height: 'auto', 
+          maxHeight: '108px',
+          objectFit: 'contain' 
+        }}
       />
     </div>
   );

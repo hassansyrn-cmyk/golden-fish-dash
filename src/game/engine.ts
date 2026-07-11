@@ -514,7 +514,10 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
 
   ctx.save();
   ctx.translate(fishX, state.fishY);
-  ctx.rotate(state.fishRotation);
+
+  // Subtle rotation only (-12° to +18° max) for natural look
+  const subtleRotation = Math.max(-0.21, Math.min(0.31, state.fishRotation));
+  ctx.rotate(subtleRotation);
 
   // Legendary subtle golden aura behind the sprite
   if (id === 'legendary') {
@@ -527,11 +530,10 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.restore();
   }
 
-  // Draw the PNG fish sprite
+  // Draw the PNG fish sprite (larger but natural size, centered on collision point)
   const fishImg = getFishImage(id);
   if (fishImg && fishImg.complete && fishImg.naturalWidth > 0) {
-    // Scale sprite to fit nicely around the collision radius (sprites are larger)
-    const targetWidth = r * 2.6;
+    const targetWidth = r * 3.1; // increased for better visibility, still natural
     const scale = targetWidth / fishImg.width;
     const drawW = fishImg.width * scale;
     const drawH = fishImg.height * scale;
