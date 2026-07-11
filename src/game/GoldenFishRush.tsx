@@ -10,6 +10,7 @@ import LoadingScreen from './screens/LoadingScreen';
 import AchievementsModal from './screens/AchievementsModal';
 import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
+import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
@@ -61,7 +62,13 @@ export default function GoldenFishRush() {
       }
 
       backListenerRef.current = await App.addListener('backButton', () => {
-        if (screen === 'shop' || screen === 'settings' || screen === 'leaderboard' || screen === 'howto') {
+        if (
+          screen === 'shop' ||
+          screen === 'settings' ||
+          screen === 'leaderboard' ||
+          screen === 'howto' ||
+          screen === 'dailyRewards'
+        ) {
           setScreen('menu');
         } else if (screen === 'playing') {
           setScreen('paused');
@@ -200,6 +207,14 @@ export default function GoldenFishRush() {
     setScreen('menu');
   }, []);
 
+  const handleOpenDailyRewards = useCallback(() => {
+    setScreen('dailyRewards');
+  }, []);
+
+  const handleDailyBack = useCallback(() => {
+    setScreen('menu');
+  }, []);
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -255,6 +270,7 @@ export default function GoldenFishRush() {
             onHowTo={() => setScreen('howto')}
             onSettings={() => setScreen('settings')}
             onShop={handleOpenShop}
+            onDailyRewards={handleOpenDailyRewards}
           />
         )}
 
@@ -265,6 +281,8 @@ export default function GoldenFishRush() {
         {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('menu')} />}
 
         {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
+
+        {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleDailyBack} />}
 
         {screen === 'paused' && (
           <PauseScreen
