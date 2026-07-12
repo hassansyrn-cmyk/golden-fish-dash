@@ -610,18 +610,30 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.restore();
   }
 
-  // Magnet active: enhanced orange magnetic glow + field
+  // Magnet active: enhanced orange magnetic glow + field (Phase 6 improved)
   if (state.magnetUntil > state.timeMs) {
     const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
     ctx.save();
+
+    // Outer strong orange glow (beam-like field)
     ctx.shadowColor = '#ff6d00';
-    ctx.shadowBlur = 32 + magPulse * 14;
-    ctx.globalAlpha = 0.4 + magPulse * 0.25;
+    ctx.shadowBlur = 38 + magPulse * 18;
+    ctx.globalAlpha = 0.35 + magPulse * 0.3;
     ctx.beginPath();
-    ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 1.7, 0, Math.PI * 2);
     ctx.strokeStyle = '#ff9500';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
+
+    // Inner brighter core
+    ctx.shadowBlur = 18 + magPulse * 10;
+    ctx.globalAlpha = 0.55 + magPulse * 0.25;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffb347';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
     ctx.restore();
   }
 
