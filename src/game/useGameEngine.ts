@@ -22,6 +22,7 @@ import { playSoundEffect, ensureAudioContext } from './managers/AudioManager';
 import { getCurrentDifficulty, type DifficultyState } from './managers/DifficultyManager';
 import { powerUpManager } from './managers/PowerUpManager';
 import { getLevelInfo, addXP, getLevelRewards } from './managers/ProgressionManager';
+import { getDailyMissions, updateMissionProgress, type Mission } from './managers/MissionManager';
 import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
@@ -58,10 +59,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 3: PROGRESSION ===
-  const totalXPRef = useRef(0); // In real app, load from storage
+  // === PHASE 3: PROGRESSION + MISSIONS ===
+  const totalXPRef = useRef(0);
+  const missionsRef = useRef<Mission[]>(getDailyMissions());
+  const gamesPlayedRef = useRef(0);
 
-  // === PHASE 2: COMBO + DIFFICULTY + POWERUPS ===
+  // === PHASE 2 ===
   const comboRef = useRef(0);
   const maxComboRef = useRef(0);
   const startTimeRef = useRef(0);
@@ -122,9 +125,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     comboRef.current = 0;
     maxComboRef.current = 0;
     nearMissCountRef.current = 0;
+    gamesPlayedRef.current = 0;
     startTimeRef.current = performance.now();
     difficultyRef.current = getCurrentDifficulty(0);
     powerUpManager.reset();
+    missionsRef.current = getDailyMissions();
 
     setScore(0);
     setRoundCoins(0);
@@ -176,6 +181,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     playSoundEffect('reward');
     safeVibrate([30, 20, 50], getSettings().vibration);
 
+    // Update mission if exists
+    const { updatedMissions } = updateMissionProgress(missionsRef.current, 'use_dash', 1);
+    missionsRef.current = updatedMissions;
+
     return true;
   }, []);
 
@@ -202,6 +211,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           playSoundEffect('milestone');
           safeVibrate(25, getSettings().vibration);
         }
+
+        // Update reach_score mission
+        const { updatedMissions } = updateMissionProgress(missionsRef.current, 'reach_score', newScore);
+        missionsRef.current = updatedMissions;
       },
 
       onCoinCollect: (amount: number) => {
@@ -242,6 +255,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           safeVibrate([25, 25, 35], getSettings().vibration);
         }
 
+        // Update collect_coins mission
+        const { updatedMissions } = updateMissionProgress(missionsRef.current, 'collect_coins', finalAmount);
+        missionsRef.current = updatedMissions;
+
         setCoins(total);
 
         if (total >= 50) {
@@ -269,8 +286,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         const finalScore = state.score;
         const best = getPersonalBest();
 
-        // === PHASE 3: Award XP on game over ===
-        const xpGained = Math.floor(finalScore * 0.8) + 20; // base XP + score bonus
+        // === PHASE 3: XP + Missions ===
+        const xpGained = Math.floor(finalScore * 0.8) + 20;
         const result = addXP(totalXPRef.current, xpGained);
         totalXPRef.current = result.newTotal;
 
@@ -280,6 +297,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           playSoundEffect('achievement');
           safeVibrate([50, 30, 50], getSettings().vibration);
         }
+
+        // Update play_games mission
+        gamesPlayedRef.current += 1;
+        const { updatedMissions } = updateMissionProgress(missionsRef.current, 'play_games', 1);
+        missionsRef.current = updatedMissions;
 
         playSoundEffect('gameover');
         safeVibrate([80, 50, 120], getSettings().vibration);
@@ -369,10 +391,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           difficultyRef.current = getCurrentDifficulty(elapsedSeconds, score);
           powerUpManager.update(now);
 
-          if (powerUpManager.has('slowMotion')) {
-            // dt already handled in previous version if needed
-          }
-
           stepEngine(
             state,
             dt,
@@ -455,6 +473,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     levelProgress: levelInfo.progress,
     currentXP: levelInfo.currentXP,
     xpToNextLevel: levelInfo.xpToNextLevel,
+    missions: missionsRef.current,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
