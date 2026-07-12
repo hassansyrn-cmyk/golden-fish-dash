@@ -96,6 +96,7 @@ export interface EngineState {
   shieldCharges: number;
   magnetUntil: number;
   gemBoostActive: boolean;
+  luckyCatchActive: boolean; // Phase 8: Golden fish ability
 }
 
 const FISH_X_RATIO = 0.28;
@@ -117,6 +118,7 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
     lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
+    luckyCatchActive: false,
   };
 }
 
@@ -163,12 +165,22 @@ function spawnObstacle(state: EngineState, score: number) {
     bobbing: hardMode && Math.random() < 0.22, bobPhase: Math.random() * Math.PI * 2,
     bobAmount: 12 + Math.random() * 10, glowing: legendaryMode, isDouble,
   });
-  if (Math.random() < 0.68) {
+
+  // Base coin spawn chance
+  let coinChance = 0.68;
+
+  // === Phase 8: Lucky Catch ability (Golden fish) ===
+  if (state.luckyCatchActive) {
+    coinChance = 0.82; // Significantly higher chance for coins
+  }
+
+  if (Math.random() < coinChance) {
     state.coins.push({
       x: state.width + BASE.obstacleWidth + 44, y: gapY + (Math.random() - 0.5) * (gap * 0.32),
       collected: false, bonus: score >= 60 && Math.random() < 0.22,
     });
   }
+
   // Gem spawn (boosted if shop gemBoostActive)
   const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
   if (Math.random() < gemChance) {
@@ -177,6 +189,7 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, pulse: Math.random() * Math.PI * 2,
     });
   }
+
   // Rare power-up spawn (shield or magnet) - increased slightly for better shop value
   if (Math.random() < 0.06) {
     const type: 'shield' | 'magnet' = Math.random() < 0.5 ? 'shield' : 'magnet';
@@ -584,17 +597,13 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const blink = invincible && Math.floor(state.timeMs / 100) % 2 === 0;
   if (blink) return;
-
   const r = BASE.fishRadius;
   const id = skin.id;
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
   const { body, belly, fin, glow } = skin.colors;
-
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
-
-  // === Phase 8: Enhanced realistic fish rendering ===
   if (id === 'legendary') {
     ctx.save();
     ctx.globalAlpha = 0.28 + pulse * 0.2;
@@ -610,7 +619,6 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.stroke();
     ctx.restore();
   }
-
   ctx.save();
   ctx.shadowColor = glow;
   ctx.shadowBlur = id === 'legendary' ? 32 : id === 'diamond' ? 26 : 18;
