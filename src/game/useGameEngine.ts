@@ -25,6 +25,7 @@ import { powerUpManager } from './managers/PowerUpManager';
 import { getLevelInfo, addXP, getLevelRewards } from './managers/ProgressionManager';
 import { getDailyMissions, updateMissionProgress, type Mission } from './managers/MissionManager';
 import { analytics } from './managers/AnalyticsManager';
+import { adManager } from './managers/AdManager';
 import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
 import type { ShopItemId, SkinId } from './types';
@@ -312,6 +313,13 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         safeVibrate([80, 50, 120], getSettings().vibration);
 
         analytics.track('game_over', { score: finalScore, level: getLevelInfo(totalXPRef.current).level });
+
+        // === PHASE 4: Ad frequency logic ===
+        if (adManager.shouldShowInterstitial()) {
+          // In real app, you would show the interstitial here
+          // For now we just track it
+          analytics.track('ad_watched', { type: 'interstitial' });
+        }
 
         if (finalScore > best) {
           setPersonalBest(finalScore);
