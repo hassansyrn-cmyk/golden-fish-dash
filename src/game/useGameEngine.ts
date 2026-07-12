@@ -6,6 +6,7 @@ import {
   getPersonalBest,
   getSettings,
   getShopInventory,
+  getUpgradeLevel,
   incrementRoundsPlayed,
   setPersonalBest,
   unlockAchievement,
@@ -25,7 +26,7 @@ import { getLevelInfo, addXP, getLevelRewards } from './managers/ProgressionMana
 import { getDailyMissions, updateMissionProgress, type Mission } from './managers/MissionManager';
 import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
-import type { SkinId } from './types';
+import type { ShopItemId, SkinId } from './types';
 
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -59,7 +60,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 3: PROGRESSION + MISSIONS ===
+  // === PHASE 3: PROGRESSION + MISSIONS + UPGRADES ===
   const totalXPRef = useRef(0);
   const missionsRef = useRef<Mission[]>(getDailyMissions());
   const gamesPlayedRef = useRef(0);
@@ -181,7 +182,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     playSoundEffect('reward');
     safeVibrate([30, 20, 50], getSettings().vibration);
 
-    // Update mission if exists
     const { updatedMissions } = updateMissionProgress(missionsRef.current, 'use_dash', 1);
     missionsRef.current = updatedMissions;
 
@@ -212,7 +212,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           safeVibrate(25, getSettings().vibration);
         }
 
-        // Update reach_score mission
         const { updatedMissions } = updateMissionProgress(missionsRef.current, 'reach_score', newScore);
         missionsRef.current = updatedMissions;
       },
@@ -255,7 +254,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           safeVibrate([25, 25, 35], getSettings().vibration);
         }
 
-        // Update collect_coins mission
         const { updatedMissions } = updateMissionProgress(missionsRef.current, 'collect_coins', finalAmount);
         missionsRef.current = updatedMissions;
 
@@ -286,7 +284,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         const finalScore = state.score;
         const best = getPersonalBest();
 
-        // === PHASE 3: XP + Missions ===
         const xpGained = Math.floor(finalScore * 0.8) + 20;
         const result = addXP(totalXPRef.current, xpGained);
         totalXPRef.current = result.newTotal;
@@ -298,7 +295,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           safeVibrate([50, 30, 50], getSettings().vibration);
         }
 
-        // Update play_games mission
         gamesPlayedRef.current += 1;
         const { updatedMissions } = updateMissionProgress(missionsRef.current, 'play_games', 1);
         missionsRef.current = updatedMissions;
@@ -455,6 +451,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const elapsedSeconds = (performance.now() - startTimeRef.current) / 1000;
   const levelInfo = getLevelInfo(totalXPRef.current);
 
+  // Get current upgrade levels (Phase 3)
+  const shieldLevel = getUpgradeLevel('shield');
+  const magnetLevel = getUpgradeLevel('magnet');
+  const gemBoostLevel = getUpgradeLevel('gemBoost');
+  const dashLevel = getUpgradeLevel('dash');
+
   return {
     score,
     coins,
@@ -474,6 +476,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     currentXP: levelInfo.currentXP,
     xpToNextLevel: levelInfo.xpToNextLevel,
     missions: missionsRef.current,
+    // Upgrade Levels
+    shieldLevel,
+    magnetLevel,
+    gemBoostLevel,
+    dashLevel,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
