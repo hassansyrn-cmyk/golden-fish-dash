@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addCoins,
   consumeShopItem,
@@ -184,8 +184,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
-    // This runs every time a new engine is created for a run.
-    // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
     let applied = false;
 
@@ -225,7 +223,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     state.fishY = state.height / 2;
     state.fishVY = 0;
     state.invincibleUntil = state.timeMs + invincibleMs;
-    state.shakeIntensity = 0; // Reset any camera shake so revive countdown is smooth (no background tremble)
+    state.shakeIntensity = 0;
 
     state.obstacles = state.obstacles.filter((obs) => {
       const approximateHalfObstacleWidth = 20;
@@ -243,6 +241,124 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     playSound('reward', settings.sound);
     safeVibrate([45, 35, 45], settings.vibration);
   }, []);
+
+  // === PERFORMANCE OPTIMIZATION (Phase 1) ===
+  // Create stable callbacks object once to avoid allocation every frame in RAF loop.
+  // This reduces GC pressure significantly on mid-range Android devices.
+  const stepCallbacksRef = useRef<any>(null);
+
+  if (!stepCallbacksRef.current) {
+    stepCallbacksRef.current = {
+      onScore: (newScore: number) => {
+        setScore(newScore);
+
+        const milestone = Math.floor(newScore / 25);
+        if (milestone > lastMilestoneRef.current && newScore > 0) {
+          lastMilestoneRef.current = milestone;
+          const settings = getSettings();
+          playSound('milestone', settings.sound);
+          safeVibrate(25, settings.vibration);
+        }
+      },
+
+      onCoinCollect: (amount: number) => {
+        roundCoinsRef.current += amount;
+        setRoundCoins(roundCoinsRef.current);
+
+        let total = addCoins(amount);
+
+        const settings = getSettings();
+        playSound('coin', settings.sound);
+        safeVibrate(18, settings.vibration);
+
+        const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
+          'coins',
+          amount,
+        );
+
+        if (justCompleted) {
+          total = addCoins(challengeState.challenge.rewardCoins);
+          playSound('achievement', settings.sound);
+          safeVibrate([25, 25, 35], settings.vibration);
+        }
+
+        setCoins(total);
+
+        if (total >= 50) {
+          unlockAchievement('coin_collector');
+        }
+      },
+
+      onGemCollect: (currentLives: number) => {
+        setLives(currentLives);
+        const settings = getSettings();
+        playSound('gem', settings.sound);
+        safeVibrate([35, 25, 55], settings.vibration);
+      },
+
+      onLifeChange: (currentLives: number) => {
+        setLives(currentLives);
+        const settings = getSettings();
+        if (currentLives <= 0) {
+          safeVibrate(35, settings.vibration);
+        }
+      },
+
+      onDeath: () => {
+        const state = stateRef.current;
+        if (!state) return;
+        const finalScore = state.score;
+        const best = getPersonalBest();
+
+        const settings = getSettings();
+        playSound('gameover', settings.sound);
+        safeVibrate([80, 50, 120], settings.vibration);
+
+        if (finalScore > best) {
+          setPersonalBest(finalScore);
+          playSound('achievement', settings.sound);
+        }
+
+        if (finalScore >= 10) unlockAchievement('getting_better');
+        if (finalScore >= 25) unlockAchievement('deep_diver');
+        if (finalScore >= 50) unlockAchievement('ocean_master');
+        if (finalScore >= 100) unlockAchievement('legendary_swimmer');
+
+        const scoreProgress = updateDailyChallengeProgress('score', finalScore);
+
+        if (scoreProgress.justCompleted) {
+          const total = addCoins(scoreProgress.state.challenge.rewardCoins);
+          setCoins(total);
+          playSound('achievement', settings.sound);
+          safeVibrate([25, 25, 45], settings.vibration);
+        }
+
+        if (finalScore >= 26) {
+          const hardModeProgress = updateDailyChallengeProgress('hardMode', 1);
+          if (hardModeProgress.justCompleted) {
+            const total = addCoins(hardModeProgress.state.challenge.rewardCoins);
+            setCoins(total);
+            playSound('achievement', settings.sound);
+            safeVibrate([25, 25, 45], settings.vibration);
+          }
+        }
+
+        onGameOverRef.current(finalScore);
+      },
+
+      onShake: (intensity: number) => {
+        const state = stateRef.current;
+        if (!state) return;
+        state.shakeIntensity = intensity;
+
+        if (intensity >= 4) {
+          const settings = getSettings();
+          playSound('hit', settings.sound);
+          safeVibrate(55, settings.vibration);
+        }
+      },
+    };
+  }
 
   useEffect(() => {
     if (!active) return;
@@ -267,112 +383,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         if (!pausedRef.current && state.running) {
           const settings = getSettings();
 
+          // Use stable callbacks ref - major allocation reduction per frame
           stepEngine(
             state,
             dt,
-            {
-              onScore: (newScore) => {
-                setScore(newScore);
-
-                const milestone = Math.floor(newScore / 25);
-
-                if (milestone > lastMilestoneRef.current && newScore > 0) {
-                  lastMilestoneRef.current = milestone;
-                  playSound('milestone', settings.sound);
-                  safeVibrate(25, settings.vibration);
-                }
-              },
-
-              onCoinCollect: (amount) => {
-                roundCoinsRef.current += amount;
-                setRoundCoins(roundCoinsRef.current);
-
-                let total = addCoins(amount);
-
-                playSound('coin', settings.sound);
-                safeVibrate(18, settings.vibration);
-
-                const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
-                  'coins',
-                  amount,
-                );
-
-                if (justCompleted) {
-                  total = addCoins(challengeState.challenge.rewardCoins);
-                  playSound('achievement', settings.sound);
-                  safeVibrate([25, 25, 35], settings.vibration);
-                }
-
-                setCoins(total);
-
-                if (total >= 50) {
-                  unlockAchievement('coin_collector');
-                }
-              },
-
-              onGemCollect: (currentLives) => {
-                setLives(currentLives);
-                playSound('gem', settings.sound);
-                safeVibrate([35, 25, 55], settings.vibration);
-              },
-
-              onLifeChange: (currentLives) => {
-                setLives(currentLives);
-
-                if (currentLives <= 0) {
-                  safeVibrate(35, settings.vibration);
-                }
-              },
-
-              onDeath: () => {
-                const finalScore = state.score;
-                const best = getPersonalBest();
-
-                playSound('gameover', settings.sound);
-                safeVibrate([80, 50, 120], settings.vibration);
-
-                if (finalScore > best) {
-                  setPersonalBest(finalScore);
-                  playSound('achievement', settings.sound);
-                }
-
-                if (finalScore >= 10) unlockAchievement('getting_better');
-                if (finalScore >= 25) unlockAchievement('deep_diver');
-                if (finalScore >= 50) unlockAchievement('ocean_master');
-                if (finalScore >= 100) unlockAchievement('legendary_swimmer');
-
-                const scoreProgress = updateDailyChallengeProgress('score', finalScore);
-
-                if (scoreProgress.justCompleted) {
-                  const total = addCoins(scoreProgress.state.challenge.rewardCoins);
-                  setCoins(total);
-                  playSound('achievement', settings.sound);
-                  safeVibrate([25, 25, 45], settings.vibration);
-                }
-
-                if (finalScore >= 26) {
-                  const hardModeProgress = updateDailyChallengeProgress('hardMode', 1);
-
-                  if (hardModeProgress.justCompleted) {
-                    const total = addCoins(hardModeProgress.state.challenge.rewardCoins);
-                    setCoins(total);
-                    playSound('achievement', settings.sound);
-                    safeVibrate([25, 25, 45], settings.vibration);
-                  }
-                }
-
-                onGameOverRef.current(finalScore);
-              },
-
-              onShake: (intensity) => {
-                state.shakeIntensity = intensity;
-
-                if (intensity >= 4) {
-                  playSound('hit', settings.sound);
-                  safeVibrate(55, settings.vibration);
-                }
-              },
-            },
+            stepCallbacksRef.current,
             { vibration: settings.vibration },
           );
         }
