@@ -24,6 +24,7 @@ import { getCurrentDifficulty, type DifficultyState } from './managers/Difficult
 import { powerUpManager } from './managers/PowerUpManager';
 import { getLevelInfo, addXP, getLevelRewards } from './managers/ProgressionManager';
 import { getDailyMissions, updateMissionProgress, type Mission } from './managers/MissionManager';
+import { analytics } from './managers/AnalyticsManager';
 import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
 import type { ShopItemId, SkinId } from './types';
@@ -60,7 +61,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 3: PROGRESSION + MISSIONS + UPGRADES ===
+  // === PHASE 3 + 4 ===
   const totalXPRef = useRef(0);
   const missionsRef = useRef<Mission[]>(getDailyMissions());
   const gamesPlayedRef = useRef(0);
@@ -132,6 +133,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     powerUpManager.reset();
     missionsRef.current = getDailyMissions();
 
+    analytics.track('game_start');
+
     setScore(0);
     setRoundCoins(0);
     setCoins(getCoins());
@@ -185,6 +188,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const { updatedMissions } = updateMissionProgress(missionsRef.current, 'use_dash', 1);
     missionsRef.current = updatedMissions;
 
+    analytics.track('powerup_activated', { type: 'dash' });
+
     return true;
   }, []);
 
@@ -194,6 +199,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     playSoundEffect('milestone');
     safeVibrate([20, 40, 20], getSettings().vibration);
+
+    analytics.track('powerup_activated', { type: 'slowMotion' });
 
     return true;
   }, []);
@@ -293,6 +300,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           if (rewards.coins) addCoins(rewards.coins);
           playSoundEffect('achievement');
           safeVibrate([50, 30, 50], getSettings().vibration);
+
+          analytics.track('level_up', { level: result.newLevel, xp: totalXPRef.current });
         }
 
         gamesPlayedRef.current += 1;
@@ -301,6 +310,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
         playSoundEffect('gameover');
         safeVibrate([80, 50, 120], getSettings().vibration);
+
+        analytics.track('game_over', { score: finalScore, level: getLevelInfo(totalXPRef.current).level });
 
         if (finalScore > best) {
           setPersonalBest(finalScore);
@@ -355,6 +366,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
             playSoundEffect('milestone');
             safeVibrate(25, getSettings().vibration);
           }
+
+          analytics.track('near_miss', { intensity });
         }
       },
     };
@@ -451,7 +464,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const elapsedSeconds = (performance.now() - startTimeRef.current) / 1000;
   const levelInfo = getLevelInfo(totalXPRef.current);
 
-  // Get current upgrade levels (Phase 3)
   const shieldLevel = getUpgradeLevel('shield');
   const magnetLevel = getUpgradeLevel('magnet');
   const gemBoostLevel = getUpgradeLevel('gemBoost');
@@ -476,7 +488,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     currentXP: levelInfo.currentXP,
     xpToNextLevel: levelInfo.xpToNextLevel,
     missions: missionsRef.current,
-    // Upgrade Levels
     shieldLevel,
     magnetLevel,
     gemBoostLevel,
