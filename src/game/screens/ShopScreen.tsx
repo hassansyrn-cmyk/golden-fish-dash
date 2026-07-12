@@ -123,7 +123,7 @@ export default function ShopScreen({ onBack }: Props) {
   const getCurrentLevel = (id: ShopItemId) => getUpgradeLevel(id);
 
   return (
-    <div className="screen shop-screen" style={{ paddingTop: 'max(50px, env(safe-area-inset-top) + 20px)' }}>
+    <div className="screen shop-screen" style={{ paddingTop: 'max(70px, env(safe-area-inset-top) + 35px)' }}>
       {/* Header */}
       <div className="shop-header">
         <button className="btn btn-secondary" onClick={onBack}>
