@@ -147,6 +147,7 @@ const DEFAULT_SHOP_INVENTORY: ShopInventory = {
   magnet: 0,
   gemBoost: 0,
   continueToken: 0,
+  dash: 0,
 };
 
 export function getShopInventory(): ShopInventory {
@@ -156,7 +157,6 @@ export function getShopInventory(): ShopInventory {
 function saveShopInventory(inventory: ShopInventory) {
   writeJSON(STORAGE_KEYS.shopInventory, inventory);
 }
-
 export function getShopItemCount(itemId: ShopItemId): number {
   const inv = getShopInventory();
   return inv[itemId] ?? 0;
@@ -226,7 +226,6 @@ export function addLocalLeaderboardEntry(name: string, score: number): Leaderboa
   writeJSON(STORAGE_KEYS.leaderboard, trimmed);
   return trimmed;
 }
-
 export function qualifiesForLeaderboard(score: number): boolean {
   const board = getLocalLeaderboard();
   return score > 0 && (board.length < 10 || score > board[board.length - 1].score);
@@ -343,7 +342,6 @@ export function canClaimDailyReward(): boolean {
   const today = dateKey();
   return state.lastClaimDate !== today;
 }
-
 export function getCurrentDailyReward(): { day: number; label: string; type: string; amount: number } {
   const state = getDailyRewardState();
   const day = ((state.streakDay - 1) % 7) + 1;
