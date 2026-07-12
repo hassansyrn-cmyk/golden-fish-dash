@@ -139,6 +139,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       engine.gemBoostActive = true;
     }
 
+    if (skinAbility === 'lucky_catch') {
+      engine.luckyCatchActive = true; // Golden fish - higher coin spawn
+    }
+
     roundCoinsRef.current = 0;
     lastMilestoneRef.current = 0;
     comboRef.current = 0;
