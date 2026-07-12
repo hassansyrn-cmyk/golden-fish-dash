@@ -1,151 +1,143 @@
-import { useEffect, useRef } from 'react';
+import React, { Suspense, useRef, useEffect, useMemo } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { AnimationMixer } from 'three';
 
-interface Fish3DProps {
+// Shared ref for fish position - updated by game loop, read by 3D overlay
+// This avoids any React state updates or re-renders caused by Fish3D
+export const fishPositionRef: React.MutableRefObject<{
+  x: number;
+  y: number;
+  rotation: number;
   width: number;
   height: number;
-  fishX: number;
-  fishY: number;
-  fishRotation: number;
-  isInvincible: boolean;
-  skin: string;
+}> = { current: { x: 0, y: 0, rotation: 0, width: 400, height: 600 } };
+
+interface FishModelProps {
+  baseRotationY?: number;
 }
 
-export default function Fish3D({ width, height, fishX, fishY, fishRotation, isInvincible, skin }: Fish3DProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const cameraRef = useRef<THREE.OrthographicCamera | null>(null);
-  const fishRef = useRef<THREE.Group | null>(null);
-  const mixerRef = useRef<AnimationMixer | null>(null);
-  const clockRef = useRef(new THREE.Clock());
+function FishModel({ baseRotationY = Math.PI / 2 }: FishModelProps) {
+  const groupRef = useRef<THREE.Group>(null!);
+  
+  const gltf = useGLTF('/models/fish-skins/golden-fish.glb', true);
+  
+  const model = useMemo(() => {
+    if (!gltf.scene) return null;
+    const cloned = gltf.scene.clone(true);
+    cloned.rotation.y = baseRotationY;
+    return cloned;
+  }, [gltf.scene, baseRotationY]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  useFrame(() => {
+    if (!groupRef.current || !model) return;
 
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      alpha: true,
-      antialias: true,
-    });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    rendererRef.current = renderer;
+    const pos = fishPositionRef.current;
+    if (!pos || pos.width === 0) return;
 
-    const scene = new THREE.Scene();
-    sceneRef.current = scene;
+    const scale = 1;
+    const centerX = pos.width / 2;
+    const centerY = pos.height / 2;
 
-    const camera = new THREE.OrthographicCamera(
-      -width / 2,
-      width / 2,
-      height / 2,
-      -height / 2,
-      0.1,
-      2000
-    );
-    camera.position.set(0, 0, 500);
-    cameraRef.current = camera;
+    groupRef.current.position.x = (pos.x - centerX) * scale * 0.9;
+    groupRef.current.position.y = -(pos.y - centerY) * scale * 0.9;
+    groupRef.current.position.z = 0;
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
-    scene.add(hemiLight);
+    groupRef.current.rotation.set(0, baseRotationY, pos.rotation || 0);
+  });
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(0.5, 1, 1);
-    scene.add(dirLight);
-
-    const loader = new GLTFLoader();
-    loader.load(
-      '/models/fish-skins/golden-fish.glb',
-      (gltf) => {
-        const model = gltf.scene;
-
-        // Center the model
-        const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        model.position.sub(center);
-
-        // Make it face RIGHT (like the 2D fish in the game)
-        // Most GLB fish are facing +Z, so rotate Y by -90 degrees
-        model.rotation.y = -Math.PI / 2;
-
-        // Large scale to match 2D fish size
-        model.scale.set(38, 38, 38);
-
-        scene.add(model);
-        fishRef.current = model;
-
-        if (gltf.animations && gltf.animations.length > 0) {
-          const mixer = new AnimationMixer(model);
-          mixerRef.current = mixer;
-          const action = mixer.clipAction(gltf.animations[0]);
-          action.play();
-        }
-
-        console.log('%c[3D Fish] Model loaded and facing right', 'color:#22c55e');
-      },
-      undefined,
-      (error) => console.error('[3D Fish] Load error:', error)
-    );
-
-    const animate = () => {
-      requestAnimationFrame(animate);
-
-      if (mixerRef.current) {
-        mixerRef.current.update(clockRef.current.getDelta());
-      }
-
-      const fish = fishRef.current;
-      if (fish) {
-        // Perfect alignment with 2D fish center
-        const worldX = fishX - width / 2;
-        const worldY = height / 2 - fishY;
-
-        fish.position.x = worldX;
-        fish.position.y = worldY;
-
-        // Tilt with velocity (Z rotation on top of the Y facing)
-        fish.rotation.z = fishRotation * -1.1;
-
-        // Shield effect
-        if (isInvincible) {
-          fish.traverse((child: any) => {
-            if (child.material?.color) child.material.color.setHex(0x67e8f9);
-          });
-        }
-      }
-
-      renderer.render(scene, cameraRef.current!);
-    };
-
-    animate();
-
-    return () => {
-      renderer.dispose();
-      if (mixerRef.current) mixerRef.current.stopAllAction();
-    };
-  }, [width, height, skin]);
-
-  useEffect(() => {
-    const fish = fishRef.current;
-    if (fish) {
-      const worldX = fishX - width / 2;
-      const worldY = height / 2 - fishY;
-      fish.position.x = worldX;
-      fish.position.y = worldY;
-      fish.rotation.z = fishRotation * -1.1;
-    }
-  }, [fishX, fishY, fishRotation, isInvincible, width, height]);
+  if (!model) return null;
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={width}
-      height={height}
-      className="absolute top-0 left-0 pointer-events-none z-[30]"
-      style={{ width: `${width}px`, height: `${height}px` }}
-    />
+    <group ref={groupRef}>
+      <primitive object={model} scale={[0.65, 0.65, 0.65]} />
+    </group>
   );
 }
+
+interface Fish3DErrorBoundaryProps {
+  children: React.ReactNode;
+  onError?: () => void;
+}
+
+class Fish3DErrorBoundary extends React.Component<Fish3DErrorBoundaryProps, { hasError: boolean }> {
+  constructor(props: Fish3DErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.warn('[Fish3D] GLB load or render error (game continues normally):', error, errorInfo);
+    this.props.onError?.();
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
+}
+
+interface Fish3DProps {
+  visible?: boolean;
+  baseRotationY?: number;
+}
+
+export function Fish3D({ visible = true, baseRotationY = Math.PI / 2 }: Fish3DProps) {
+  if (!visible) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 20,
+        overflow: 'hidden',
+      }}
+      aria-hidden="true"
+    >
+      <Canvas
+        style={{ 
+          background: 'transparent',
+          width: '100%',
+          height: '100%',
+        }}
+        camera={{ 
+          position: [0, 0, 120], 
+          fov: 45,
+          near: 1,
+          far: 1000
+        }}
+        gl={{ 
+          alpha: true, 
+          antialias: true,
+          preserveDrawingBuffer: true 
+        }}
+      >
+        <ambientLight intensity={0.9} />
+        <directionalLight 
+          position={[80, 60, 120]} 
+          intensity={1.1} 
+          castShadow={false}
+        />
+        
+        <Fish3DErrorBoundary>
+          <Suspense fallback={null}>
+            <FishModel baseRotationY={baseRotationY} />
+          </Suspense>
+        </Fish3DErrorBoundary>
+      </Canvas>
+    </div>
+  );
+}
+
+useGLTF.preload('/models/fish-skins/golden-fish.glb');

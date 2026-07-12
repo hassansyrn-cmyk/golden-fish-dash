@@ -21,12 +21,15 @@ import {
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
 
+import { fishPositionRef } from './Fish3D';
+
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   active: boolean;
   paused: boolean;
   skin: SkinId;
   onGameOver: (finalScore: number) => void;
+  fishPositionRef?: React.MutableRefObject<any>;
 }
 
 function safeVibrate(pattern: number | number[], enabled: boolean) {
@@ -36,9 +39,7 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
 
   try {
     navigator.vibrate(pattern);
-  } catch {
-    // Ignore unsupported vibration errors.
-  }
+  } catch {}
 }
 
 type SoundName =
@@ -93,9 +94,7 @@ function playTone(frequency: number, durationMs: number, type: OscillatorType, g
 
     oscillator.start();
     oscillator.stop(ctx.currentTime + durationMs / 1000 + 0.02);
-  } catch {
-    // Ignore audio errors.
-  }
+  } catch {}
 }
 
 function playSound(name: SoundName, enabled: boolean) {
@@ -141,7 +140,6 @@ function playSound(name: SoundName, enabled: boolean) {
     case 'milestone':
       playTone(600, 75, 'square', 0.035);
       setTimeout(() => playTone(900, 90, 'square', 0.03), 80);
-      setTimeout(() => playTone(1600, 130, 'triangle', 0.035), 170);
       break;
 
     default:
@@ -149,19 +147,11 @@ function playSound(name: SoundName, enabled: boolean) {
   }
 }
 
-export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
+export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, fishPositionRef: externalFishPosRef }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
   const [lives, setLives] = useState(0);
-
-  // Expose fish state for 3D rendering
-  const [fishState, setFishState] = useState({
-    x: 0,
-    y: 0,
-    rotation: 0,
-    invincible: false,
-  });
 
   const stateRef = useRef<EngineState | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -192,24 +182,20 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const engine = createEngine(width, height, skin);
     stateRef.current = engine;
 
-    // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
-    const inv = getShopInventory();
-    let applied = false;
+    (engine as any).hide2DFish = true;
 
+    const inv = getShopInventory();
     if (inv.shield > 0) {
       consumeShopItem('shield');
       engine.shieldCharges = 1;
-      applied = true;
     }
     if (inv.magnet > 0) {
       consumeShopItem('magnet');
       engine.magnetUntil = engine.timeMs + 8000;
-      applied = true;
     }
     if (inv.gemBoost > 0) {
       consumeShopItem('gemBoost');
       engine.gemBoostActive = true;
-      applied = true;
     }
 
     roundCoinsRef.current = 0;
@@ -220,14 +206,15 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setCoins(getCoins());
     setLives(engine.lives ?? 0);
 
-    // Initial fish state
-    setFishState({
-      x: width * FISH_X_RATIO,
-      y: height / 2,
-      rotation: 0,
-      invincible: false,
-    });
-  }, [canvasRef, skin]);
+    const targetRef = externalFishPosRef || fishPositionRef;
+    if (targetRef && targetRef.current) {
+      targetRef.current.x = width * FISH_X_RATIO;
+      targetRef.current.y = height / 2;
+      targetRef.current.rotation = 0;
+      targetRef.current.width = width;
+      targetRef.current.height = height;
+    }
+  }, [canvasRef, skin, externalFishPosRef]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
     const state = stateRef.current;
@@ -246,10 +233,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       const approximateHalfObstacleWidth = 20;
       const obsRight = obs.x + approximateHalfObstacleWidth;
       const obsLeft = obs.x - approximateHalfObstacleWidth;
-
       const safelyBehindFish = obsRight < fishX - state.width * 0.25;
       const farAhead = obsLeft > state.width + 140;
-
       return safelyBehindFish || farAhead;
     });
 
@@ -257,14 +242,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     playSound('reward', settings.sound);
     safeVibrate([45, 35, 45], settings.vibration);
-
-    // Update fish state on revive
-    setFishState((prev) => ({
-      ...prev,
-      y: state.height / 2,
-      rotation: 0,
-      invincible: true,
-    }));
   }, []);
 
   useEffect(() => {
@@ -296,86 +273,59 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
             {
               onScore: (newScore) => {
                 setScore(newScore);
-
                 const milestone = Math.floor(newScore / 25);
-
                 if (milestone > lastMilestoneRef.current && newScore > 0) {
                   lastMilestoneRef.current = milestone;
                   playSound('milestone', settings.sound);
                   safeVibrate(25, settings.vibration);
                 }
               },
-
               onCoinCollect: (amount) => {
                 roundCoinsRef.current += amount;
                 setRoundCoins(roundCoinsRef.current);
-
                 let total = addCoins(amount);
-
                 playSound('coin', settings.sound);
                 safeVibrate(18, settings.vibration);
-
-                const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
-                  'coins',
-                  amount,
-                );
-
+                const { state: challengeState, justCompleted } = updateDailyChallengeProgress('coins', amount);
                 if (justCompleted) {
                   total = addCoins(challengeState.challenge.rewardCoins);
                   playSound('achievement', settings.sound);
                   safeVibrate([25, 25, 35], settings.vibration);
                 }
-
                 setCoins(total);
-
-                if (total >= 50) {
-                  unlockAchievement('coin_collector');
-                }
+                if (total >= 50) unlockAchievement('coin_collector');
               },
-
               onGemCollect: (currentLives) => {
                 setLives(currentLives);
                 playSound('gem', settings.sound);
                 safeVibrate([35, 25, 55], settings.vibration);
               },
-
               onLifeChange: (currentLives) => {
                 setLives(currentLives);
-
-                if (currentLives <= 0) {
-                  safeVibrate(35, settings.vibration);
-                }
+                if (currentLives <= 0) safeVibrate(35, settings.vibration);
               },
-
               onDeath: () => {
                 const finalScore = state.score;
                 const best = getPersonalBest();
-
                 playSound('gameover', settings.sound);
                 safeVibrate([80, 50, 120], settings.vibration);
-
                 if (finalScore > best) {
                   setPersonalBest(finalScore);
                   playSound('achievement', settings.sound);
                 }
-
                 if (finalScore >= 10) unlockAchievement('getting_better');
                 if (finalScore >= 25) unlockAchievement('deep_diver');
                 if (finalScore >= 50) unlockAchievement('ocean_master');
                 if (finalScore >= 100) unlockAchievement('legendary_swimmer');
-
                 const scoreProgress = updateDailyChallengeProgress('score', finalScore);
-
                 if (scoreProgress.justCompleted) {
                   const total = addCoins(scoreProgress.state.challenge.rewardCoins);
                   setCoins(total);
                   playSound('achievement', settings.sound);
                   safeVibrate([25, 25, 45], settings.vibration);
                 }
-
                 if (finalScore >= 26) {
                   const hardModeProgress = updateDailyChallengeProgress('hardMode', 1);
-
                   if (hardModeProgress.justCompleted) {
                     const total = addCoins(hardModeProgress.state.challenge.rewardCoins);
                     setCoins(total);
@@ -383,13 +333,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                     safeVibrate([25, 25, 45], settings.vibration);
                   }
                 }
-
                 onGameOverRef.current(finalScore);
               },
-
               onShake: (intensity) => {
                 state.shakeIntensity = intensity;
-
                 if (intensity >= 4) {
                   playSound('hit', settings.sound);
                   safeVibrate(55, settings.vibration);
@@ -398,18 +345,18 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
             },
             { vibration: settings.vibration },
           );
+        }
 
-          // Update fish state for 3D sync every frame
-          setFishState({
-            x: state.width * FISH_X_RATIO,
-            y: state.fishY,
-            rotation: state.fishRotation,
-            invincible: state.timeMs < state.invincibleUntil,
-          });
+        const targetRef = externalFishPosRef || fishPositionRef;
+        if (targetRef && targetRef.current && state) {
+          targetRef.current.x = state.width * FISH_X_RATIO;
+          targetRef.current.y = state.fishY;
+          targetRef.current.rotation = state.fishRotation || 0;
+          targetRef.current.width = state.width;
+          targetRef.current.height = state.height;
         }
 
         const ctx = canvas.getContext('2d');
-
         if (ctx) {
           renderEngine(ctx, state);
         }
@@ -423,7 +370,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const handleResize = () => {
       const canvas = canvasRef.current;
       const state = stateRef.current;
-
       if (!canvas || !state) return;
 
       const parent = canvas.parentElement;
@@ -432,33 +378,31 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       canvas.width = width;
       canvas.height = height;
-
       state.width = width;
       state.height = height;
+
+      const targetRef = externalFishPosRef || fishPositionRef;
+      if (targetRef && targetRef.current) {
+        targetRef.current.width = width;
+        targetRef.current.height = height;
+      }
     };
 
     window.addEventListener('resize', handleResize);
 
     return () => {
       mounted = false;
-
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
       window.removeEventListener('resize', handleResize);
     };
-  }, [active, setup, canvasRef]);
+  }, [active, setup, canvasRef, externalFishPosRef]);
 
   const doJump = useCallback(() => {
     const state = stateRef.current;
     if (!state) return;
-
     const settings = getSettings();
-
     playSound('jump', settings.sound);
     safeVibrate(10, settings.vibration);
-
     jumpEngine(state, { vibration: settings.vibration });
   }, []);
 
@@ -469,10 +413,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     lives,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
-    fishX: fishState.x,
-    fishY: fishState.y,
-    fishRotation: fishState.rotation,
-    isInvincible: fishState.invincible,
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,

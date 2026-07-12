@@ -14,7 +14,6 @@ import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
-import Fish3D from './Fish3D';
 import {
   getSelectedSkin,
   incrementGameOverCount,
@@ -27,6 +26,8 @@ import {
 import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+
+import { Fish3D, fishPositionRef } from './Fish3D';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
@@ -45,12 +46,13 @@ export default function GoldenFishRush() {
   const skin = getSelectedSkin();
   const backListenerRef = useRef<any>(null);
 
+  const show3DFishRef = useRef(true);
+
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
     return () => clearTimeout(timer);
   }, []);
 
-  // Android hardware back button handling (Capacitor)
   useEffect(() => {
     const setupBackButton = async () => {
       if (backListenerRef.current) {
@@ -78,7 +80,6 @@ export default function GoldenFishRush() {
         } else if (screen === 'continueAd') {
           setScreen('gameover');
         } else if (screen === 'menu') {
-          // Allow default exit behavior on main menu
         } else {
           setScreen('menu');
         }
@@ -111,21 +112,23 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt, fishX, fishY, fishRotation, isInvincible } = useGameEngine({
+  const { score, lives, doJump, reviveAt } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
     onGameOver: handleGameOver,
+    fishPositionRef,
   });
 
-  // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
     setShowInterstitial(false);
     setNewUnlocks(null);
+
+    show3DFishRef.current = true;
 
     setScreen('playing');
   }, []);
@@ -140,7 +143,7 @@ export default function GoldenFishRush() {
     unlockAchievement('comeback');
     reviveAt(REVIVE_INVINCIBILITY_MS);
     setReviveCountdown(3);
-    setScreen('playing'); // Immediately switch so ad modal closes cleanly
+    setScreen('playing');
   }, [reviveAt]);
 
   const handleSkipAd = useCallback(() => {
@@ -216,35 +219,28 @@ export default function GoldenFishRush() {
     setScreen('menu');
   }, []);
 
-  // Get current game dimensions for 3D fish
-  const gameWidth = canvasRef.current?.width || window.innerWidth;
-  const gameHeight = canvasRef.current?.height || window.innerHeight;
+  const isPlayingOrPaused = screen === 'playing' || screen === 'paused';
 
   return (
     <div className="gfr-root">
-      <div className="gfr-game-area">
+      <div className="gfr-game-area" style={{ position: 'relative', overflow: 'hidden' }}>
         <canvas
           ref={canvasRef}
           className="gfr-canvas"
+          style={{ zIndex: 1, position: 'relative' }}
           onPointerDown={handlePointerDown}
           onClick={handlePointerDown}
         />
 
-        {/* Real 3D Golden Fish overlay */}
-        {(screen === 'playing' || screen === 'paused') && (
-          <Fish3D
-            width={gameWidth}
-            height={gameHeight}
-            fishX={fishX}
-            fishY={fishY}
-            fishRotation={fishRotation}
-            isInvincible={isInvincible}
-            skin={skin}
+        {isPlayingOrPaused && show3DFishRef.current && (
+          <Fish3D 
+            visible={true} 
+            baseRotationY={Math.PI / 2}
           />
         )}
 
         {(screen === 'playing' || screen === 'paused') && (
-          <div className="hud">
+          <div className="hud" style={{ zIndex: 30 }}>
             <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`}>
               {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => (
                 <span
@@ -268,13 +264,13 @@ export default function GoldenFishRush() {
                 aria-label="Pause"
               >
                 ⏸
-            </button>
+              </button>
             )}
           </div>
         )}
 
         {reviveCountdown !== null && (
-          <div className="revive-countdown-overlay">
+          <div className="revive-countdown-overlay" style={{ zIndex: 40 }}>
             <span>{reviveCountdown > 0 ? reviveCountdown : 'GO!'}</span>
           </div>
         )}
@@ -293,13 +289,9 @@ export default function GoldenFishRush() {
         )}
 
         {screen === 'howto' && <HowToPlay onBack={() => setScreen('menu')} />}
-
         {screen === 'settings' && <SettingsScreen onBack={() => setScreen('menu')} />}
-
         {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('menu')} />}
-
         {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
-
         {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleDailyBack} />}
 
         {screen === 'paused' && (
@@ -337,7 +329,6 @@ export default function GoldenFishRush() {
         )}
 
         {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
-
         {showInterstitial && <InterstitialAd onClose={() => setShowInterstitial(false)} />}
       </div>
 
