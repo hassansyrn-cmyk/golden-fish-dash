@@ -62,7 +62,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 3 + 4: Economy + Missions ===
+  // === PHASE 3 + 4 + 5 ===
   const totalXPRef = useRef(0);
   const missionsRef = useRef<Mission[]>(getDailyMissions());
   const gamesPlayedRef = useRef(0);
@@ -248,6 +248,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         let finalAmount = Math.floor(amount * diff.rewardMultiplier * powerUpManager.getCoinMultiplier());
 
         const combo = comboRef.current;
+
+        // === PHASE 5: Extra coin bonus on high combos (final polish) ===
+        if (combo === 15) finalAmount += 5;
+        if (combo === 25) finalAmount += 8;
+        if (combo === 35) finalAmount += 12;
+
         if (combo >= 30) finalAmount = Math.floor(finalAmount * 2.5);
         else if (combo >= 20) finalAmount = Math.floor(finalAmount * 2.0);
         else if (combo >= 10) finalAmount = Math.floor(finalAmount * 1.5);
@@ -257,7 +263,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
         let total = addCoins(finalAmount);
 
-        if (combo === 10 || combo === 20 || combo === 30) {
+        if (combo === 10 || combo === 20 || combo === 30 || combo === 15 || combo === 25 || combo === 35) {
           playSoundEffect('achievement');
           safeVibrate([40, 30, 40], getSettings().vibration);
         } else {
