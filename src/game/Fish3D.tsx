@@ -1,10 +1,9 @@
 import React, { Suspense, useRef, useEffect, useMemo } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Shared ref for fish position - updated by game loop, read by 3D overlay
-// This avoids any React state updates or re-renders caused by Fish3D
 export const fishPositionRef: React.MutableRefObject<{
   x: number;
   y: number;
@@ -53,6 +52,16 @@ function FishModel({ baseRotationY = Math.PI / 2 }: FishModelProps) {
       <primitive object={model} scale={[0.65, 0.65, 0.65]} />
     </group>
   );
+}
+
+// Force transparent background for the 3D overlay
+function TransparentBackground() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    gl.setClearColor(0x000000, 0); // fully transparent
+    if (scene) scene.background = null;
+  }, [gl, scene]);
+  return null;
 }
 
 interface Fish3DErrorBoundaryProps {
@@ -123,6 +132,7 @@ export function Fish3D({ visible = true, baseRotationY = Math.PI / 2 }: Fish3DPr
           preserveDrawingBuffer: true 
         }}
       >
+        <TransparentBackground />
         <ambientLight intensity={0.9} />
         <directionalLight 
           position={[80, 60, 120]} 
