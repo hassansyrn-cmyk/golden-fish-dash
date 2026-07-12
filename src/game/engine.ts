@@ -401,11 +401,63 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   grad.addColorStop(1, c2);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
+
   if (state.score >= 100) {
     const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
     ctx.fillStyle = `rgba(255, 214, 10, ${0.05 + pulse * 0.06})`;
     ctx.fillRect(0, 0, width, height);
   }
+
+  // === Phase 7: Distant fish shadows (subtle background life) ===
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 5; i++) {
+    const x = ((state.timeMs * 0.008 + i * 180) % (width + 120)) - 60;
+    const y = 80 + (i % 3) * 95;
+    const size = 18 + (i % 4) * 6;
+
+    ctx.beginPath();
+    ctx.ellipse(x, y, size, size * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(x - size, y);
+    ctx.quadraticCurveTo(x - size * 1.6, y - size * 0.4, x - size * 2.1, y);
+    ctx.quadraticCurveTo(x - size * 1.6, y + size * 0.4, x - size, y);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // === Phase 7: Seaweed at the bottom ===
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.fillStyle = '#0a4d3c';
+  for (let i = 0; i < 9; i++) {
+    const baseX = (width / 9) * i + 15;
+    const sway = Math.sin(state.timeMs * 0.0015 + i) * 8;
+
+    ctx.beginPath();
+    ctx.moveTo(baseX, height);
+    ctx.quadraticCurveTo(baseX + sway * 0.6, height - 55, baseX - sway * 0.4, height - 95);
+    ctx.quadraticCurveTo(baseX + sway, height - 130, baseX - sway * 0.7, height - 165);
+    ctx.lineTo(baseX - 4, height);
+    ctx.closePath();
+    ctx.fill();
+
+    // Second smaller seaweed next to it
+    if (i % 2 === 0) {
+      ctx.beginPath();
+      ctx.moveTo(baseX + 18, height);
+      ctx.quadraticCurveTo(baseX + 22 + sway * 0.5, height - 40, baseX + 14, height - 75);
+      ctx.lineTo(baseX + 14, height);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
   ctx.save();
   ctx.globalAlpha = 0.12;
   for (let i = 0; i < 4; i++) {
@@ -420,6 +472,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.fill();
   }
   ctx.restore();
+
   ctx.save();
   for (const b of state.bubbles) {
     ctx.beginPath();
@@ -431,6 +484,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.stroke();
   }
   ctx.restore();
+
   ctx.save();
   ctx.globalAlpha = 0.35;
   ctx.fillStyle = tier.name === 'Easy' ? '#0a6ea8' : '#04203f';
@@ -444,6 +498,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.fill();
   }
   ctx.restore();
+
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.fillRect(0, height - 8, width, 8);
   ctx.fillRect(0, 0, width, 8);
@@ -651,15 +706,13 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   }
 
   // Dash active: strong forward speed aura + energy lines (Phase 6)
-  // Note: We use invincibleUntil + recent high velocity as proxy for Dash
-  const isDashing = state.fishVY < -8; // Strong upward velocity indicates Dash
+  const isDashing = state.fishVY < -8;
   if (isDashing) {
     ctx.save();
     ctx.globalAlpha = 0.6;
     ctx.strokeStyle = '#00e5ff';
     ctx.lineWidth = 2;
 
-    // Speed lines behind the fish
     for (let i = 0; i < 5; i++) {
       const offset = 12 + i * 8;
       ctx.beginPath();
@@ -673,7 +726,6 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       ctx.stroke();
     }
 
-    // Bright forward energy glow
     ctx.shadowColor = '#00e5ff';
     ctx.shadowBlur = 25;
     ctx.globalAlpha = 0.4;
