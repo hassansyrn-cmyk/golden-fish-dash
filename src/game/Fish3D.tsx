@@ -30,7 +30,6 @@ export default function Fish3D({ width, height, fishX, fishY, fishRotation, isIn
       canvas,
       alpha: true,
       antialias: true,
-      preserveDrawingBuffer: true,
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -39,7 +38,6 @@ export default function Fish3D({ width, height, fishX, fishY, fishRotation, isIn
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    // Orthographic camera covering the full screen (same as 2D canvas)
     const camera = new THREE.OrthographicCamera(
       -width / 2,
       width / 2,
@@ -51,7 +49,6 @@ export default function Fish3D({ width, height, fishX, fishY, fishRotation, isIn
     camera.position.set(0, 0, 500);
     cameraRef.current = camera;
 
-    // Better lighting for 3D model
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
     scene.add(hemiLight);
 
@@ -59,42 +56,38 @@ export default function Fish3D({ width, height, fishX, fishY, fishRotation, isIn
     dirLight.position.set(0.5, 1, 1);
     scene.add(dirLight);
 
-    // Load the GLB
     const loader = new GLTFLoader();
     loader.load(
       '/models/fish-skins/golden-fish.glb',
       (gltf) => {
         const model = gltf.scene;
 
-        // Auto-center the model pivot
+        // Center the model
         const box = new THREE.Box3().setFromObject(model);
         const center = box.getCenter(new THREE.Vector3());
         model.position.sub(center);
 
-        // Scale - start with reasonable size (adjust based on your GLB)
-        // BASE.fishRadius is ~18-22 in 2D, so we scale the 3D model to match visually
-        model.scale.set(22, 22, 22);
+        // Make it face RIGHT (like the 2D fish in the game)
+        // Most GLB fish are facing +Z, so rotate Y by -90 degrees
+        model.rotation.y = -Math.PI / 2;
+
+        // Large scale to match 2D fish size
+        model.scale.set(38, 38, 38);
 
         scene.add(model);
         fishRef.current = model;
 
-        // Play animation if available (tail swim etc)
         if (gltf.animations && gltf.animations.length > 0) {
           const mixer = new AnimationMixer(model);
           mixerRef.current = mixer;
           const action = mixer.clipAction(gltf.animations[0]);
           action.play();
-          console.log('%c[3D Fish] Animation found and playing', 'color:#0ea5e9');
-        } else {
-          console.log('%c[3D Fish] No animation in GLB', 'color:#f59e0b');
         }
 
-        console.log('%c[3D Fish] Golden Fish model loaded successfully!', 'color:#22c55e');
+        console.log('%c[3D Fish] Model loaded and facing right', 'color:#22c55e');
       },
       undefined,
-      (error) => {
-        console.error('[3D Fish] Failed to load golden-fish.glb:', error);
-      }
+      (error) => console.error('[3D Fish] Load error:', error)
     );
 
     const animate = () => {
@@ -105,34 +98,26 @@ export default function Fish3D({ width, height, fishX, fishY, fishRotation, isIn
       }
 
       const fish = fishRef.current;
-      if (fish && cameraRef.current) {
-        // Correct positioning: convert screen pixels to 3D world coordinates
-        // 3D camera is centered at (0,0), screen fishX/Y are from top-left
+      if (fish) {
+        // Perfect alignment with 2D fish center
         const worldX = fishX - width / 2;
         const worldY = height / 2 - fishY;
 
         fish.position.x = worldX;
         fish.position.y = worldY;
 
-        // Apply tilt from velocity (same feeling as 2D)
+        // Tilt with velocity (Z rotation on top of the Y facing)
         fish.rotation.z = fishRotation * -1.1;
 
-        // Extra subtle breathing/bob if no animation
-        if (!mixerRef.current) {
-          fish.position.y += Math.sin(Date.now() * 0.0025) * 2;
-        }
-
-        // Shield glow effect
+        // Shield effect
         if (isInvincible) {
           fish.traverse((child: any) => {
-            if (child.material && child.material.color) {
-              child.material.color.setHex(0x67e8f9);
-            }
+            if (child.material?.color) child.material.color.setHex(0x67e8f9);
           });
         }
       }
 
-      renderer.render(scene, cameraRef.current);
+      renderer.render(scene, cameraRef.current!);
     };
 
     animate();
@@ -143,7 +128,6 @@ export default function Fish3D({ width, height, fishX, fishY, fishRotation, isIn
     };
   }, [width, height, skin]);
 
-  // Live update when fish moves
   useEffect(() => {
     const fish = fishRef.current;
     if (fish) {
@@ -160,7 +144,7 @@ export default function Fish3D({ width, height, fishX, fishY, fishRotation, isIn
       ref={canvasRef}
       width={width}
       height={height}
-      className="absolute top-0 left-0 pointer-events-none z-[20]"
+      className="absolute top-0 left-0 pointer-events-none z-[30]"
       style={{ width: `${width}px`, height: `${height}px` }}
     />
   );
