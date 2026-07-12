@@ -18,6 +18,7 @@ import {
   renderEngine,
   stepEngine,
 } from './engine';
+import { playSoundEffect, ensureAudioContext } from './managers/AudioManager';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
 
@@ -38,113 +39,6 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
     navigator.vibrate(pattern);
   } catch {
     // Ignore unsupported vibration errors.
-  }
-}
-
-type SoundName =
-  | 'jump'
-  | 'coin'
-  | 'gem'
-  | 'reward'
-  | 'achievement'
-  | 'hit'
-  | 'gameover'
-  | 'milestone';
-
-let audioContext: AudioContext | null = null;
-
-function getAudioContext() {
-  if (typeof window === 'undefined') return null;
-
-  const AudioContextClass =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
-  if (!AudioContextClass) return null;
-
-  if (!audioContext) {
-    audioContext = new AudioContextClass();
-  }
-
-  return audioContext;
-}
-
-function playTone(frequency: number, durationMs: number, type: OscillatorType, gainValue = 0.045) {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-
-  try {
-    if (ctx.state === 'suspended') {
-      void ctx.resume();
-    }
-
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    oscillator.type = type;
-    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime);
-
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(gainValue, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
-
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + durationMs / 1000 + 0.02);
-  } catch {
-    // Ignore audio errors.
-  }
-}
-
-function playSound(name: SoundName, enabled: boolean) {
-  if (!enabled) return;
-
-  switch (name) {
-    case 'jump':
-      playTone(520, 70, 'sine', 0.035);
-      break;
-
-    case 'coin':
-      playTone(880, 75, 'triangle', 0.045);
-      setTimeout(() => playTone(1180, 65, 'triangle', 0.035), 55);
-      break;
-
-    case 'gem':
-      playTone(960, 90, 'triangle', 0.045);
-      setTimeout(() => playTone(1280, 100, 'sine', 0.04), 80);
-      setTimeout(() => playTone(1600, 130, 'triangle', 0.035), 170);
-      break;
-
-    case 'reward':
-      playTone(740, 80, 'triangle', 0.045);
-      setTimeout(() => playTone(980, 80, 'triangle', 0.04), 70);
-      setTimeout(() => playTone(1320, 110, 'triangle', 0.035), 140);
-      break;
-
-    case 'achievement':
-      playTone(660, 80, 'sine', 0.045);
-      setTimeout(() => playTone(880, 90, 'sine', 0.04), 80);
-      setTimeout(() => playTone(1100, 120, 'sine', 0.035), 165);
-      break;
-
-    case 'hit':
-      playTone(180, 120, 'sawtooth', 0.04);
-      break;
-
-    case 'gameover':
-      playTone(260, 130, 'sawtooth', 0.04);
-      setTimeout(() => playTone(170, 180, 'sawtooth', 0.035), 130);
-      break;
-
-    case 'milestone':
-      playTone(600, 75, 'square', 0.035);
-      setTimeout(() => playTone(900, 90, 'square', 0.03), 80);
-      break;
-
-    default:
-      break;
   }
 }
 
@@ -216,7 +110,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const state = stateRef.current;
     if (!state) return;
 
-    const settings = getSettings();
     const fishX = state.width * FISH_X_RATIO;
 
     state.running = true;
@@ -238,13 +131,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     state.elapsedSinceSpawn = -850;
 
-    playSound('reward', settings.sound);
-    safeVibrate([45, 35, 45], settings.vibration);
+    playSoundEffect('reward');
+    safeVibrate([45, 35, 45], getSettings().vibration);
   }, []);
 
   // === PERFORMANCE OPTIMIZATION (Phase 1) ===
-  // Create stable callbacks object once to avoid allocation every frame in RAF loop.
-  // This reduces GC pressure significantly on mid-range Android devices.
+  // Stable callbacks + now using centralized AudioManager
   const stepCallbacksRef = useRef<any>(null);
 
   if (!stepCallbacksRef.current) {
@@ -255,9 +147,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         const milestone = Math.floor(newScore / 25);
         if (milestone > lastMilestoneRef.current && newScore > 0) {
           lastMilestoneRef.current = milestone;
-          const settings = getSettings();
-          playSound('milestone', settings.sound);
-          safeVibrate(25, settings.vibration);
+          playSoundEffect('milestone');
+          safeVibrate(25, getSettings().vibration);
         }
       },
 
@@ -267,9 +158,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
         let total = addCoins(amount);
 
-        const settings = getSettings();
-        playSound('coin', settings.sound);
-        safeVibrate(18, settings.vibration);
+        playSoundEffect('coin');
+        safeVibrate(18, getSettings().vibration);
 
         const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
           'coins',
@@ -278,8 +168,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
         if (justCompleted) {
           total = addCoins(challengeState.challenge.rewardCoins);
-          playSound('achievement', settings.sound);
-          safeVibrate([25, 25, 35], settings.vibration);
+          playSoundEffect('achievement');
+          safeVibrate([25, 25, 35], getSettings().vibration);
         }
 
         setCoins(total);
@@ -291,16 +181,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       onGemCollect: (currentLives: number) => {
         setLives(currentLives);
-        const settings = getSettings();
-        playSound('gem', settings.sound);
-        safeVibrate([35, 25, 55], settings.vibration);
+        playSoundEffect('gem');
+        safeVibrate([35, 25, 55], getSettings().vibration);
       },
 
       onLifeChange: (currentLives: number) => {
         setLives(currentLives);
-        const settings = getSettings();
         if (currentLives <= 0) {
-          safeVibrate(35, settings.vibration);
+          safeVibrate(35, getSettings().vibration);
         }
       },
 
@@ -310,13 +198,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         const finalScore = state.score;
         const best = getPersonalBest();
 
-        const settings = getSettings();
-        playSound('gameover', settings.sound);
-        safeVibrate([80, 50, 120], settings.vibration);
+        playSoundEffect('gameover');
+        safeVibrate([80, 50, 120], getSettings().vibration);
 
         if (finalScore > best) {
           setPersonalBest(finalScore);
-          playSound('achievement', settings.sound);
+          playSoundEffect('achievement');
         }
 
         if (finalScore >= 10) unlockAchievement('getting_better');
@@ -329,8 +216,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         if (scoreProgress.justCompleted) {
           const total = addCoins(scoreProgress.state.challenge.rewardCoins);
           setCoins(total);
-          playSound('achievement', settings.sound);
-          safeVibrate([25, 25, 45], settings.vibration);
+          playSoundEffect('achievement');
+          safeVibrate([25, 25, 45], getSettings().vibration);
         }
 
         if (finalScore >= 26) {
@@ -338,8 +225,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           if (hardModeProgress.justCompleted) {
             const total = addCoins(hardModeProgress.state.challenge.rewardCoins);
             setCoins(total);
-            playSound('achievement', settings.sound);
-            safeVibrate([25, 25, 45], settings.vibration);
+            playSoundEffect('achievement');
+            safeVibrate([25, 25, 45], getSettings().vibration);
           }
         }
 
@@ -352,9 +239,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         state.shakeIntensity = intensity;
 
         if (intensity >= 4) {
-          const settings = getSettings();
-          playSound('hit', settings.sound);
-          safeVibrate(55, settings.vibration);
+          playSoundEffect('hit');
+          safeVibrate(55, getSettings().vibration);
         }
       },
     };
@@ -366,6 +252,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setup();
     incrementRoundsPlayed();
     unlockAchievement('first_flight');
+    ensureAudioContext(); // Prepare audio early
 
     let mounted = true;
     lastTimeRef.current = performance.now();
@@ -381,14 +268,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       if (state && canvas) {
         if (!pausedRef.current && state.running) {
-          const settings = getSettings();
-
-          // Use stable callbacks ref - major allocation reduction per frame
+          // Use stable callbacks ref
           stepEngine(
             state,
             dt,
             stepCallbacksRef.current,
-            { vibration: settings.vibration },
+            { vibration: getSettings().vibration },
           );
         }
 
@@ -438,12 +323,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const state = stateRef.current;
     if (!state) return;
 
-    const settings = getSettings();
+    playSoundEffect('jump');
+    safeVibrate(10, getSettings().vibration);
 
-    playSound('jump', settings.sound);
-    safeVibrate(10, settings.vibration);
-
-    jumpEngine(state, { vibration: settings.vibration });
+    jumpEngine(state, { vibration: getSettings().vibration });
   }, []);
 
   return {
