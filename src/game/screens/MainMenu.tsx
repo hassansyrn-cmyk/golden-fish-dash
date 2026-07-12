@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getDailyChallenge, getGlobalBestScore, getPersonalBest, getCoins, canClaimDailyReward } from '../storage';
+import { dateKey } from '../constants';
 
 interface Props {
   onPlay: () => void;
@@ -71,6 +72,7 @@ export default function MainMenu({
   onSettings,
   onShop,
   onDailyRewards,
+  onLuckySpin,
 }: Props) {
   const [best, setBest] = useState(0);
   const [globalBest, setGlobalBest] = useState(0);
