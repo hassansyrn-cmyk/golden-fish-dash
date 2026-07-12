@@ -17,12 +17,14 @@ import type { SkinId } from '../types';
 
 interface Props {
   finalScore: number;
+  roundCoins?: number;
   canContinue: boolean;
   onWatchAd: () => void;
   onPlayAgain: () => void;
   onLeaderboard: () => void;
   onMenu: () => void;
   onNewUnlocks?: (ids: SkinId[]) => void;
+  onShop?: () => void;
 }
 
 function encouragement(finalScore: number, best: number): string {
@@ -45,8 +47,12 @@ function getSkinById(id: SkinId) {
   return SKINS.find((skin) => skin.id === id);
 }
 
+import { addCoins, addXP } from '../storage';
+import { audioManager } from '../managers/AudioManager';
+
 export default function GameOverScreen({
   finalScore,
+  roundCoins = 0,
   canContinue,
   onWatchAd,
   onPlayAgain,
@@ -68,11 +74,31 @@ export default function GameOverScreen({
 
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
+  const [rewardsDoubled, setRewardsDoubled] = useState(false);
+  const [doubleMsg, setDoubleMsg] = useState<string | null>(null);
 
   useEffect(() => {
     setLevel(getLevel());
     setXp(getXP());
   }, []);
+
+  const handleDoubleRewards = () => {
+    if (rewardsDoubled) return;
+
+    // Double coins earned and double XP earned from this run!
+    const extraXP = Math.floor(finalScore * 2.5 + roundCoins * 1.5);
+
+    addCoins(roundCoins);
+    const prog = addXP(extraXP);
+
+    audioManager.playSound('reward', true);
+    setRewardsDoubled(true);
+    setDoubleMsg(`Double Rewards Activated! +🪙${roundCoins} Coins & +⚡${extraXP} XP Added!`);
+
+    // Refresh level and XP bars with the new values
+    setLevel(getLevel());
+    setXp(getXP());
+  };
 
   const xpNeeded = level * 150;
   const xpPercent = Math.min(100, Math.floor((xp / xpNeeded) * 100));
@@ -155,6 +181,12 @@ export default function GameOverScreen({
         </p>
       </div>
 
+      {doubleMsg && (
+        <div style={{ margin: '10px 0', padding: '10px', background: 'rgba(76,175,80,0.25)', border: '1px solid #4caf50', borderRadius: '8px', fontSize: '13px', color: '#81c784', fontWeight: 'bold', textAlign: 'center' }}>
+          {doubleMsg}
+        </div>
+      )}
+
       <p className="gameover-encourage">{encouragement(finalScore, prevBest)}</p>
 
       {newlyUnlocked.length > 0 && (
@@ -228,6 +260,17 @@ export default function GameOverScreen({
         {canContinue && (
           <button className="btn btn-ad" onClick={onWatchAd}>
             Watch Ad to Continue
+          </button>
+        )}
+
+        {/* Double Rewards Ad Simulator Button */}
+        {!rewardsDoubled && (roundCoins > 0 || finalScore > 0) && (
+          <button
+            className="btn btn-ad"
+            onClick={handleDoubleRewards}
+            style={{ background: 'linear-gradient(135deg, #fb8500, #ffb703)', border: 'none', color: '#000814' }}
+          >
+            📺 Double Coins & XP (Ad)
           </button>
         )}
 

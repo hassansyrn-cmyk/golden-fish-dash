@@ -53,7 +53,8 @@ export type ScreenName =
   | 'leaderboard'
   | 'settings'
   | 'shop'
-  | 'dailyRewards';
+  | 'dailyRewards'
+  | 'luckySpin';
 
 export type PowerUpType = 'shield' | 'magnet';
 

@@ -8,8 +8,11 @@ import {
   purchaseUpgradeLevel,
   getMissions,
   claimMissionReward,
+  addCoins,
+  addXP,
 } from '../storage';
 import type { ShopItemId, MissionDef } from '../types';
+import { audioManager } from '../managers/AudioManager';
 
 interface ShopItem {
   id: ShopItemId;
@@ -79,6 +82,38 @@ const UPGRADE_ITEMS: UpgradeItem[] = [
   },
 ];
 
+interface ChestItem {
+  tier: 'bronze' | 'silver' | 'gold';
+  name: string;
+  description: string;
+  cost: number;
+  color: string;
+}
+
+const CHEST_ITEMS: ChestItem[] = [
+  {
+    tier: 'bronze',
+    name: '📦 Bronze Chest',
+    description: 'Contains random coin rewards (15-40 coins) or consumable shields and magnets.',
+    cost: 50,
+    color: '#cd7f32',
+  },
+  {
+    tier: 'silver',
+    name: '🥈 Silver Chest',
+    description: 'Contains larger coins bundles (40-90 coins), double powerups, or gem boosts.',
+    cost: 100,
+    color: '#c0c0c0',
+  },
+  {
+    tier: 'gold',
+    name: '👑 Legendary Gold Chest',
+    description: 'Contains massive coin pools (80-200 coins), continue tokens, gem boosts, or level XP!',
+    cost: 180,
+    color: '#ffd700',
+  },
+];
+
 interface Props {
   onBack: () => void;
 }
@@ -87,7 +122,7 @@ export default function ShopScreen({ onBack }: Props) {
   const [coins, setCoins] = useState(getCoins());
   const [inventory, setInventory] = useState(getShopInventory());
   const [missions, setMissions] = useState<MissionDef[]>([]);
-  const [activeTab, setActiveTab] = useState<'powerups' | 'upgrades' | 'missions'>('powerups');
+  const [activeTab, setActiveTab] = useState<'powerups' | 'upgrades' | 'chests' | 'missions'>('powerups');
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -149,6 +184,91 @@ export default function ShopScreen({ onBack }: Props) {
     }
   };
 
+  const handleOpenChest = (tier: 'bronze' | 'silver' | 'gold', cost: number) => {
+    setMessage(null);
+    if (coins < cost) {
+      setMessage(`Need ${cost - coins} more coins to open this chest!`);
+      setTimeout(() => setMessage(null), 2000);
+      return;
+    }
+
+    // Deduct coins
+    const balance = coins - cost;
+    localStorage.setItem('gfr_coins', JSON.stringify(balance));
+    setCoins(balance);
+
+    // Roll rewards
+    let rewardText = '';
+    audioManager.playSound('reward', true);
+
+    if (tier === 'bronze') {
+      const roll = Math.random();
+      if (roll < 0.6) {
+        const rewardCoins = 15 + Math.floor(Math.random() * 25);
+        addCoins(rewardCoins);
+        rewardText = `Won +🪙${rewardCoins} Coins!`;
+      } else if (roll < 0.8) {
+        const inv = getShopInventory();
+        inv.shield = (inv.shield ?? 0) + 1;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won 1x Shield Charge! 🛡️`;
+      } else {
+        const inv = getShopInventory();
+        inv.magnet = (inv.magnet ?? 0) + 1;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won 1x Coin Magnet! 🧲`;
+      }
+    } else if (tier === 'silver') {
+      const roll = Math.random();
+      if (roll < 0.5) {
+        const rewardCoins = 40 + Math.floor(Math.random() * 50);
+        addCoins(rewardCoins);
+        rewardText = `Won +🪙${rewardCoins} Coins!`;
+      } else if (roll < 0.7) {
+        const inv = getShopInventory();
+        inv.shield = (inv.shield ?? 0) + 2;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won 2x Shield Charges! 🛡️`;
+      } else if (roll < 0.9) {
+        const inv = getShopInventory();
+        inv.magnet = (inv.magnet ?? 0) + 2;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won 2x Coin Magnets! 🧲`;
+      } else {
+        const inv = getShopInventory();
+        inv.gemBoost = (inv.gemBoost ?? 0) + 1;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won 1x Gem Boost charge! 💎`;
+      }
+    } else {
+      // Gold chest
+      const roll = Math.random();
+      if (roll < 0.4) {
+        const rewardCoins = 80 + Math.floor(Math.random() * 120);
+        addCoins(rewardCoins);
+        rewardText = `Won +🪙${rewardCoins} Coins!`;
+      } else if (roll < 0.6) {
+        const inv = getShopInventory();
+        inv.continueToken = (inv.continueToken ?? 0) + 1;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won 1x Continue Token! 🔄`;
+      } else if (roll < 0.8) {
+        const inv = getShopInventory();
+        inv.gemBoost = (inv.gemBoost ?? 0) + 2;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won 2x Gem Boost charges! 💎`;
+      } else {
+        const rewardXP = 50 + Math.floor(Math.random() * 100);
+        addXP(rewardXP);
+        rewardText = `Won +⚡${rewardXP} Level XP!`;
+      }
+    }
+
+    setCoins(getCoins());
+    setInventory(getShopInventory());
+    setMessage(`Chest Opened! ${rewardText}`);
+  };
+
   const getOwned = (id: ShopItemId) => getShopItemCount(id);
 
   return (
@@ -167,31 +287,38 @@ export default function ShopScreen({ onBack }: Props) {
       </div>
 
       {/* Modern responsive tabs */}
-      <div className="shop-tabs" style={{ display: 'flex', gap: '8px', marginBottom: '20px', padding: '0 16px' }}>
+      <div className="shop-tabs" style={{ display: 'flex', gap: '4px', marginBottom: '20px', padding: '0 10px' }}>
         <button
           className={`btn ${activeTab === 'powerups' ? 'btn-primary' : 'btn-secondary'}`}
-          style={{ flex: 1, padding: '10px 4px', fontSize: '13px' }}
+          style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
           onClick={() => setActiveTab('powerups')}
         >
           Consumables
         </button>
         <button
           className={`btn ${activeTab === 'upgrades' ? 'btn-primary' : 'btn-secondary'}`}
-          style={{ flex: 1, padding: '10px 4px', fontSize: '13px' }}
+          style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
           onClick={() => setActiveTab('upgrades')}
         >
           Upgrades
         </button>
         <button
+          className={`btn ${activeTab === 'chests' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
+          onClick={() => setActiveTab('chests')}
+        >
+          Chests
+        </button>
+        <button
           className={`btn ${activeTab === 'missions' ? 'btn-primary' : 'btn-secondary'}`}
-          style={{ flex: 1, padding: '10px 4px', fontSize: '13px' }}
+          style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
           onClick={() => setActiveTab('missions')}
         >
           Missions
         </button>
       </div>
 
-      {message && <div className="shop-message">{message}</div>}
+      {message && <div className="shop-message" style={{ whiteSpace: 'pre-wrap' }}>{message}</div>}
 
       <div className="shop-list" style={{ flex: 1, overflowY: 'auto', padding: '0 16px 20px 16px' }}>
         {activeTab === 'powerups' &&
@@ -263,6 +390,30 @@ export default function ShopScreen({ onBack }: Props) {
             );
           })}
 
+        {activeTab === 'chests' &&
+          CHEST_ITEMS.map((item) => {
+            const canBuy = coins >= item.cost;
+            const needed = item.cost - coins;
+
+            return (
+              <div key={item.tier} className="shop-item-card">
+                <div className="shop-item-title" style={{ color: item.color }}>{item.name}</div>
+                <div className="shop-item-desc">{item.description}</div>
+                <div className="shop-item-meta">
+                  <div className="shop-price">🪙 {item.cost}</div>
+                </div>
+                <button
+                  className="shop-buy-btn"
+                  style={{ background: `linear-gradient(135deg, ${item.color}, #ffffff)` }}
+                  onClick={() => handleOpenChest(item.tier, item.cost)}
+                  disabled={!canBuy}
+                >
+                  {canBuy ? 'Open Chest' : needed > 0 ? `Need ${needed} more` : 'Not enough'}
+                </button>
+              </div>
+            );
+          })}
+
         {activeTab === 'missions' &&
           missions.map((m) => {
             const pct = Math.min(100, Math.floor((m.progress / m.target) * 100));
@@ -304,6 +455,8 @@ export default function ShopScreen({ onBack }: Props) {
         <p className="shop-note">
           {activeTab === 'upgrades'
             ? 'Upgrades permanently improve starting parameters.'
+            : activeTab === 'chests'
+            ? 'Open chests to obtain large coin drops, power-ups, or level XP!'
             : activeTab === 'missions'
             ? 'Claim rewards to acquire extra Coins and level XP!'
             : 'Consumables are automatically deployed at the start of your next run.'}

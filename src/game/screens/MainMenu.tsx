@@ -8,6 +8,7 @@ interface Props {
   onSettings: () => void;
   onShop: () => void;
   onDailyRewards: () => void;
+  onLuckySpin: () => void;
 }
 
 /**
@@ -78,6 +79,7 @@ export default function MainMenu({
   const [dailyRewardAvailable, setDailyRewardAvailable] = useState(canClaimDailyReward());
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
+  const [spinAvailable, setSpinAvailable] = useState(false);
 
   useEffect(() => {
     setBest(getPersonalBest());
@@ -87,6 +89,10 @@ export default function MainMenu({
     setDailyRewardAvailable(canClaimDailyReward());
     setLevel(getLevel());
     setXp(getXP());
+
+    const lastSpin = localStorage.getItem('gfr_last_daily_spin_date') || '';
+    const today = dateKey();
+    setSpinAvailable(lastSpin !== today);
   }, []);
 
   const xpNeeded = level * 150;
@@ -156,6 +162,15 @@ export default function MainMenu({
           onClick={onDailyRewards}
         >
           {dailyRewardAvailable ? '🎁 Daily Reward!' : 'Daily Rewards'}
+        </button>
+
+        {/* Lucky Spin button */}
+        <button
+          className={`btn ${spinAvailable ? 'btn-primary daily-reward-btn' : 'btn-secondary'}`}
+          onClick={onLuckySpin}
+          style={{ animation: spinAvailable ? 'pulse 1.5s infinite' : 'none' }}
+        >
+          {spinAvailable ? '🎰 Lucky Spin!' : 'Lucky Spin'}
         </button>
 
         <button className="btn btn-secondary" onClick={onLeaderboard}>

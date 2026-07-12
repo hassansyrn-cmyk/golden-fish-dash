@@ -11,6 +11,7 @@ import AchievementsModal from './screens/AchievementsModal';
 import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
 import DailyRewardsScreen from './screens/DailyRewardsScreen';
+import LuckySpinScreen from './screens/LuckySpinScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
@@ -69,7 +70,8 @@ export default function GoldenFishRush() {
           screen === 'settings' ||
           screen === 'leaderboard' ||
           screen === 'howto' ||
-          screen === 'dailyRewards'
+          screen === 'dailyRewards' ||
+          screen === 'luckySpin'
         ) {
           setScreen('menu');
         } else if (screen === 'playing') {
@@ -218,6 +220,14 @@ export default function GoldenFishRush() {
     setScreen('menu');
   }, []);
 
+  const handleOpenLuckySpin = useCallback(() => {
+    setScreen('luckySpin');
+  }, []);
+
+  const handleLuckySpinBack = useCallback(() => {
+    setScreen('menu');
+  }, []);
+
   const handleGoToLeaderboard = useCallback(() => {
     setScreen('leaderboard');
   }, []);
@@ -304,6 +314,7 @@ export default function GoldenFishRush() {
             onSettings={handleGoToSettings}
             onShop={handleOpenShop}
             onDailyRewards={handleOpenDailyRewards}
+            onLuckySpin={handleOpenLuckySpin}
           />
         )}
 
@@ -316,6 +327,8 @@ export default function GoldenFishRush() {
         {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
 
         {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleDailyBack} />}
+
+        {screen === 'luckySpin' && <LuckySpinScreen onBack={handleLuckySpinBack} />}
 
         {screen === 'paused' && (
           <PauseScreen
@@ -334,6 +347,7 @@ export default function GoldenFishRush() {
         {screen === 'gameover' && !newUnlocks && (
           <GameOverScreen
             finalScore={finalScore}
+            roundCoins={roundCoins}
             canContinue={!usedSecondChanceThisRun}
             onWatchAd={handleWatchAd}
             onPlayAgain={startRun}
