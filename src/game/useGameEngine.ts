@@ -30,6 +30,8 @@ import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
 import type { ShopItemId, SkinId } from './types';
 
+import { SKINS } from './constants';
+
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   active: boolean;
@@ -83,6 +85,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     onGameOverRef.current = onGameOver;
   }, [onGameOver]);
 
+  // Get current skin ability
+  const currentSkin = SKINS.find(s => s.id === skin);
+  const skinAbility = currentSkin?.ability || 'lucky_catch';
+
   const setup = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -118,11 +124,21 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     if (inv.dash > 0) {
       consumeShopItem('dash');
       const now = performance.now();
-      // Dash is now clearly limited (Phase 6 improvement)
-      const dashDuration = 1600; // 1.6 seconds - limited and clear
+      const dashDuration = 1600;
       powerUpManager.activate({ type: 'dash', endTime: now + dashDuration, strength: 1.7 });
       engine.invincibleUntil = now + dashDuration;
       applied = true;
+    }
+
+    // === Phase 8: Apply skin passive abilities ===
+    if (skinAbility === 'royal_presence') {
+      // Legendary fish starts with 1 free shield
+      engine.shieldCharges = Math.max(engine.shieldCharges, 1);
+    }
+
+    if (skinAbility === 'precious') {
+      // Diamond fish has permanent gem boost
+      engine.gemBoostActive = true;
     }
 
     roundCoinsRef.current = 0;
@@ -142,7 +158,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setRoundCoins(0);
     setCoins(getCoins());
     setLives(engine.lives ?? 0);
-  }, [canvasRef, skin]);
+  }, [canvasRef, skin, skinAbility]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
     const state = stateRef.current;
@@ -180,11 +196,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     if (!state) return false;
 
     const now = performance.now();
-    // Dash is strictly time-limited (Phase 6)
     powerUpManager.activate({ type: 'dash', endTime: now + durationMs, strength });
 
     state.invincibleUntil = now + durationMs;
-    state.fishVY = -13; // Strong upward dash
+    state.fishVY = -13;
 
     playSoundEffect('reward');
     safeVibrate([30, 20, 50], getSettings().vibration);
@@ -553,5 +568,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
+    skinAbility,
   };
 }
