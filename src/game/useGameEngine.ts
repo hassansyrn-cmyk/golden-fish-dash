@@ -19,6 +19,7 @@ import {
   stepEngine,
 } from './engine';
 import { playSoundEffect, ensureAudioContext } from './managers/AudioManager';
+import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
 
@@ -136,7 +137,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   }, []);
 
   // === PERFORMANCE OPTIMIZATION (Phase 1) ===
-  // Stable callbacks + now using centralized AudioManager
   const stepCallbacksRef = useRef<any>(null);
 
   if (!stepCallbacksRef.current) {
@@ -252,7 +252,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setup();
     incrementRoundsPlayed();
     unlockAchievement('first_flight');
-    ensureAudioContext(); // Prepare audio early
+    ensureAudioContext();
 
     let mounted = true;
     lastTimeRef.current = performance.now();
@@ -268,7 +268,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       if (state && canvas) {
         if (!pausedRef.current && state.running) {
-          // Use stable callbacks ref
           stepEngine(
             state,
             dt,
@@ -289,7 +288,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     rafRef.current = requestAnimationFrame(loop);
 
-    const handleResize = () => {
+    // PERFORMANCE: Debounced resize for better mobile/orientation stability
+    const debouncedResize = debounce(() => {
       const canvas = canvasRef.current;
       const state = stateRef.current;
 
@@ -304,9 +304,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       state.width = width;
       state.height = height;
-    };
+    }, 150);
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', debouncedResize);
 
     return () => {
       mounted = false;
@@ -315,7 +315,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         cancelAnimationFrame(rafRef.current);
       }
 
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', debouncedResize);
     };
   }, [active, setup, canvasRef]);
 
