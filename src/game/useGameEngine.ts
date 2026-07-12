@@ -141,6 +141,7 @@ function playSound(name: SoundName, enabled: boolean) {
     case 'milestone':
       playTone(600, 75, 'square', 0.035);
       setTimeout(() => playTone(900, 90, 'square', 0.03), 80);
+      setTimeout(() => playTone(1600, 130, 'triangle', 0.035), 170);
       break;
 
     default:
@@ -153,6 +154,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
   const [lives, setLives] = useState(0);
+
+  // Expose fish state for 3D rendering
+  const [fishState, setFishState] = useState({
+    x: 0,
+    y: 0,
+    rotation: 0,
+    invincible: false,
+  });
 
   const stateRef = useRef<EngineState | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -184,8 +193,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
-    // This runs every time a new engine is created for a run.
-    // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
     let applied = false;
 
@@ -212,6 +219,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setRoundCoins(0);
     setCoins(getCoins());
     setLives(engine.lives ?? 0);
+
+    // Initial fish state
+    setFishState({
+      x: width * FISH_X_RATIO,
+      y: height / 2,
+      rotation: 0,
+      invincible: false,
+    });
   }, [canvasRef, skin]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
@@ -225,7 +240,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     state.fishY = state.height / 2;
     state.fishVY = 0;
     state.invincibleUntil = state.timeMs + invincibleMs;
-    state.shakeIntensity = 0; // Reset any camera shake so revive countdown is smooth (no background tremble)
+    state.shakeIntensity = 0;
 
     state.obstacles = state.obstacles.filter((obs) => {
       const approximateHalfObstacleWidth = 20;
@@ -242,6 +257,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     playSound('reward', settings.sound);
     safeVibrate([45, 35, 45], settings.vibration);
+
+    // Update fish state on revive
+    setFishState((prev) => ({
+      ...prev,
+      y: state.height / 2,
+      rotation: 0,
+      invincible: true,
+    }));
   }, []);
 
   useEffect(() => {
@@ -375,6 +398,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
             },
             { vibration: settings.vibration },
           );
+
+          // Update fish state for 3D sync every frame
+          setFishState({
+            x: state.width * FISH_X_RATIO,
+            y: state.fishY,
+            rotation: state.fishRotation,
+            invincible: state.timeMs < state.invincibleUntil,
+          });
         }
 
         const ctx = canvas.getContext('2d');
@@ -438,6 +469,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     lives,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
+    fishX: fishState.x,
+    fishY: fishState.y,
+    fishRotation: fishState.rotation,
+    isInvincible: fishState.invincible,
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
