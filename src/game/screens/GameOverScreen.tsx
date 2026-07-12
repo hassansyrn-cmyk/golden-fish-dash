@@ -21,6 +21,7 @@ interface Props {
   onLeaderboard: () => void;
   onMenu: () => void;
   onNewUnlocks?: (ids: SkinId[]) => void;
+  onShop?: () => void;
 }
 
 function encouragement(finalScore: number, best: number): string {

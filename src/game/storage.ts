@@ -43,42 +43,76 @@ function writeJSON(key: string, value: unknown) {
   }
 }
 
+// -----------------------------------------------------------------------
+// PERF + DRY: every simple "read a value / write a value" pair below used
+// to hand-roll its own readJSON/writeJSON calls. Two problems with that:
+//   1. Duplication — the same three lines repeated ~12 times.
+//   2. Every read re-parsed localStorage/JSON even for values (coins,
+//      personal best, unlocked skins...) that are read constantly across
+//      screens in a single session and only change on a handful of
+//      explicit events.
+// createStore() wraps a key in a tiny in-memory cache: the first read
+// parses localStorage once, every read after that returns the cached
+// value directly, and writes update the cache immediately so callers
+// never see stale data. This is the exact pattern already proven for
+// getSettings()/setSettings(); it's now the one shared implementation
+// instead of a one-off. Public function signatures below are unchanged,
+// so no call site anywhere else in the app needed to change.
+// -----------------------------------------------------------------------
+function createStore<T>(key: string, fallback: T) {
+  let cache: T | null = null;
+  return {
+    get(): T {
+      if (cache === null) cache = readJSON(key, fallback);
+      return cache;
+    },
+    set(value: T) {
+      cache = value;
+      writeJSON(key, value);
+    },
+  };
+}
+
 // ---- Personal best ----
+const personalBestStore = createStore(STORAGE_KEYS.personalBest, 0);
 export function getPersonalBest(): number {
-  return readJSON(STORAGE_KEYS.personalBest, 0);
+  return personalBestStore.get();
 }
 export function setPersonalBest(score: number) {
-  writeJSON(STORAGE_KEYS.personalBest, score);
+  personalBestStore.set(score);
 }
 export function resetPersonalBest() {
-  writeJSON(STORAGE_KEYS.personalBest, 0);
+  personalBestStore.set(0);
 }
 
 // ---- Coins ----
+const coinsStore = createStore(STORAGE_KEYS.coins, 0);
 export function getCoins(): number {
-  return readJSON(STORAGE_KEYS.coins, 0);
+  return coinsStore.get();
 }
 export function addCoins(amount: number): number {
   const total = getCoins() + amount;
-  writeJSON(STORAGE_KEYS.coins, total);
+  coinsStore.set(total);
   return total;
 }
 export function spendCoins(amount: number): number {
   const current = getCoins();
   const newTotal = Math.max(0, current - Math.max(0, amount));
-  writeJSON(STORAGE_KEYS.coins, newTotal);
+  coinsStore.set(newTotal);
   return newTotal;
 }
 
 // ---- Skins ----
+const unlockedSkinsStore = createStore<SkinId[]>(STORAGE_KEYS.unlockedSkins, ['golden']);
+const selectedSkinStore = createStore<SkinId>(STORAGE_KEYS.selectedSkin, 'golden');
 export function getUnlockedSkins(): SkinId[] {
-  return readJSON<SkinId[]>(STORAGE_KEYS.unlockedSkins, ['golden']);
+  return unlockedSkinsStore.get();
 }
 export function getSelectedSkin(): SkinId {
-  return readJSON<SkinId>(STORAGE_KEYS.selectedSkin, 'golden');
+  return selectedSkinStore.get();
 }
 export function setSelectedSkin(skin: SkinId) {
-  writeJSON(STORAGE_KEYS.selectedSkin, skin);
+  selectedSkinStore.set(skin);
 }
 export function refreshUnlockedSkins(bestScore: number): SkinId[] {
   const unlocked = new Set(getUnlockedSkins());
@@ -86,19 +120,20 @@ export function refreshUnlockedSkins(bestScore: number): SkinId[] {
     if (bestScore >= skin.unlockScore) unlocked.add(skin.id);
   }
   const result = Array.from(unlocked);
-  writeJSON(STORAGE_KEYS.unlockedSkins, result);
+  unlockedSkinsStore.set(result);
   return result;
 }
 
 // ---- Achievements ----
+const achievementsStore = createStore<string[]>(STORAGE_KEYS.achievements, []);
 export function getUnlockedAchievements(): string[] {
-  return readJSON<string[]>(STORAGE_KEYS.achievements, []);
+  return achievementsStore.get();
 }
 export function unlockAchievement(id: string): boolean {
   const unlocked = new Set(getUnlockedAchievements());
   if (unlocked.has(id)) return false;
   unlocked.add(id);
-  writeJSON(STORAGE_KEYS.achievements, Array.from(unlocked));
+  achievementsStore.set(Array.from(unlocked));
   return true;
 }
 export function getAllAchievements() {
@@ -107,38 +142,45 @@ export function getAllAchievements() {
 }
 
 // ---- Rounds played / second chance tracking ----
+const roundsPlayedStore = createStore(STORAGE_KEYS.roundsPlayed, 0);
+const usedSecondChanceStore = createStore(STORAGE_KEYS.usedSecondChanceEver, false);
 export function getRoundsPlayed(): number {
-  return readJSON(STORAGE_KEYS.roundsPlayed, 0);
+  return roundsPlayedStore.get();
 }
 export function incrementRoundsPlayed(): number {
   const total = getRoundsPlayed() + 1;
-  writeJSON(STORAGE_KEYS.roundsPlayed, total);
+  roundsPlayedStore.set(total);
   return total;
 }
 export function hasUsedSecondChanceEver(): boolean {
-  return readJSON(STORAGE_KEYS.usedSecondChanceEver, false);
+  return usedSecondChanceStore.get();
 }
 export function markUsedSecondChanceEver() {
-  writeJSON(STORAGE_KEYS.usedSecondChanceEver, true);
+  usedSecondChanceStore.set(true);
 }
 
 // ---- Interstitial ad cadence ----
+const gameOverCountStore = createStore(STORAGE_KEYS.gameOverCount, 0);
 export function getGameOverCount(): number {
-  return readJSON(STORAGE_KEYS.gameOverCount, 0);
+  return gameOverCountStore.get();
 }
 export function incrementGameOverCount(): number {
   const total = getGameOverCount() + 1;
-  writeJSON(STORAGE_KEYS.gameOverCount, total);
+  gameOverCountStore.set(total);
   return total;
 }
 
 // ---- Settings ----
 const DEFAULT_SETTINGS: Settings = { sound: true, music: true, vibration: true };
+// PERF: getSettings() is called from inside the game's requestAnimationFrame
+// loop (once per frame, ~60x/sec) to read sound/vibration flags — this was
+// the original motivating case for createStore()'s cache above.
+const settingsStore = createStore<Settings>(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
 export function getSettings(): Settings {
-  return readJSON(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
+  return settingsStore.get();
 }
 export function setSettings(settings: Settings) {
-  writeJSON(STORAGE_KEYS.settings, settings);
+  settingsStore.set(settings);
 }
 
 // ---- Shop Inventory ----
@@ -148,13 +190,14 @@ const DEFAULT_SHOP_INVENTORY: ShopInventory = {
   gemBoost: 0,
   continueToken: 0,
 };
+const shopInventoryStore = createStore<ShopInventory>(STORAGE_KEYS.shopInventory, DEFAULT_SHOP_INVENTORY);
 
 export function getShopInventory(): ShopInventory {
-  return readJSON<ShopInventory>(STORAGE_KEYS.shopInventory, DEFAULT_SHOP_INVENTORY);
+  return shopInventoryStore.get();
 }
 
 function saveShopInventory(inventory: ShopInventory) {
-  writeJSON(STORAGE_KEYS.shopInventory, inventory);
+  shopInventoryStore.set(inventory);
 }
 
 export function getShopItemCount(itemId: ShopItemId): number {
@@ -333,9 +376,10 @@ const DAILY_REWARDS: Array<{ day: number; type: 'coins' | ShopItemId; amount: nu
 ];
 
 const DEFAULT_DAILY_REWARD: DailyRewardState = { lastClaimDate: '', streakDay: 1 };
+const dailyRewardStore = createStore<DailyRewardState>(STORAGE_KEYS.dailyReward, DEFAULT_DAILY_REWARD);
 
 export function getDailyRewardState(): DailyRewardState {
-  return readJSON<DailyRewardState>(STORAGE_KEYS.dailyReward, DEFAULT_DAILY_REWARD);
+  return dailyRewardStore.get();
 }
 
 export function canClaimDailyReward(): boolean {
@@ -385,7 +429,7 @@ export function claimDailyReward(): { success: boolean; day: number; label: stri
     lastClaimDate: today,
     streakDay: newStreak,
   };
-  writeJSON(STORAGE_KEYS.dailyReward, newState);
+  dailyRewardStore.set(newState);
 
   return {
     success: true,
