@@ -106,6 +106,20 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       applied = true;
     }
 
+    // === PHASE 2: Auto-activate Dash if purchased ===
+    if (inv.dash > 0) {
+      consumeShopItem('dash');
+      // Activate dash for 1800ms with good strength
+      const now = performance.now();
+      powerUpManager.activate({
+        type: 'dash',
+        endTime: now + 1800,
+        strength: 1.6,
+      });
+      engine.invincibleUntil = now + 1800;
+      applied = true;
+    }
+
     roundCoinsRef.current = 0;
     lastMilestoneRef.current = 0;
     comboRef.current = 0;
@@ -113,7 +127,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     nearMissCountRef.current = 0;
     startTimeRef.current = performance.now();
     difficultyRef.current = getCurrentDifficulty(0);
-    powerUpManager.reset();
 
     setScore(0);
     setRoundCoins(0);
@@ -152,7 +165,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     powerUpManager.reset();
   }, []);
 
-  // Activate Dash (new Phase 2 power-up)
   const activateDash = useCallback((durationMs = 1200, strength = 1.8) => {
     const state = stateRef.current;
     if (!state) return false;
@@ -164,9 +176,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       strength,
     });
 
-    // Give temporary invincibility + forward boost
     state.invincibleUntil = now + durationMs;
-    state.fishVY = -12; // strong upward dash
+    state.fishVY = -12;
 
     playSoundEffect('reward');
     safeVibrate([30, 20, 50], getSettings().vibration);
@@ -341,11 +352,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           const elapsedSeconds = (now - startTimeRef.current) / 1000;
           difficultyRef.current = getCurrentDifficulty(elapsedSeconds, score);
           powerUpManager.update(now);
-
-          // Apply dash strength if active (simple speed boost)
-          if (powerUpManager.has('dash')) {
-            // We can enhance fish speed here in future iterations
-          }
 
           stepEngine(
             state,
