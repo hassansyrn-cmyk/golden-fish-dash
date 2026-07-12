@@ -14,6 +14,7 @@ import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
+import Fish3D from './Fish3D';
 import {
   getSelectedSkin,
   incrementGameOverCount,
@@ -110,7 +111,7 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt } = useGameEngine({
+  const { score, lives, doJump, reviveAt, fishX, fishY, fishRotation, isInvincible } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -215,6 +216,10 @@ export default function GoldenFishRush() {
     setScreen('menu');
   }, []);
 
+  // Get current game dimensions for 3D fish
+  const gameWidth = canvasRef.current?.width || window.innerWidth;
+  const gameHeight = canvasRef.current?.height || window.innerHeight;
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -224,6 +229,19 @@ export default function GoldenFishRush() {
           onPointerDown={handlePointerDown}
           onClick={handlePointerDown}
         />
+
+        {/* Real 3D Golden Fish overlay */}
+        {(screen === 'playing' || screen === 'paused') && (
+          <Fish3D
+            width={gameWidth}
+            height={gameHeight}
+            fishX={fishX}
+            fishY={fishY}
+            fishRotation={fishRotation}
+            isInvincible={isInvincible}
+            skin={skin}
+          />
+        )}
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
@@ -250,7 +268,7 @@ export default function GoldenFishRush() {
                 aria-label="Pause"
               >
                 ⏸
-              </button>
+            </button>
             )}
           </div>
         )}
