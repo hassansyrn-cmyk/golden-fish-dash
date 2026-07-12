@@ -57,7 +57,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 2: COMBO + DIFFICULTY + POWERUPS + DASH ===
+  // === PHASE 2: COMBO + DIFFICULTY + POWERUPS ===
   const comboRef = useRef(0);
   const maxComboRef = useRef(0);
   const startTimeRef = useRef(0);
@@ -105,17 +105,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       engine.gemBoostActive = true;
       applied = true;
     }
-
-    // === PHASE 2: Auto-activate Dash if purchased ===
     if (inv.dash > 0) {
       consumeShopItem('dash');
-      // Activate dash for 1800ms with good strength
       const now = performance.now();
-      powerUpManager.activate({
-        type: 'dash',
-        endTime: now + 1800,
-        strength: 1.6,
-      });
+      powerUpManager.activate({ type: 'dash', endTime: now + 1800, strength: 1.6 });
       engine.invincibleUntil = now + 1800;
       applied = true;
     }
@@ -127,6 +120,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     nearMissCountRef.current = 0;
     startTimeRef.current = performance.now();
     difficultyRef.current = getCurrentDifficulty(0);
+    powerUpManager.reset();
 
     setScore(0);
     setRoundCoins(0);
@@ -170,17 +164,24 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     if (!state) return false;
 
     const now = performance.now();
-    powerUpManager.activate({
-      type: 'dash',
-      endTime: now + durationMs,
-      strength,
-    });
+    powerUpManager.activate({ type: 'dash', endTime: now + durationMs, strength });
 
     state.invincibleUntil = now + durationMs;
     state.fishVY = -12;
 
     playSoundEffect('reward');
     safeVibrate([30, 20, 50], getSettings().vibration);
+
+    return true;
+  }, []);
+
+  // New: Activate Slow Motion power-up
+  const activateSlowMotion = useCallback((durationMs = 2500) => {
+    const now = performance.now();
+    powerUpManager.activate({ type: 'slowMotion', endTime: now + durationMs });
+
+    playSoundEffect('milestone');
+    safeVibrate([20, 40, 20], getSettings().vibration);
 
     return true;
   }, []);
@@ -341,7 +342,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const loop = (now: number) => {
       if (!mounted) return;
 
-      const dt = Math.min(48, now - lastTimeRef.current);
+      let dt = Math.min(48, now - lastTimeRef.current);
       lastTimeRef.current = now;
 
       const state = stateRef.current;
@@ -352,6 +353,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           const elapsedSeconds = (now - startTimeRef.current) / 1000;
           difficultyRef.current = getCurrentDifficulty(elapsedSeconds, score);
           powerUpManager.update(now);
+
+          // Apply Slow Motion effect (reduce effective dt)
+          if (powerUpManager.has('slowMotion')) {
+            dt = dt * 0.4; // slow down time significantly
+          }
 
           stepEngine(
             state,
@@ -428,6 +434,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     currentDifficulty,
     activePowerUps: powerUpManager.getActivePowerUps(),
     activateDash,
+    activateSlowMotion,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
