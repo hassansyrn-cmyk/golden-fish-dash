@@ -584,200 +584,141 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const blink = invincible && Math.floor(state.timeMs / 100) % 2 === 0;
   if (blink) return;
+
   const r = BASE.fishRadius;
   const id = skin.id;
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
   const { body, belly, fin, glow } = skin.colors;
+
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
+
+  // === Phase 8: Enhanced realistic fish rendering ===
   if (id === 'legendary') {
     ctx.save();
     ctx.globalAlpha = 0.28 + pulse * 0.2;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.9, r * 1.35, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 1.95, r * 1.4, 0, 0, Math.PI * 2);
     ctx.fillStyle = glow;
     ctx.fill();
     ctx.globalAlpha = 0.5 + pulse * 0.25;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.6, r * 1.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 1.65, r * 1.15, 0, 0, Math.PI * 2);
     ctx.strokeStyle = glow;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
     ctx.restore();
   }
+
   ctx.save();
   ctx.shadowColor = glow;
-  ctx.shadowBlur = id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
-  // Tail
+  ctx.shadowBlur = id === 'legendary' ? 32 : id === 'diamond' ? 26 : 18;
+
+  // === Improved Tail (more elegant and realistic) ===
   if (id === 'ruby') {
     ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.6, -r * 1.3, -r * 2.3, -r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.3, r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.6, r * 1.3, -r * 0.85, 0);
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.7, -r * 1.35, -r * 2.45, -r * 0.65);
+    ctx.quadraticCurveTo(-r * 2.0, 0, -r * 2.45, r * 0.65);
+    ctx.quadraticCurveTo(-r * 1.7, r * 1.35, -r * 0.9, 0);
     ctx.closePath();
     ctx.fillStyle = fin;
     ctx.fill();
   } else if (id === 'legendary') {
     ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.quadraticCurveTo(-r * 1.7, -r * 1.25, -r * 2.4, -r * 0.45);
-    ctx.lineTo(-r * 1.8, 0);
-    ctx.quadraticCurveTo(-r * 2.4, r * 0.45, -r * 1.7, r * 1.25);
+    ctx.moveTo(-r * 0.95, 0);
+    ctx.quadraticCurveTo(-r * 1.85, -r * 1.35, -r * 2.55, -r * 0.5);
+    ctx.lineTo(-r * 1.9, 0);
+    ctx.quadraticCurveTo(-r * 2.55, r * 0.5, -r * 1.85, r * 1.35);
     ctx.closePath();
-    ctx.fillStyle = '#1a1a1a';
+    ctx.fillStyle = '#111111';
     ctx.fill();
   } else {
     ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.45, -r * 0.95, -r * 1.95, -r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.55, 0, -r * 1.95, r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.45, r * 0.95, -r * 0.85, 0);
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.55, -r * 1.05, -r * 2.1, -r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.65, 0, -r * 2.1, r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.55, r * 1.05, -r * 0.9, 0);
     ctx.closePath();
     ctx.fillStyle = fin;
     ctx.fill();
   }
-  // Body
+
+  // === Improved Body with better shading ===
   ctx.beginPath();
-  ctx.moveTo(-r * 0.9, 0);
-  ctx.quadraticCurveTo(-r * 0.55, -r * 0.95, r * 0.15, -r * 0.88);
-  ctx.quadraticCurveTo(r * 0.95, -r * 0.5, r * 1.05, 0);
-  ctx.quadraticCurveTo(r * 0.95, r * 0.5, r * 0.15, r * 0.88);
-  ctx.quadraticCurveTo(-r * 0.55, r * 0.95, -r * 0.9, 0);
+  ctx.moveTo(-r * 0.95, 0);
+  ctx.quadraticCurveTo(-r * 0.6, -r * 1.0, r * 0.2, -r * 0.92);
+  ctx.quadraticCurveTo(r * 1.0, -r * 0.55, r * 1.12, 0);
+  ctx.quadraticCurveTo(r * 1.0, r * 0.55, r * 0.2, r * 0.92);
+  ctx.quadraticCurveTo(-r * 0.6, r * 1.0, -r * 0.95, 0);
   ctx.closePath();
-  const bodyGrad = ctx.createLinearGradient(-r, -r, r, r);
+
+  const bodyGrad = ctx.createLinearGradient(-r * 0.9, -r, r * 1.1, r);
   if (id === 'legendary') {
     bodyGrad.addColorStop(0, '#1a1a1a');
-    bodyGrad.addColorStop(0.5, '#ffd60a');
+    bodyGrad.addColorStop(0.35, '#ffe066');
+    bodyGrad.addColorStop(0.65, '#ffd60a');
     bodyGrad.addColorStop(1, '#1a1a1a');
   } else {
     bodyGrad.addColorStop(0, belly);
-    bodyGrad.addColorStop(0.4, body);
-    bodyGrad.addColorStop(1, fin);
+    bodyGrad.addColorStop(0.35, body);
+    bodyGrad.addColorStop(0.75, fin);
+    bodyGrad.addColorStop(1, '#1a3a4a');
   }
   ctx.fillStyle = bodyGrad;
   ctx.fill();
-  // Belly
+
+  // Subtle scale highlight
+  ctx.globalAlpha = 0.25;
   ctx.beginPath();
-  ctx.ellipse(r * 0.1, r * 0.28, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
-  ctx.fillStyle = belly;
-  ctx.globalAlpha = 0.85;
+  ctx.ellipse(r * 0.15, -r * 0.15, r * 0.55, r * 0.35, -0.4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.globalAlpha = 1;
-  // Dorsal
+
+  // === Belly (more natural) ===
   ctx.beginPath();
-  ctx.moveTo(-r * 0.15, -r * 0.7);
-  ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
-  ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = id === 'legendary' ? '#ffd60a' : fin;
+  ctx.ellipse(r * 0.12, r * 0.32, r * 0.58, r * 0.35, 0, 0, Math.PI * 2);
+  ctx.fillStyle = belly;
+  ctx.globalAlpha = 0.9;
   ctx.fill();
-  // Pectoral
+  ctx.globalAlpha = 1;
+
+  // === Dorsal Fin (improved shape) ===
   ctx.beginPath();
-  ctx.moveTo(r * 0.25, r * 0.1);
-  ctx.quadraticCurveTo(r * 1.05, -r * 0.2, r * 1.1, r * 0.35);
-  ctx.quadraticCurveTo(r * 0.7, r * 0.3, r * 0.25, r * 0.1);
+  ctx.moveTo(-r * 0.2, -r * 0.72);
+  ctx.quadraticCurveTo(r * 0.3, -r * 1.35, r * 0.75, -r * 0.6);
+  ctx.quadraticCurveTo(r * 0.35, -r * 0.85, 0, -r * 0.72);
+  ctx.closePath();
+  ctx.fillStyle = id === 'legendary' ? '#ffe066' : fin;
+  ctx.fill();
+
+  // === Pectoral Fin ===
+  ctx.beginPath();
+  ctx.moveTo(r * 0.28, r * 0.12);
+  ctx.quadraticCurveTo(r * 1.15, -r * 0.22, r * 1.2, r * 0.38);
+  ctx.quadraticCurveTo(r * 0.75, r * 0.32, r * 0.28, r * 0.12);
   ctx.closePath();
   ctx.fillStyle = fin;
   ctx.fill();
-  // Eye
+
+  // === Eye (more lively and detailed) ===
   ctx.beginPath();
-  ctx.arc(r * 0.55, -r * 0.15, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a1200';
+  ctx.arc(r * 0.58, -r * 0.18, 5.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#0f0a00';
   ctx.fill();
+
   ctx.beginPath();
-  ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
+  ctx.arc(r * 0.6, -r * 0.2, 2.8, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
 
-  // === VISUAL POWER-UP INDICATORS ===
-  // Shield active: transparent protective bubble / crystal (Phase 6 improved)
-  if (state.shieldCharges > 0) {
-    const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
-    ctx.save();
-
-    // Outer soft transparent bubble
-    ctx.globalAlpha = 0.15 + shieldPulse * 0.12;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.75, 0, Math.PI * 2);
-    ctx.fillStyle = '#81d4fa';
-    ctx.fill();
-
-    // Glassy highlight stroke (crystal-like)
-    ctx.globalAlpha = 0.55 + shieldPulse * 0.3;
-    ctx.strokeStyle = '#e1f5fe';
-    ctx.lineWidth = 4 + shieldPulse * 1.5;
-    ctx.stroke();
-
-    // Inner thin bright ring for glassy effect
-    ctx.globalAlpha = 0.7 + shieldPulse * 0.2;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.55, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  // Magnet active: enhanced orange magnetic glow + field (Phase 6 improved)
-  if (state.magnetUntil > state.timeMs) {
-    const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
-    ctx.save();
-
-    // Outer strong orange glow (beam-like field)
-    ctx.shadowColor = '#ff6d00';
-    ctx.shadowBlur = 38 + magPulse * 18;
-    ctx.globalAlpha = 0.35 + magPulse * 0.3;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.7, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ff9500';
-    ctx.lineWidth = 3.5;
-    ctx.stroke();
-
-    // Inner brighter core
-    ctx.shadowBlur = 18 + magPulse * 10;
-    ctx.globalAlpha = 0.55 + magPulse * 0.25;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ffb347';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  // Dash active: strong forward speed aura + energy lines (Phase 6)
-  const isDashing = state.fishVY < -8;
-  if (isDashing) {
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = '#00e5ff';
-    ctx.lineWidth = 2;
-
-    for (let i = 0; i < 5; i++) {
-      const offset = 12 + i * 8;
-      ctx.beginPath();
-      ctx.moveTo(-r * 0.9 - offset, -r * 0.3 + i * 3);
-      ctx.lineTo(-r * 2.2 - offset, -r * 0.3 + i * 3);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(-r * 0.9 - offset, r * 0.3 - i * 3);
-      ctx.lineTo(-r * 2.2 - offset, r * 0.3 - i * 3);
-      ctx.stroke();
-    }
-
-    ctx.shadowColor = '#00e5ff';
-    ctx.shadowBlur = 25;
-    ctx.globalAlpha = 0.4;
-    ctx.beginPath();
-    ctx.arc(r * 0.3, 0, r * 1.1, 0, Math.PI * 2);
-    ctx.fillStyle = '#00e5ff';
-    ctx.fill();
-    ctx.restore();
-  }
+  // Small reflection in eye
+  ctx.beginPath();
+  ctx.arc(r * 0.62, -r * 0.24, 1.1, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
 
   ctx.restore();
   ctx.restore();
