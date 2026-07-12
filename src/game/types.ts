@@ -72,6 +72,39 @@ export interface ShopInventory {
   dash: number;
 }
 
+// === PHASE 3: Upgrade Levels ===
+export interface UpgradeLevel {
+  level: number;
+  cost: number;
+  effect: string; // description of what this level does
+}
+
+export const UPGRADE_LEVELS: Record<ShopItemId, UpgradeLevel[]> = {
+  shield: [
+    { level: 1, cost: 80, effect: '1 charge' },
+    { level: 2, cost: 150, effect: '2 charges + longer duration' },
+    { level: 3, cost: 280, effect: '3 charges + stronger protection' },
+  ],
+  magnet: [
+    { level: 1, cost: 70, effect: '8 seconds' },
+    { level: 2, cost: 130, effect: '12 seconds' },
+    { level: 3, cost: 240, effect: '18 seconds + stronger pull' },
+  ],
+  gemBoost: [
+    { level: 1, cost: 90, effect: 'Basic boost' },
+    { level: 2, cost: 170, effect: 'Stronger boost' },
+    { level: 3, cost: 320, effect: 'Maximum boost + extra life chance' },
+  ],
+  dash: [
+    { level: 1, cost: 100, effect: 'Basic dash' },
+    { level: 2, cost: 190, effect: 'Longer dash + stronger boost' },
+    { level: 3, cost: 350, effect: 'Ultimate dash with invincibility' },
+  ],
+  continueToken: [
+    { level: 1, cost: 60, effect: 'Basic continue' },
+  ],
+};
+
 export interface DailyRewardState {
   lastClaimDate: string; // YYYY-MM-DD
   streakDay: number; // 1 to 7, loops back
