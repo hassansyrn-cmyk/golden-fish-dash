@@ -132,12 +132,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     // === Phase 8: Apply skin passive abilities ===
     if (skinAbility === 'royal_presence') {
-      // Legendary fish starts with 1 free shield
       engine.shieldCharges = Math.max(engine.shieldCharges, 1);
     }
 
     if (skinAbility === 'precious') {
-      // Diamond fish has permanent gem boost
       engine.gemBoostActive = true;
     }
 
@@ -264,6 +262,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
         const diff = difficultyRef.current;
         let finalAmount = Math.floor(amount * diff.rewardMultiplier * powerUpManager.getCoinMultiplier());
+
+        // === Phase 8: Collector skin bonus ===
+        if (skinAbility === 'collector') {
+          finalAmount = Math.floor(finalAmount * 1.2); // 20% more value
+        }
 
         const combo = comboRef.current;
 
@@ -440,6 +443,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
           analytics.track('near_miss', { intensity });
         }
+      },
+
+      // === Phase 8: Fighter skin - bonus score when passing obstacles ===
+      onObstaclePassed: (baseScore: number) => {
+        if (skinAbility === 'fighter') {
+          return baseScore + 1; // +1 bonus point per obstacle
+        }
+        return baseScore;
       },
     };
   }
