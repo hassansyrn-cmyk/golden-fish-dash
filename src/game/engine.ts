@@ -650,6 +650,40 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.restore();
   }
 
+  // Dash active: strong forward speed aura + energy lines (Phase 6)
+  // Note: We use invincibleUntil + recent high velocity as proxy for Dash
+  const isDashing = state.fishVY < -8; // Strong upward velocity indicates Dash
+  if (isDashing) {
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 2;
+
+    // Speed lines behind the fish
+    for (let i = 0; i < 5; i++) {
+      const offset = 12 + i * 8;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.9 - offset, -r * 0.3 + i * 3);
+      ctx.lineTo(-r * 2.2 - offset, -r * 0.3 + i * 3);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.9 - offset, r * 0.3 - i * 3);
+      ctx.lineTo(-r * 2.2 - offset, r * 0.3 - i * 3);
+      ctx.stroke();
+    }
+
+    // Bright forward energy glow
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 25;
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.arc(r * 0.3, 0, r * 1.1, 0, Math.PI * 2);
+    ctx.fillStyle = '#00e5ff';
+    ctx.fill();
+    ctx.restore();
+  }
+
   ctx.restore();
   ctx.restore();
 }
