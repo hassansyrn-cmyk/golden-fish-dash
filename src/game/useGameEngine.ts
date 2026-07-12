@@ -19,6 +19,7 @@ import {
   stepEngine,
 } from './engine';
 import { playSoundEffect, ensureAudioContext } from './managers/AudioManager';
+import { getCurrentDifficulty, type DifficultyState } from './managers/DifficultyManager';
 import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
@@ -55,9 +56,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 2: COMBO SYSTEM ===
+  // === PHASE 2: COMBO + DIFFICULTY ===
   const comboRef = useRef(0);
   const maxComboRef = useRef(0);
+  const startTimeRef = useRef(0);
+  const difficultyRef = useRef<DifficultyState>(getCurrentDifficulty(0));
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
@@ -106,6 +109,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     lastMilestoneRef.current = 0;
     comboRef.current = 0;
     maxComboRef.current = 0;
+    startTimeRef.current = performance.now();
+    difficultyRef.current = getCurrentDifficulty(0);
 
     setScore(0);
     setRoundCoins(0);
@@ -140,10 +145,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     playSoundEffect('reward');
     safeVibrate([45, 35, 45], getSettings().vibration);
-    comboRef.current = 0; // reset combo on revive
+    comboRef.current = 0;
   }, []);
 
-  // === PHASE 2: COMBO SYSTEM + PERFORMANCE ===
+  // === PHASE 2: COMBO + DIFFICULTY AWARE ===
   const stepCallbacksRef = useRef<any>(null);
 
   if (!stepCallbacksRef.current) {
@@ -160,26 +165,25 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       },
 
       onCoinCollect: (amount: number) => {
-        // === COMBO LOGIC (Phase 2) ===
         comboRef.current += 1;
         if (comboRef.current > maxComboRef.current) {
           maxComboRef.current = comboRef.current;
         }
 
-        let finalAmount = amount;
-        const combo = comboRef.current;
+        // Apply difficulty reward multiplier + combo multiplier
+        const diff = difficultyRef.current;
+        let finalAmount = Math.floor(amount * diff.rewardMultiplier);
 
-        // Combo multipliers (highly addictive mechanic)
-        if (combo >= 30) finalAmount = Math.floor(amount * 2.5);
-        else if (combo >= 20) finalAmount = Math.floor(amount * 2.0);
-        else if (combo >= 10) finalAmount = Math.floor(amount * 1.5);
+        const combo = comboRef.current;
+        if (combo >= 30) finalAmount = Math.floor(finalAmount * 2.5);
+        else if (combo >= 20) finalAmount = Math.floor(finalAmount * 2.0);
+        else if (combo >= 10) finalAmount = Math.floor(finalAmount * 1.5);
 
         roundCoinsRef.current += finalAmount;
         setRoundCoins(roundCoinsRef.current);
 
         let total = addCoins(finalAmount);
 
-        // Special feedback on combo milestones
         if (combo === 10 || combo === 20 || combo === 30) {
           playSoundEffect('achievement');
           safeVibrate([40, 30, 40], getSettings().vibration);
@@ -210,7 +214,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         setLives(currentLives);
         playSoundEffect('gem');
         safeVibrate([35, 25, 55], getSettings().vibration);
-        comboRef.current = 0; // usually reset combo on gem (risk/reward)
+        comboRef.current = 0;
       },
 
       onLifeChange: (currentLives: number) => {
@@ -258,7 +262,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           }
         }
 
-        comboRef.current = 0; // reset combo on death
+        comboRef.current = 0;
         onGameOverRef.current(finalScore);
       },
 
@@ -270,7 +274,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         if (intensity >= 4) {
           playSoundEffect('hit');
           safeVibrate(55, getSettings().vibration);
-          comboRef.current = 0; // reset combo on big hit
+          comboRef.current = 0;
         }
       },
     };
@@ -286,6 +290,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     let mounted = true;
     lastTimeRef.current = performance.now();
+    startTimeRef.current = performance.now();
 
     const loop = (now: number) => {
       if (!mounted) return;
@@ -298,6 +303,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       if (state && canvas) {
         if (!pausedRef.current && state.running) {
+          // Update difficulty every frame (cheap)
+          const elapsedSeconds = (now - startTimeRef.current) / 1000;
+          difficultyRef.current = getCurrentDifficulty(elapsedSeconds, score);
+
           stepEngine(
             state,
             dt,
@@ -358,6 +367,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     jumpEngine(state, { vibration: getSettings().vibration });
   }, []);
 
+  // Expose current difficulty for future use (HUD, effects, etc.)
+  const currentDifficulty = difficultyRef.current;
+  const elapsedSeconds = (performance.now() - startTimeRef.current) / 1000;
+
   return {
     score,
     coins,
@@ -365,6 +378,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     lives,
     combo: comboRef.current,
     maxCombo: maxComboRef.current,
+    elapsedSeconds,
+    currentDifficulty,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
