@@ -96,6 +96,7 @@ export interface EngineState {
   shieldCharges: number;
   magnetUntil: number;
   gemBoostActive: boolean;
+  luckyCatchActive: boolean; // Phase 8: Golden fish ability
 }
 
 const FISH_X_RATIO = 0.28;
@@ -117,6 +118,7 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
     lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
+    luckyCatchActive: false,
   };
 }
 
@@ -163,12 +165,22 @@ function spawnObstacle(state: EngineState, score: number) {
     bobbing: hardMode && Math.random() < 0.22, bobPhase: Math.random() * Math.PI * 2,
     bobAmount: 12 + Math.random() * 10, glowing: legendaryMode, isDouble,
   });
-  if (Math.random() < 0.68) {
+
+  // Base coin spawn chance
+  let coinChance = 0.68;
+
+  // === Phase 8: Lucky Catch ability (Golden fish) ===
+  if (state.luckyCatchActive) {
+    coinChance = 0.82; // Significantly higher chance for coins
+  }
+
+  if (Math.random() < coinChance) {
     state.coins.push({
       x: state.width + BASE.obstacleWidth + 44, y: gapY + (Math.random() - 0.5) * (gap * 0.32),
       collected: false, bonus: score >= 60 && Math.random() < 0.22,
     });
   }
+
   // Gem spawn (boosted if shop gemBoostActive)
   const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
   if (Math.random() < gemChance) {
@@ -177,6 +189,7 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, pulse: Math.random() * Math.PI * 2,
     });
   }
+
   // Rare power-up spawn (shield or magnet) - increased slightly for better shop value
   if (Math.random() < 0.06) {
     const type: 'shield' | 'magnet' = Math.random() < 0.5 ? 'shield' : 'magnet';
@@ -307,7 +320,15 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = coin.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 13) {
         coin.collected = true;
-        const amount = coin.bonus ? 5 : 1;
+
+        // === Phase 7: Progressive coin value ===
+        let baseAmount = coin.bonus ? 5 : 1;
+        let multiplier = 1;
+        if (state.score >= 200) multiplier = 1.5;
+        else if (state.score >= 100) multiplier = 1.25;
+
+        const amount = Math.floor(baseAmount * multiplier);
+
         state.score += amount;
         callbacks.onScore(state.score);
         callbacks.onCoinCollect(amount);
@@ -401,11 +422,63 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   grad.addColorStop(1, c2);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
+
   if (state.score >= 100) {
     const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
     ctx.fillStyle = `rgba(255, 214, 10, ${0.05 + pulse * 0.06})`;
     ctx.fillRect(0, 0, width, height);
   }
+
+  // === Phase 7: Distant fish shadows (subtle background life) ===
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 5; i++) {
+    const x = ((state.timeMs * 0.008 + i * 180) % (width + 120)) - 60;
+    const y = 80 + (i % 3) * 95;
+    const size = 18 + (i % 4) * 6;
+
+    ctx.beginPath();
+    ctx.ellipse(x, y, size, size * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(x - size, y);
+    ctx.quadraticCurveTo(x - size * 1.6, y - size * 0.4, x - size * 2.1, y);
+    ctx.quadraticCurveTo(x - size * 1.6, y + size * 0.4, x - size, y);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // === Phase 7: Seaweed at the bottom ===
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.fillStyle = '#0a4d3c';
+  for (let i = 0; i < 9; i++) {
+    const baseX = (width / 9) * i + 15;
+    const sway = Math.sin(state.timeMs * 0.0015 + i) * 8;
+
+    ctx.beginPath();
+    ctx.moveTo(baseX, height);
+    ctx.quadraticCurveTo(baseX + sway * 0.6, height - 55, baseX - sway * 0.4, height - 95);
+    ctx.quadraticCurveTo(baseX + sway, height - 130, baseX - sway * 0.7, height - 165);
+    ctx.lineTo(baseX - 4, height);
+    ctx.closePath();
+    ctx.fill();
+
+    // Second smaller seaweed next to it
+    if (i % 2 === 0) {
+      ctx.beginPath();
+      ctx.moveTo(baseX + 18, height);
+      ctx.quadraticCurveTo(baseX + 22 + sway * 0.5, height - 40, baseX + 14, height - 75);
+      ctx.lineTo(baseX + 14, height);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
   ctx.save();
   ctx.globalAlpha = 0.12;
   for (let i = 0; i < 4; i++) {
@@ -420,6 +493,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.fill();
   }
   ctx.restore();
+
   ctx.save();
   for (const b of state.bubbles) {
     ctx.beginPath();
@@ -431,6 +505,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.stroke();
   }
   ctx.restore();
+
   ctx.save();
   ctx.globalAlpha = 0.35;
   ctx.fillStyle = tier.name === 'Easy' ? '#0a6ea8' : '#04203f';
@@ -444,39 +519,75 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.fill();
   }
   ctx.restore();
+
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.fillRect(0, height - 8, width, 8);
   ctx.fillRect(0, 0, width, 8);
 }
 
-function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: number) {
+function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: number, score: number) {
   const topGapEdge = obs.gapY - obs.gapSize / 2;
   const bottomGapEdge = obs.gapY + obs.gapSize / 2;
   const w = BASE.obstacleWidth;
   const x = obs.x - w / 2;
-  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
-  if (obs.glowing) {
-    grad.addColorStop(0, '#ffd60a');
-    grad.addColorStop(1, '#ff9500');
+
+  // === Phase 7: Progressive luxurious pipe design ===
+  let colorTop, colorBottom, glowColor, accentColor;
+
+  if (score >= 200) {
+    // Luxurious tier (200+)
+    colorTop = '#c9a227';
+    colorBottom = '#8b5e00';
+    glowColor = '#ffe066';
+    accentColor = '#ffeb3b';
+  } else if (score >= 100) {
+    // Mid tier (100-199)
+    colorTop = '#e07b39';
+    colorBottom = '#b85c2e';
+    glowColor = '#ffb74d';
+    accentColor = '#ffcc80';
   } else {
-    grad.addColorStop(0, '#2a9d8f');
-    grad.addColorStop(1, '#1d7870');
+    // Early game (0-99)
+    colorTop = '#2a9d8f';
+    colorBottom = '#1d7870';
+    glowColor = '#4dd0e1';
+    accentColor = '#80deea';
   }
+
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, colorTop);
+  grad.addColorStop(1, colorBottom);
+
   ctx.fillStyle = grad;
-  if (obs.glowing) {
+
+  if (obs.glowing || score >= 200) {
     ctx.save();
-    ctx.shadowColor = '#ffe066';
-    ctx.shadowBlur = 22;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = score >= 200 ? 28 : 18;
   }
+
   ctx.fillRect(x, 0, w, topGapEdge);
   ctx.fillRect(x - 6, topGapEdge - 18, w + 12, 18);
   ctx.fillRect(x, bottomGapEdge, w, height - bottomGapEdge);
   ctx.fillRect(x - 6, bottomGapEdge, w + 12, 18);
-  if (obs.glowing) ctx.restore();
+
+  if (obs.glowing || score >= 200) ctx.restore();
+
+  // Accent line for luxury feel
+  if (score >= 100) {
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(x + 4, topGapEdge - 8, w - 8, 4);
+    ctx.fillRect(x + 4, bottomGapEdge + 4, w - 8, 4);
+  }
+
   if (obs.isDouble) {
     const secondTop = bottomGapEdge + 58;
     const secondBottom = secondTop + 52;
-    ctx.clearRect(x - 6, secondTop, w + 12, secondBottom - secondTop);
+
+    // Fixed: Draw gap properly instead of clearRect (prevents black square bug)
+    ctx.fillStyle = '#0a1929'; // Match background color
+    ctx.fillRect(x - 6, secondTop, w + 12, secondBottom - secondTop);
+
     ctx.fillStyle = '#e63946';
     ctx.fillRect(x - 6, secondBottom, w + 12, 8);
   }
@@ -497,133 +608,125 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.save();
     ctx.globalAlpha = 0.28 + pulse * 0.2;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.9, r * 1.35, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 1.95, r * 1.4, 0, 0, Math.PI * 2);
     ctx.fillStyle = glow;
     ctx.fill();
     ctx.globalAlpha = 0.5 + pulse * 0.25;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.6, r * 1.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 1.65, r * 1.15, 0, 0, Math.PI * 2);
     ctx.strokeStyle = glow;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
     ctx.restore();
   }
   ctx.save();
   ctx.shadowColor = glow;
-  ctx.shadowBlur = id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
-  // Tail
+  ctx.shadowBlur = id === 'legendary' ? 32 : id === 'diamond' ? 26 : 18;
+
+  // === Improved Tail (more elegant and realistic) ===
   if (id === 'ruby') {
     ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.6, -r * 1.3, -r * 2.3, -r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.3, r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.6, r * 1.3, -r * 0.85, 0);
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.7, -r * 1.35, -r * 2.45, -r * 0.65);
+    ctx.quadraticCurveTo(-r * 2.0, 0, -r * 2.45, r * 0.65);
+    ctx.quadraticCurveTo(-r * 1.7, r * 1.35, -r * 0.9, 0);
     ctx.closePath();
     ctx.fillStyle = fin;
     ctx.fill();
   } else if (id === 'legendary') {
     ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.quadraticCurveTo(-r * 1.7, -r * 1.25, -r * 2.4, -r * 0.45);
-    ctx.lineTo(-r * 1.8, 0);
-    ctx.quadraticCurveTo(-r * 2.4, r * 0.45, -r * 1.7, r * 1.25);
+    ctx.moveTo(-r * 0.95, 0);
+    ctx.quadraticCurveTo(-r * 1.85, -r * 1.35, -r * 2.55, -r * 0.5);
+    ctx.lineTo(-r * 1.9, 0);
+    ctx.quadraticCurveTo(-r * 2.55, r * 0.5, -r * 1.85, r * 1.35);
     ctx.closePath();
-    ctx.fillStyle = '#1a1a1a';
+    ctx.fillStyle = '#111111';
     ctx.fill();
   } else {
     ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.45, -r * 0.95, -r * 1.95, -r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.55, 0, -r * 1.95, r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.45, r * 0.95, -r * 0.85, 0);
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.55, -r * 1.05, -r * 2.1, -r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.65, 0, -r * 2.1, r * 0.4);
+    ctx.quadraticCurveTo(-r * 1.55, r * 1.05, -r * 0.9, 0);
     ctx.closePath();
     ctx.fillStyle = fin;
     ctx.fill();
   }
-  // Body
+
+  // === Improved Body with better shading ===
   ctx.beginPath();
-  ctx.moveTo(-r * 0.9, 0);
-  ctx.quadraticCurveTo(-r * 0.55, -r * 0.95, r * 0.15, -r * 0.88);
-  ctx.quadraticCurveTo(r * 0.95, -r * 0.5, r * 1.05, 0);
-  ctx.quadraticCurveTo(r * 0.95, r * 0.5, r * 0.15, r * 0.88);
-  ctx.quadraticCurveTo(-r * 0.55, r * 0.95, -r * 0.9, 0);
+  ctx.moveTo(-r * 0.95, 0);
+  ctx.quadraticCurveTo(-r * 0.6, -r * 1.0, r * 0.2, -r * 0.92);
+  ctx.quadraticCurveTo(r * 1.0, -r * 0.55, r * 1.12, 0);
+  ctx.quadraticCurveTo(r * 1.0, r * 0.55, r * 0.2, r * 0.92);
+  ctx.quadraticCurveTo(-r * 0.6, r * 1.0, -r * 0.95, 0);
   ctx.closePath();
-  const bodyGrad = ctx.createLinearGradient(-r, -r, r, r);
+
+  const bodyGrad = ctx.createLinearGradient(-r * 0.9, -r, r * 1.1, r);
   if (id === 'legendary') {
     bodyGrad.addColorStop(0, '#1a1a1a');
-    bodyGrad.addColorStop(0.5, '#ffd60a');
+    bodyGrad.addColorStop(0.35, '#ffe066');
+    bodyGrad.addColorStop(0.65, '#ffd60a');
     bodyGrad.addColorStop(1, '#1a1a1a');
   } else {
     bodyGrad.addColorStop(0, belly);
-    bodyGrad.addColorStop(0.4, body);
-    bodyGrad.addColorStop(1, fin);
+    bodyGrad.addColorStop(0.35, body);
+    bodyGrad.addColorStop(0.75, fin);
+    bodyGrad.addColorStop(1, '#1a3a4a');
   }
   ctx.fillStyle = bodyGrad;
   ctx.fill();
-  // Belly
+
+  // Subtle scale highlight
+  ctx.globalAlpha = 0.25;
   ctx.beginPath();
-  ctx.ellipse(r * 0.1, r * 0.28, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
-  ctx.fillStyle = belly;
-  ctx.globalAlpha = 0.85;
+  ctx.ellipse(r * 0.15, -r * 0.15, r * 0.55, r * 0.35, -0.4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.globalAlpha = 1;
-  // Dorsal
+
+  // === Belly (more natural) ===
   ctx.beginPath();
-  ctx.moveTo(-r * 0.15, -r * 0.7);
-  ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
-  ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = id === 'legendary' ? '#ffd60a' : fin;
+  ctx.ellipse(r * 0.12, r * 0.32, r * 0.58, r * 0.35, 0, 0, Math.PI * 2);
+  ctx.fillStyle = belly;
+  ctx.globalAlpha = 0.9;
   ctx.fill();
-  // Pectoral
+  ctx.globalAlpha = 1;
+
+  // === Dorsal Fin (improved shape) ===
   ctx.beginPath();
-  ctx.moveTo(r * 0.25, r * 0.1);
-  ctx.quadraticCurveTo(r * 1.05, -r * 0.2, r * 1.1, r * 0.35);
-  ctx.quadraticCurveTo(r * 0.7, r * 0.3, r * 0.25, r * 0.1);
+  ctx.moveTo(-r * 0.2, -r * 0.72);
+  ctx.quadraticCurveTo(r * 0.3, -r * 1.35, r * 0.75, -r * 0.6);
+  ctx.quadraticCurveTo(r * 0.35, -r * 0.85, 0, -r * 0.72);
+  ctx.closePath();
+  ctx.fillStyle = id === 'legendary' ? '#ffe066' : fin;
+  ctx.fill();
+
+  // === Pectoral Fin ===
+  ctx.beginPath();
+  ctx.moveTo(r * 0.28, r * 0.12);
+  ctx.quadraticCurveTo(r * 1.15, -r * 0.22, r * 1.2, r * 0.38);
+  ctx.quadraticCurveTo(r * 0.75, r * 0.32, r * 0.28, r * 0.12);
   ctx.closePath();
   ctx.fillStyle = fin;
   ctx.fill();
-  // Eye
+
+  // === Eye (more lively and detailed) ===
   ctx.beginPath();
-  ctx.arc(r * 0.55, -r * 0.15, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a1200';
+  ctx.arc(r * 0.58, -r * 0.18, 5.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#0f0a00';
   ctx.fill();
+
   ctx.beginPath();
-  ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
+  ctx.arc(r * 0.6, -r * 0.2, 2.8, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
 
-  // === VISUAL POWER-UP INDICATORS ===
-  // Shield active: pulsing blue protective bubble
-  if (state.shieldCharges > 0) {
-    const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
-    ctx.save();
-    ctx.globalAlpha = 0.22 + shieldPulse * 0.18;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.65, 0, Math.PI * 2);
-    ctx.fillStyle = '#4fc3f7';
-    ctx.fill();
-    ctx.globalAlpha = 0.65 + shieldPulse * 0.25;
-    ctx.strokeStyle = '#e3f2fd';
-    ctx.lineWidth = 3.5 + shieldPulse * 1.2;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // Magnet active: enhanced orange magnetic glow + field
-  if (state.magnetUntil > state.timeMs) {
-    const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
-    ctx.save();
-    ctx.shadowColor = '#ff6d00';
-    ctx.shadowBlur = 32 + magPulse * 14;
-    ctx.globalAlpha = 0.4 + magPulse * 0.25;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ff9500';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-    ctx.restore();
-  }
+  // Small reflection in eye
+  ctx.beginPath();
+  ctx.arc(r * 0.62, -r * 0.24, 1.1, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
 
   ctx.restore();
   ctx.restore();
@@ -745,7 +848,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     ctx.translate(dx, dy);
     }
   drawBackground(ctx, state);
-  for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
+  for (const obs of state.obstacles) drawObstacle(ctx, obs, height, state.score);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
   for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
   for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);

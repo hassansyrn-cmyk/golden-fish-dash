@@ -22,6 +22,7 @@ import type {
   ShopItemId,
   SkinId,
 } from './types';
+import { UPGRADE_LEVELS } from './types';
 import { submitLeaderboardScore as submitToFirebase, fetchGlobalLeaderboard as fetchFromFirebase } from './firebaseLeaderboard';
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -147,6 +148,7 @@ const DEFAULT_SHOP_INVENTORY: ShopInventory = {
   magnet: 0,
   gemBoost: 0,
   continueToken: 0,
+  dash: 0,
 };
 
 export function getShopInventory(): ShopInventory {
@@ -156,7 +158,6 @@ export function getShopInventory(): ShopInventory {
 function saveShopInventory(inventory: ShopInventory) {
   writeJSON(STORAGE_KEYS.shopInventory, inventory);
 }
-
 export function getShopItemCount(itemId: ShopItemId): number {
   const inv = getShopInventory();
   return inv[itemId] ?? 0;
@@ -189,6 +190,51 @@ function addShopItem(itemId: ShopItemId, count: number = 1): ShopInventory {
   const newInv: ShopInventory = { ...inv, [itemId]: (inv[itemId] ?? 0) + count };
   saveShopInventory(newInv);
   return newInv;
+}
+
+// === PHASE 3: Upgrade System ===
+export interface PlayerUpgrades {
+  shield: number;
+  magnet: number;
+  gemBoost: number;
+  dash: number;
+}
+
+const DEFAULT_PLAYER_UPGRADES: PlayerUpgrades = {
+  shield: 1,
+  magnet: 1,
+  gemBoost: 1,
+  dash: 1,
+};
+
+export function getPlayerUpgrades(): PlayerUpgrades {
+  return readJSON<PlayerUpgrades>('gfr_player_upgrades', DEFAULT_PLAYER_UPGRADES);
+}
+
+export function buyUpgrade(itemId: ShopItemId, targetLevel: number): boolean {
+  const upgrades = getPlayerUpgrades();
+  const currentLevel = upgrades[itemId] || 1;
+
+  if (targetLevel <= currentLevel) return false;
+
+  const upgradeData = UPGRADE_LEVELS[itemId];
+  if (!upgradeData || targetLevel > upgradeData.length) return false;
+
+  const upgrade = upgradeData[targetLevel - 1];
+  if (!upgrade) return false;
+
+  if (!buyShopItem(itemId, upgrade.cost)) {
+    return false; // not enough coins
+  }
+
+  const newUpgrades = { ...upgrades, [itemId]: targetLevel };
+  writeJSON('gfr_player_upgrades', newUpgrades);
+  return true;
+}
+
+export function getUpgradeLevel(itemId: ShopItemId): number {
+  const upgrades = getPlayerUpgrades();
+  return upgrades[itemId] || 1;
 }
 
 // ---- Local leaderboard ----
@@ -226,7 +272,6 @@ export function addLocalLeaderboardEntry(name: string, score: number): Leaderboa
   writeJSON(STORAGE_KEYS.leaderboard, trimmed);
   return trimmed;
 }
-
 export function qualifiesForLeaderboard(score: number): boolean {
   const board = getLocalLeaderboard();
   return score > 0 && (board.length < 10 || score > board[board.length - 1].score);
@@ -343,7 +388,6 @@ export function canClaimDailyReward(): boolean {
   const today = dateKey();
   return state.lastClaimDate !== today;
 }
-
 export function getCurrentDailyReward(): { day: number; label: string; type: string; amount: number } {
   const state = getDailyRewardState();
   const day = ((state.streakDay - 1) % 7) + 1;
