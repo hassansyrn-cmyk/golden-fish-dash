@@ -23,7 +23,7 @@ import { playSoundEffect, ensureAudioContext } from './managers/AudioManager';
 import { getCurrentDifficulty, type DifficultyState } from './managers/DifficultyManager';
 import { powerUpManager } from './managers/PowerUpManager';
 import { getLevelInfo, addXP, getLevelRewards } from './managers/ProgressionManager';
-import { getDailyMissions, updateMissionProgress, type Mission } from './managers/MissionManager';
+import { getDailyMissions, updateMissionProgress, getMissionRewards, type Mission } from './managers/MissionManager';
 import { analytics } from './managers/AnalyticsManager';
 import { adManager } from './managers/AdManager';
 import { debounce } from '../utils/performance';
@@ -62,7 +62,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 3 + 4 ===
+  // === PHASE 3 + 4: Economy + Missions ===
   const totalXPRef = useRef(0);
   const missionsRef = useRef<Mission[]>(getDailyMissions());
   const gamesPlayedRef = useRef(0);
@@ -220,8 +220,22 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           safeVibrate(25, getSettings().vibration);
         }
 
-        const { updatedMissions } = updateMissionProgress(missionsRef.current, 'reach_score', newScore);
+        const { updatedMissions, justCompleted } = updateMissionProgress(missionsRef.current, 'reach_score', newScore);
         missionsRef.current = updatedMissions;
+
+        if (justCompleted) {
+          const mission = missionsRef.current.find(m => m.id === justCompleted);
+          if (mission) {
+            const rewards = getMissionRewards(mission);
+            if (rewards.coins) {
+              const newTotal = addCoins(rewards.coins);
+              setCoins(newTotal);
+            }
+            playSoundEffect('achievement');
+            safeVibrate([30, 25, 40], getSettings().vibration);
+            analytics.track('mission_completed', { missionId: justCompleted });
+          }
+        }
       },
 
       onCoinCollect: (amount: number) => {
@@ -251,19 +265,33 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           safeVibrate(18, getSettings().vibration);
         }
 
-        const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
+        const { state: challengeState, justCompleted: challengeJustCompleted } = updateDailyChallengeProgress(
           'coins',
           finalAmount,
         );
 
-        if (justCompleted) {
+        if (challengeJustCompleted) {
           total = addCoins(challengeState.challenge.rewardCoins);
           playSoundEffect('achievement');
           safeVibrate([25, 25, 35], getSettings().vibration);
         }
 
-        const { updatedMissions } = updateMissionProgress(missionsRef.current, 'collect_coins', finalAmount);
+        const { updatedMissions, justCompleted } = updateMissionProgress(missionsRef.current, 'collect_coins', finalAmount);
         missionsRef.current = updatedMissions;
+
+        if (justCompleted) {
+          const mission = missionsRef.current.find(m => m.id === justCompleted);
+          if (mission) {
+            const rewards = getMissionRewards(mission);
+            if (rewards.coins) {
+              const newTotal = addCoins(rewards.coins);
+              setCoins(newTotal);
+            }
+            playSoundEffect('achievement');
+            safeVibrate([30, 25, 40], getSettings().vibration);
+            analytics.track('mission_completed', { missionId: justCompleted });
+          }
+        }
 
         setCoins(total);
 
@@ -306,18 +334,29 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         }
 
         gamesPlayedRef.current += 1;
-        const { updatedMissions } = updateMissionProgress(missionsRef.current, 'play_games', 1);
+        const { updatedMissions, justCompleted } = updateMissionProgress(missionsRef.current, 'play_games', 1);
         missionsRef.current = updatedMissions;
+
+        if (justCompleted) {
+          const mission = missionsRef.current.find(m => m.id === justCompleted);
+          if (mission) {
+            const rewards = getMissionRewards(mission);
+            if (rewards.coins) {
+              const newTotal = addCoins(rewards.coins);
+              setCoins(newTotal);
+            }
+            playSoundEffect('achievement');
+            safeVibrate([30, 25, 40], getSettings().vibration);
+            analytics.track('mission_completed', { missionId: justCompleted });
+          }
+        }
 
         playSoundEffect('gameover');
         safeVibrate([80, 50, 120], getSettings().vibration);
 
         analytics.track('game_over', { score: finalScore, level: getLevelInfo(totalXPRef.current).level });
 
-        // === PHASE 4: Ad frequency logic ===
         if (adManager.shouldShowInterstitial()) {
-          // In real app, you would show the interstitial here
-          // For now we just track it
           analytics.track('ad_watched', { type: 'interstitial' });
         }
 
