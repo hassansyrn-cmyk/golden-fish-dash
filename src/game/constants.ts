@@ -43,6 +43,8 @@ export const SKINS: SkinDef[] = [
       fin: '#ff7b00',
       glow: '#ffd166',
     },
+    ability: 'lucky_catch',
+    abilityDescription: 'Higher chance to spawn extra coins',
   },
   {
     id: 'ruby',
@@ -54,6 +56,8 @@ export const SKINS: SkinDef[] = [
       fin: '#780000',
       glow: '#ff4d6d',
     },
+    ability: 'fighter',
+    abilityDescription: 'Gain bonus score when passing obstacles',
   },
   {
     id: 'emerald',
@@ -65,6 +69,8 @@ export const SKINS: SkinDef[] = [
       fin: '#00b4d8',
       glow: '#48cae4',
     },
+    ability: 'collector',
+    abilityDescription: 'Collected coins are worth more points',
   },
   {
     id: 'diamond',
@@ -76,6 +82,8 @@ export const SKINS: SkinDef[] = [
       fin: '#4361ee',
       glow: '#a5d8ff',
     },
+    ability: 'precious',
+    abilityDescription: 'Higher chance for gems to appear',
   },
   {
     id: 'legendary',
@@ -87,6 +95,8 @@ export const SKINS: SkinDef[] = [
       fin: '#1a1a1a',
       glow: '#ffe066',
     },
+    ability: 'royal_presence',
+    abilityDescription: 'Start each run with 1 free shield charge',
   },
 ];
 
