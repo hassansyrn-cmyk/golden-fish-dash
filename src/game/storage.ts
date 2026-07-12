@@ -11,6 +11,7 @@ import {
   SAMPLE_GLOBAL_SCORES,
   SKINS,
   STORAGE_KEYS,
+  UPGRADE_LEVELS,
   dateKey,
 } from './constants';
 import type {
@@ -189,6 +190,51 @@ function addShopItem(itemId: ShopItemId, count: number = 1): ShopInventory {
   const newInv: ShopInventory = { ...inv, [itemId]: (inv[itemId] ?? 0) + count };
   saveShopInventory(newInv);
   return newInv;
+}
+
+// === PHASE 3: Upgrade System ===
+export interface PlayerUpgrades {
+  shield: number;
+  magnet: number;
+  gemBoost: number;
+  dash: number;
+}
+
+const DEFAULT_PLAYER_UPGRADES: PlayerUpgrades = {
+  shield: 1,
+  magnet: 1,
+  gemBoost: 1,
+  dash: 1,
+};
+
+export function getPlayerUpgrades(): PlayerUpgrades {
+  return readJSON<PlayerUpgrades>('gfr_player_upgrades', DEFAULT_PLAYER_UPGRADES);
+}
+
+export function buyUpgrade(itemId: ShopItemId, targetLevel: number): boolean {
+  const upgrades = getPlayerUpgrades();
+  const currentLevel = upgrades[itemId] || 1;
+
+  if (targetLevel <= currentLevel) return false;
+
+  const upgradeData = UPGRADE_LEVELS[itemId];
+  if (!upgradeData || targetLevel > upgradeData.length) return false;
+
+  const upgrade = upgradeData[targetLevel - 1];
+  if (!upgrade) return false;
+
+  if (!buyShopItem(itemId, upgrade.cost)) {
+    return false; // not enough coins
+  }
+
+  const newUpgrades = { ...upgrades, [itemId]: targetLevel };
+  writeJSON('gfr_player_upgrades', newUpgrades);
+  return true;
+}
+
+export function getUpgradeLevel(itemId: ShopItemId): number {
+  const upgrades = getPlayerUpgrades();
+  return upgrades[itemId] || 1;
 }
 
 // ---- Local leaderboard ----
