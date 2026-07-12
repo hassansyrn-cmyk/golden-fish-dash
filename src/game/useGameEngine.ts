@@ -56,11 +56,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 2: COMBO + DIFFICULTY ===
+  // === PHASE 2: COMBO + DIFFICULTY + NEAR MISS ===
   const comboRef = useRef(0);
   const maxComboRef = useRef(0);
   const startTimeRef = useRef(0);
   const difficultyRef = useRef<DifficultyState>(getCurrentDifficulty(0));
+  const nearMissCountRef = useRef(0);
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
@@ -85,7 +86,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const engine = createEngine(width, height, skin);
     stateRef.current = engine;
 
-    // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
     const inv = getShopInventory();
     let applied = false;
 
@@ -109,6 +109,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     lastMilestoneRef.current = 0;
     comboRef.current = 0;
     maxComboRef.current = 0;
+    nearMissCountRef.current = 0;
     startTimeRef.current = performance.now();
     difficultyRef.current = getCurrentDifficulty(0);
 
@@ -148,7 +149,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     comboRef.current = 0;
   }, []);
 
-  // === PHASE 2: COMBO + DIFFICULTY AWARE ===
   const stepCallbacksRef = useRef<any>(null);
 
   if (!stepCallbacksRef.current) {
@@ -170,7 +170,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           maxComboRef.current = comboRef.current;
         }
 
-        // Apply difficulty reward multiplier + combo multiplier
         const diff = difficultyRef.current;
         let finalAmount = Math.floor(amount * diff.rewardMultiplier);
 
@@ -275,6 +274,19 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           playSoundEffect('hit');
           safeVibrate(55, getSettings().vibration);
           comboRef.current = 0;
+        } else if (intensity > 0 && intensity < 3) {
+          // === NEAR MISS BONUS (Phase 2) ===
+          // Light shake = close call but survived
+          nearMissCountRef.current += 1;
+          const bonus = Math.floor(3 + nearMissCountRef.current * 0.5);
+          const total = addCoins(bonus);
+          setCoins(total);
+
+          // Small rewarding feedback for risky play
+          if (nearMissCountRef.current % 3 === 0) {
+            playSoundEffect('milestone');
+            safeVibrate(25, getSettings().vibration);
+          }
         }
       },
     };
@@ -303,7 +315,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       if (state && canvas) {
         if (!pausedRef.current && state.running) {
-          // Update difficulty every frame (cheap)
           const elapsedSeconds = (now - startTimeRef.current) / 1000;
           difficultyRef.current = getCurrentDifficulty(elapsedSeconds, score);
 
@@ -367,7 +378,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     jumpEngine(state, { vibration: getSettings().vibration });
   }, []);
 
-  // Expose current difficulty for future use (HUD, effects, etc.)
   const currentDifficulty = difficultyRef.current;
   const elapsedSeconds = (performance.now() - startTimeRef.current) / 1000;
 
@@ -378,6 +388,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     lives,
     combo: comboRef.current,
     maxCombo: maxComboRef.current,
+    nearMissCount: nearMissCountRef.current,
     elapsedSeconds,
     currentDifficulty,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
