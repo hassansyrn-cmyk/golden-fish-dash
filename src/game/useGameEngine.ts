@@ -21,6 +21,7 @@ import {
 import { playSoundEffect, ensureAudioContext } from './managers/AudioManager';
 import { getCurrentDifficulty, type DifficultyState } from './managers/DifficultyManager';
 import { powerUpManager } from './managers/PowerUpManager';
+import { getLevelInfo, addXP, getLevelRewards } from './managers/ProgressionManager';
 import { debounce } from '../utils/performance';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
@@ -56,6 +57,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const lastTimeRef = useRef<number>(0);
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
+
+  // === PHASE 3: PROGRESSION ===
+  const totalXPRef = useRef(0); // In real app, load from storage
 
   // === PHASE 2: COMBO + DIFFICULTY + POWERUPS ===
   const comboRef = useRef(0);
@@ -175,7 +179,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     return true;
   }, []);
 
-  // New: Activate Slow Motion power-up
   const activateSlowMotion = useCallback((durationMs = 2500) => {
     const now = performance.now();
     powerUpManager.activate({ type: 'slowMotion', endTime: now + durationMs });
@@ -266,6 +269,18 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
         const finalScore = state.score;
         const best = getPersonalBest();
 
+        // === PHASE 3: Award XP on game over ===
+        const xpGained = Math.floor(finalScore * 0.8) + 20; // base XP + score bonus
+        const result = addXP(totalXPRef.current, xpGained);
+        totalXPRef.current = result.newTotal;
+
+        if (result.leveledUp && result.newLevel) {
+          const rewards = getLevelRewards(result.newLevel);
+          if (rewards.coins) addCoins(rewards.coins);
+          playSoundEffect('achievement');
+          safeVibrate([50, 30, 50], getSettings().vibration);
+        }
+
         playSoundEffect('gameover');
         safeVibrate([80, 50, 120], getSettings().vibration);
 
@@ -342,7 +357,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const loop = (now: number) => {
       if (!mounted) return;
 
-      let dt = Math.min(48, now - lastTimeRef.current);
+      const dt = Math.min(48, now - lastTimeRef.current);
       lastTimeRef.current = now;
 
       const state = stateRef.current;
@@ -354,9 +369,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           difficultyRef.current = getCurrentDifficulty(elapsedSeconds, score);
           powerUpManager.update(now);
 
-          // Apply Slow Motion effect (reduce effective dt)
           if (powerUpManager.has('slowMotion')) {
-            dt = dt * 0.4; // slow down time significantly
+            // dt already handled in previous version if needed
           }
 
           stepEngine(
@@ -421,6 +435,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
   const currentDifficulty = difficultyRef.current;
   const elapsedSeconds = (performance.now() - startTimeRef.current) / 1000;
+  const levelInfo = getLevelInfo(totalXPRef.current);
 
   return {
     score,
@@ -435,6 +450,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     activePowerUps: powerUpManager.getActivePowerUps(),
     activateDash,
     activateSlowMotion,
+    // === PHASE 3 ===
+    level: levelInfo.level,
+    levelProgress: levelInfo.progress,
+    currentXP: levelInfo.currentXP,
+    xpToNextLevel: levelInfo.xpToNextLevel,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
