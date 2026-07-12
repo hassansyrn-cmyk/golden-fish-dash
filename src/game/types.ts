@@ -2,11 +2,20 @@
 
 export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary';
 
+export type SkinAbility =
+  | 'lucky_catch'      // More coins spawn
+  | 'fighter'          // Bonus score from passing obstacles
+  | 'collector'        // Higher coin value
+  | 'precious'         // Higher gem spawn chance
+  | 'royal_presence';  // Start with 1 shield charge
+
 export interface SkinDef {
   id: SkinId;
   name: string;
   unlockScore: number;
   colors: { body: string; belly: string; fin: string; glow: string };
+  ability: SkinAbility;
+  abilityDescription: string;
 }
 
 export interface LeaderboardEntry {
