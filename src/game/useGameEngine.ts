@@ -149,6 +149,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
       return shark.x < fishX - 80 || shark.x > state.width + 100;
     });
 
+    state.seaMines = state.seaMines.filter((mine) => {
+      return mine.x < fishX - 80 || mine.x > state.width + 100;
+    });
+
+    state.jellyfish = state.jellyfish.filter((jelly) => {
+      return jelly.x < fishX - 80 || jelly.x > state.width + 100;
+    });
+
     state.elapsedSinceSpawn = -850;
 
     audioManager.playSound('reward', settings.sound);
@@ -287,6 +295,17 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
               onRedFlash: () => {
                 state.isRedFlashing = true;
                 state.redFlashTimer = 180; // flash screen in ms
+              },
+
+              onNearMiss: () => {
+                audioManager.playSound('milestone', settings.sound);
+                safeVibrate(22, settings.vibration);
+              },
+
+              onFeverStart: () => {
+                audioManager.playSound('reward', settings.sound);
+                setTimeout(() => audioManager.playSound('achievement', settings.sound), 150);
+                safeVibrate([30, 20, 50], settings.vibration);
               },
             },
             { vibration: settings.vibration },
