@@ -57,7 +57,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
 
-  // === PHASE 2: COMBO + DIFFICULTY + POWERUPS ===
+  // === PHASE 2: COMBO + DIFFICULTY + POWERUPS + DASH ===
   const comboRef = useRef(0);
   const maxComboRef = useRef(0);
   const startTimeRef = useRef(0);
@@ -150,6 +150,28 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     safeVibrate([45, 35, 45], getSettings().vibration);
     comboRef.current = 0;
     powerUpManager.reset();
+  }, []);
+
+  // Activate Dash (new Phase 2 power-up)
+  const activateDash = useCallback((durationMs = 1200, strength = 1.8) => {
+    const state = stateRef.current;
+    if (!state) return false;
+
+    const now = performance.now();
+    powerUpManager.activate({
+      type: 'dash',
+      endTime: now + durationMs,
+      strength,
+    });
+
+    // Give temporary invincibility + forward boost
+    state.invincibleUntil = now + durationMs;
+    state.fishVY = -12; // strong upward dash
+
+    playSoundEffect('reward');
+    safeVibrate([30, 20, 50], getSettings().vibration);
+
+    return true;
   }, []);
 
   const stepCallbacksRef = useRef<any>(null);
@@ -320,6 +342,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           difficultyRef.current = getCurrentDifficulty(elapsedSeconds, score);
           powerUpManager.update(now);
 
+          // Apply dash strength if active (simple speed boost)
+          if (powerUpManager.has('dash')) {
+            // We can enhance fish speed here in future iterations
+          }
+
           stepEngine(
             state,
             dt,
@@ -394,6 +421,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     elapsedSeconds,
     currentDifficulty,
     activePowerUps: powerUpManager.getActivePowerUps(),
+    activateDash,
     shieldCharges: stateRef.current?.shieldCharges ?? 0,
     magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
     doJump,
