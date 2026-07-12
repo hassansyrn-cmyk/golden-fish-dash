@@ -118,8 +118,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     if (inv.dash > 0) {
       consumeShopItem('dash');
       const now = performance.now();
-      powerUpManager.activate({ type: 'dash', endTime: now + 1800, strength: 1.6 });
-      engine.invincibleUntil = now + 1800;
+      // Dash is now clearly limited (Phase 6 improvement)
+      const dashDuration = 1600; // 1.6 seconds - limited and clear
+      powerUpManager.activate({ type: 'dash', endTime: now + dashDuration, strength: 1.7 });
+      engine.invincibleUntil = now + dashDuration;
       applied = true;
     }
 
@@ -173,15 +175,16 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     powerUpManager.reset();
   }, []);
 
-  const activateDash = useCallback((durationMs = 1200, strength = 1.8) => {
+  const activateDash = useCallback((durationMs = 1400, strength = 1.8) => {
     const state = stateRef.current;
     if (!state) return false;
 
     const now = performance.now();
+    // Dash is strictly time-limited (Phase 6)
     powerUpManager.activate({ type: 'dash', endTime: now + durationMs, strength });
 
     state.invincibleUntil = now + durationMs;
-    state.fishVY = -12;
+    state.fishVY = -13; // Strong upward dash
 
     playSoundEffect('reward');
     safeVibrate([30, 20, 50], getSettings().vibration);
