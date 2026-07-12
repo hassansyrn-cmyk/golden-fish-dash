@@ -218,6 +218,27 @@ export default function GoldenFishRush() {
     setScreen('menu');
   }, []);
 
+  const handleGoToLeaderboard = useCallback(() => {
+    setScreen('leaderboard');
+  }, []);
+
+  const handleGoToHowTo = useCallback(() => {
+    setScreen('howto');
+  }, []);
+
+  const handleGoToSettings = useCallback(() => {
+    setScreen('settings');
+  }, []);
+
+  const handleGoToMenu = useCallback(() => {
+    setReviveCountdown(null);
+    setScreen('menu');
+  }, []);
+
+  const handleResumePlaying = useCallback(() => {
+    setScreen('playing');
+  }, []);
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -278,19 +299,19 @@ export default function GoldenFishRush() {
         {screen === 'menu' && (
           <MainMenu
             onPlay={startRun}
-            onLeaderboard={() => setScreen('leaderboard')}
-            onHowTo={() => setScreen('howto')}
-            onSettings={() => setScreen('settings')}
+            onLeaderboard={handleGoToLeaderboard}
+            onHowTo={handleGoToHowTo}
+            onSettings={handleGoToSettings}
             onShop={handleOpenShop}
             onDailyRewards={handleOpenDailyRewards}
           />
         )}
 
-        {screen === 'howto' && <HowToPlay onBack={() => setScreen('menu')} />}
+        {screen === 'howto' && <HowToPlay onBack={handleGoToMenu} />}
 
-        {screen === 'settings' && <SettingsScreen onBack={() => setScreen('menu')} />}
+        {screen === 'settings' && <SettingsScreen onBack={handleGoToMenu} />}
 
-        {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('menu')} />}
+        {screen === 'leaderboard' && <LeaderboardScreen onBack={handleGoToMenu} />}
 
         {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
 
@@ -298,11 +319,8 @@ export default function GoldenFishRush() {
 
         {screen === 'paused' && (
           <PauseScreen
-            onResume={() => setScreen('playing')}
-            onMenu={() => {
-              setReviveCountdown(null);
-              setScreen('menu');
-            }}
+            onResume={handleResumePlaying}
+            onMenu={handleGoToMenu}
           />
         )}
 
@@ -319,8 +337,8 @@ export default function GoldenFishRush() {
             canContinue={!usedSecondChanceThisRun}
             onWatchAd={handleWatchAd}
             onPlayAgain={startRun}
-            onLeaderboard={() => setScreen('leaderboard')}
-            onMenu={() => setScreen('menu')}
+            onLeaderboard={handleGoToLeaderboard}
+            onMenu={handleGoToMenu}
             onNewUnlocks={handleNewUnlocks}
             onShop={handleOpenShop}
           />
