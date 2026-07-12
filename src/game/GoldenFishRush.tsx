@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MainMenu from './screens/MainMenu';
 import HowToPlay from './screens/HowToPlay';
 import SettingsScreen from './screens/SettingsScreen';
@@ -197,7 +197,11 @@ export default function GoldenFishRush() {
     setNewUnlocks(null);
   }, []);
 
-  const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
+  // PERFORMANCE: Memoize derived value to avoid unnecessary re-renders of HUD
+  const visibleLives = useMemo(
+    () => Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES)),
+    [lives]
+  );
 
   const handleOpenShop = useCallback(() => {
     setScreen('shop');
