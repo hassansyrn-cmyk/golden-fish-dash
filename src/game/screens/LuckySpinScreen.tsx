@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getCoins, addCoins, getShopInventory, buyShopItem } from '../storage';
+import { getCoins, addCoins, getShopInventory } from '../storage';
 import { dateKey } from '../constants';
 import { audioManager } from '../managers/AudioManager';
 
