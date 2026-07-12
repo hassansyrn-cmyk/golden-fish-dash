@@ -427,8 +427,8 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.quadraticCurveTo(x - size * 1.6, y - size * 0.4, x - size * 2.1, y);
     ctx.quadraticCurveTo(x - size * 1.6, y + size * 0.4, x - size, y);
     ctx.fill();
-  }
-  ctx.restore();
+
+    ctx.restore();
 
   // === Phase 7: Seaweed at the bottom ===
   ctx.save();
@@ -504,30 +504,61 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.fillRect(0, 0, width, 8);
 }
 
-function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: number) {
+function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: number, score: number) {
   const topGapEdge = obs.gapY - obs.gapSize / 2;
   const bottomGapEdge = obs.gapY + obs.gapSize / 2;
   const w = BASE.obstacleWidth;
   const x = obs.x - w / 2;
-  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
-  if (obs.glowing) {
-    grad.addColorStop(0, '#ffd60a');
-    grad.addColorStop(1, '#ff9500');
+
+  // === Phase 7: Progressive luxurious pipe design ===
+  let colorTop, colorBottom, glowColor, accentColor;
+
+  if (score >= 200) {
+    // Luxurious tier (200+)
+    colorTop = '#c9a227';
+    colorBottom = '#8b5e00';
+    glowColor = '#ffe066';
+    accentColor = '#ffeb3b';
+  } else if (score >= 100) {
+    // Mid tier (100-199)
+    colorTop = '#e07b39';
+    colorBottom = '#b85c2e';
+    glowColor = '#ffb74d';
+    accentColor = '#ffcc80';
   } else {
-    grad.addColorStop(0, '#2a9d8f');
-    grad.addColorStop(1, '#1d7870');
+    // Early game (0-99)
+    colorTop = '#2a9d8f';
+    colorBottom = '#1d7870';
+    glowColor = '#4dd0e1';
+    accentColor = '#80deea';
   }
+
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, colorTop);
+  grad.addColorStop(1, colorBottom);
+
   ctx.fillStyle = grad;
-  if (obs.glowing) {
+
+  if (obs.glowing || score >= 200) {
     ctx.save();
-    ctx.shadowColor = '#ffe066';
-    ctx.shadowBlur = 22;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = score >= 200 ? 28 : 18;
   }
+
   ctx.fillRect(x, 0, w, topGapEdge);
   ctx.fillRect(x - 6, topGapEdge - 18, w + 12, 18);
   ctx.fillRect(x, bottomGapEdge, w, height - bottomGapEdge);
   ctx.fillRect(x - 6, bottomGapEdge, w + 12, 18);
-  if (obs.glowing) ctx.restore();
+
+  if (obs.glowing || score >= 200) ctx.restore();
+
+  // Accent line for luxury feel
+  if (score >= 100) {
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(x + 4, topGapEdge - 8, w - 8, 4);
+    ctx.fillRect(x + 4, bottomGapEdge + 4, w - 8, 4);
+  }
+
   if (obs.isDouble) {
     const secondTop = bottomGapEdge + 58;
     const secondBottom = secondTop + 52;
@@ -856,7 +887,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     ctx.translate(dx, dy);
     }
   drawBackground(ctx, state);
-  for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
+  for (const obs of state.obstacles) drawObstacle(ctx, obs, height, state.score);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
   for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
   for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);
