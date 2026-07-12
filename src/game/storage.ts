@@ -11,7 +11,6 @@ import {
   SAMPLE_GLOBAL_SCORES,
   SKINS,
   STORAGE_KEYS,
-  UPGRADE_LEVELS,
   dateKey,
 } from './constants';
 import type {
@@ -23,6 +22,7 @@ import type {
   ShopItemId,
   SkinId,
 } from './types';
+import { UPGRADE_LEVELS } from './types';
 import { submitLeaderboardScore as submitToFirebase, fetchGlobalLeaderboard as fetchFromFirebase } from './firebaseLeaderboard';
 
 function readJSON<T>(key: string, fallback: T): T {
