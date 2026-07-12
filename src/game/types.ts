@@ -62,13 +62,14 @@ export interface PowerUpState {
   magnetUntil: number; // timestamp when magnet expires, 0 if inactive
 }
 
-export type ShopItemId = 'shield' | 'magnet' | 'gemBoost' | 'continueToken';
+export type ShopItemId = 'shield' | 'magnet' | 'gemBoost' | 'continueToken' | 'dash';
 
 export interface ShopInventory {
   shield: number;
   magnet: number;
   gemBoost: number;
   continueToken: number;
+  dash: number;
 }
 
 export interface DailyRewardState {
