@@ -562,7 +562,11 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   if (obs.isDouble) {
     const secondTop = bottomGapEdge + 58;
     const secondBottom = secondTop + 52;
-    ctx.clearRect(x - 6, secondTop, w + 12, secondBottom - secondTop);
+
+    // Fixed: Draw gap properly instead of clearRect (prevents black square bug)
+    ctx.fillStyle = '#0a1929'; // Match background color
+    ctx.fillRect(x - 6, secondTop, w + 12, secondBottom - secondTop);
+
     ctx.fillStyle = '#e63946';
     ctx.fillRect(x - 6, secondBottom, w + 12, 8);
   }
