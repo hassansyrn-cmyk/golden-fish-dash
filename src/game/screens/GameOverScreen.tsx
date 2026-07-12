@@ -9,6 +9,8 @@ import {
   setPersonalBest,
   setSelectedSkin,
   submitScoreToServer,
+  getLevel,
+  getXP,
 } from '../storage';
 import { SKINS } from '../constants';
 import type { SkinId } from '../types';
@@ -63,6 +65,17 @@ export default function GameOverScreen({
   const [name, setName] = useState('');
   const [newlyUnlocked, setNewlyUnlocked] = useState<SkinId[]>([]);
   const [selectedSkin, setSelectedSkinState] = useState<SkinId>(() => getSelectedSkin());
+
+  const [level, setLevel] = useState(1);
+  const [xp, setXp] = useState(0);
+
+  useEffect(() => {
+    setLevel(getLevel());
+    setXp(getXP());
+  }, []);
+
+  const xpNeeded = level * 150;
+  const xpPercent = Math.min(100, Math.floor((xp / xpNeeded) * 100));
 
   useEffect(() => {
     const before = new Set(getUnlockedSkins());
@@ -126,6 +139,20 @@ export default function GameOverScreen({
           <span className="stat-label">Global Rank (est.)</span>
           <span className="stat-value">#{rank}</span>
         </div>
+      </div>
+
+      {/* Game Over Player Level Progress */}
+      <div style={{ width: '100%', maxWidth: '320px', margin: '14px auto', padding: '12px', backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>
+          <span>Level {level} Progression</span>
+          <span style={{ fontSize: '11px', color: '#ffd54f' }}>{xp} / {xpNeeded} XP</span>
+        </div>
+        <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ width: `${xpPercent}%`, height: '100%', backgroundColor: '#ffd54f', borderRadius: '4px', transition: 'width 0.4s ease' }} />
+        </div>
+        <p style={{ fontSize: '11px', color: '#b0bec5', margin: '6px 0 0 0', textAlign: 'center' }}>
+          Final score and coin counts converted into extra level XP!
+        </p>
       </div>
 
       <p className="gameover-encourage">{encouragement(finalScore, prevBest)}</p>

@@ -61,6 +61,8 @@ function MenuFish() {
   );
 }
 
+import { getLevel, getXP } from '../storage';
+
 export default function MainMenu({
   onPlay,
   onLeaderboard,
@@ -74,6 +76,8 @@ export default function MainMenu({
   const [daily, setDaily] = useState(getDailyChallenge());
   const [coins, setCoins] = useState(getCoins());
   const [dailyRewardAvailable, setDailyRewardAvailable] = useState(canClaimDailyReward());
+  const [level, setLevel] = useState(1);
+  const [xp, setXp] = useState(0);
 
   useEffect(() => {
     setBest(getPersonalBest());
@@ -81,7 +85,12 @@ export default function MainMenu({
     setDaily(getDailyChallenge());
     setCoins(getCoins());
     setDailyRewardAvailable(canClaimDailyReward());
+    setLevel(getLevel());
+    setXp(getXP());
   }, []);
+
+  const xpNeeded = level * 150;
+  const xpPercent = Math.min(100, Math.floor((xp / xpNeeded) * 100));
 
   return (
     <div className="screen menu-screen">
@@ -90,6 +99,17 @@ export default function MainMenu({
         Golden <span className="game-title-accent">Fish Rush</span>
       </h1>
       <p className="menu-tagline">Tap. Dodge. Rise.</p>
+
+      {/* Player Progression Level & XP Bar */}
+      <div className="menu-level-container" style={{ width: '100%', maxWidth: '280px', margin: '-10px auto 14px auto', padding: '0 12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>
+          <span>Level {level}</span>
+          <span style={{ fontSize: '11px', color: '#b0bec5', fontWeight: 'normal' }}>{xp} / {xpNeeded} XP</span>
+        </div>
+        <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ width: `${xpPercent}%`, height: '100%', backgroundColor: '#ffd54f', borderRadius: '4px', transition: 'width 0.4s ease' }} />
+        </div>
+      </div>
 
       {/* Clear small coin balance for verification */}
       <div className="menu-coins">

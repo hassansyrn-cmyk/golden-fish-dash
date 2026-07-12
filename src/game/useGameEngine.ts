@@ -10,6 +10,9 @@ import {
   setPersonalBest,
   unlockAchievement,
   updateDailyChallengeProgress,
+  incrementMissionProgress,
+  addXP,
+  getUpgradeLevel,
 } from './storage';
 import {
   FISH_X_RATIO,
@@ -88,28 +91,34 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
 
     const engine = createEngine(width, height, skin);
     engine.hide2DFish = hide2DFishRef.current;
+
+    // Apply upgrade levels directly to starting engine configurations
+    const shieldLvl = getUpgradeLevel('shield');
+    const magnetLvl = getUpgradeLevel('magnet');
+    const gemLvl = getUpgradeLevel('gemBoost');
+
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
     // This runs every time a new engine is created for a run.
     // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
-    let applied = false;
 
-    if (inv.shield > 0) {
-      consumeShopItem('shield');
-      engine.shieldCharges = 1;
-      applied = true;
+    if (inv.shield > 0 || shieldLvl > 0) {
+      if (inv.shield > 0) consumeShopItem('shield');
+      // Upgrade increases starting shield charges
+      engine.shieldCharges = 1 + shieldLvl;
+      incrementMissionProgress('m_shield', 1);
     }
-    if (inv.magnet > 0) {
-      consumeShopItem('magnet');
-      engine.magnetUntil = engine.timeMs + 8000;
-      applied = true;
+    if (inv.magnet > 0 || magnetLvl > 0) {
+      if (inv.magnet > 0) consumeShopItem('magnet');
+      // Upgrade increases starting magnet duration (8s base + 3s per level)
+      engine.magnetUntil = engine.timeMs + 8000 + (magnetLvl * 3000);
     }
-    if (inv.gemBoost > 0) {
-      consumeShopItem('gemBoost');
+    if (inv.gemBoost > 0 || gemLvl > 0) {
+      if (inv.gemBoost > 0) consumeShopItem('gemBoost');
+      // Upgrade increases gem spawn rate even further
       engine.gemBoostActive = true;
-      applied = true;
     }
 
     roundCoinsRef.current = 0;
@@ -203,23 +212,40 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
               },
 
               onCoinCollect: (amount) => {
-                roundCoinsRef.current += amount;
+                // Apply Coin Multiplier Upgrade level directly to coin earnings (+1 coin per level)
+                const multLevel = getUpgradeLevel('coinMultiplier');
+                const bonusCoins = multLevel;
+                const finalAmount = amount + bonusCoins;
+
+                roundCoinsRef.current += finalAmount;
                 setRoundCoins(roundCoinsRef.current);
 
-                let total = addCoins(amount);
+                let total = addCoins(finalAmount);
 
                 audioManager.playSound('coin', settings.sound);
                 safeVibrate(18, settings.vibration);
 
+                // If massive coin amount collected (e.g. 15 from treasure chest)
+                if (amount >= 15) {
+                  unlockAchievement('treasure_hunter');
+                }
+
                 const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
                   'coins',
-                  amount,
+                  finalAmount,
                 );
 
                 if (justCompleted) {
                   total = addCoins(challengeState.challenge.rewardCoins);
                   audioManager.playSound('achievement', settings.sound);
                   safeVibrate([25, 25, 35], settings.vibration);
+                }
+
+                incrementMissionProgress('m_coins', finalAmount);
+
+                // Check coin combos for combo master achievement
+                if (stateRef.current && stateRef.current.coinStreakCount >= 20) {
+                  unlockAchievement('combo_master');
                 }
 
                 setCoins(total);
@@ -233,6 +259,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
                 setLives(currentLives);
                 audioManager.playSound('gem', settings.sound);
                 safeVibrate([35, 25, 55], settings.vibration);
+                incrementMissionProgress('m_gems', 1);
               },
 
               onLifeChange: (currentLives) => {
@@ -260,6 +287,11 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
                 if (finalScore >= 50) unlockAchievement('ocean_master');
                 if (finalScore >= 100) unlockAchievement('legendary_swimmer');
 
+                // Perfect Run (Survivor) achievement check: score >= 20 and full remaining lives
+                if (finalScore >= 20 && state.lives === state.maxLives) {
+                  unlockAchievement('no_damage');
+                }
+
                 const scoreProgress = updateDailyChallengeProgress('score', finalScore);
 
                 if (scoreProgress.justCompleted) {
@@ -279,6 +311,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
                     safeVibrate([25, 25, 45], settings.vibration);
                   }
                 }
+
+                // Award Player progression XP based on performance: final score & coins
+                const xpAward = Math.floor(finalScore * 2.5 + roundCoinsRef.current * 1.5);
+                addXP(xpAward);
+
+                incrementMissionProgress('m_rounds', 1);
 
                 onGameOverRef.current(finalScore);
               },

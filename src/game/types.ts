@@ -87,3 +87,14 @@ export interface FloatingText {
   createdAt: number; // game time elapsed or timestamp
   durationMs: number;
 }
+
+export interface MissionDef {
+  id: string;
+  description: string;
+  target: number;
+  progress: number;
+  completed: boolean;
+  rewardCoins: number;
+  rewardXP: number;
+  claimed: boolean;
+}
