@@ -594,19 +594,32 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.fill();
 
   // === VISUAL POWER-UP INDICATORS ===
-  // Shield active: pulsing blue protective bubble
+  // Shield active: transparent protective bubble / crystal (Phase 6 improved)
   if (state.shieldCharges > 0) {
     const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
     ctx.save();
-    ctx.globalAlpha = 0.22 + shieldPulse * 0.18;
+
+    // Outer soft transparent bubble
+    ctx.globalAlpha = 0.15 + shieldPulse * 0.12;
     ctx.beginPath();
-    ctx.arc(0, 0, r * 1.65, 0, Math.PI * 2);
-    ctx.fillStyle = '#4fc3f7';
+    ctx.arc(0, 0, r * 1.75, 0, Math.PI * 2);
+    ctx.fillStyle = '#81d4fa';
     ctx.fill();
-    ctx.globalAlpha = 0.65 + shieldPulse * 0.25;
-    ctx.strokeStyle = '#e3f2fd';
-    ctx.lineWidth = 3.5 + shieldPulse * 1.2;
+
+    // Glassy highlight stroke (crystal-like)
+    ctx.globalAlpha = 0.55 + shieldPulse * 0.3;
+    ctx.strokeStyle = '#e1f5fe';
+    ctx.lineWidth = 4 + shieldPulse * 1.5;
     ctx.stroke();
+
+    // Inner thin bright ring for glassy effect
+    ctx.globalAlpha = 0.7 + shieldPulse * 0.2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.55, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.restore();
   }
 
