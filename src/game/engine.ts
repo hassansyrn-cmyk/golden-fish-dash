@@ -1,9 +1,7 @@
 // -----------------------------------------------------------------------
-// Core canvas game engine for Golden Fish Rush.
-// Power-ups: Shield (protects one hit + invincibility) and Magnet (pulls nearby coins)
-// Gem improvement: full lives -> +5 score
-// Shop boosts supported: initial shield/magnet/gemBoostActive
-// Visual feedback: Shield bubble + Magnet glow added
+// Core canvas game engine for Golden Fish Rush (Polished v1 + 3D test)
+// NOTE: drawFish is temporarily disabled for real-3d-models branch
+// The player fish is now rendered via Fish3D (Three.js GLB)
 // -----------------------------------------------------------------------
 
 import { BASE, SKINS, getDifficultyTier } from './constants';
@@ -19,6 +17,47 @@ export interface Obstacle {
   bobAmount: number;
   glowing: boolean;
   isDouble: boolean;
+}
+
+export interface Shark {
+  x: number;
+  y: number;
+  baseY: number;
+  bobPhase: number;
+  speedMult: number;
+}
+
+export interface BubbleBoost {
+  x: number;
+  y: number;
+  collected: boolean;
+  pulse: number;
+}
+
+export interface Treasure {
+  x: number;
+  y: number;
+  collected: boolean;
+  pulse: number;
+  amount: number;
+}
+
+export interface FloatingText {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  life: number;
+  maxLife: number;
+  vy: number;
+}
+
+export interface DistantFish {
+  x: number;
+  y: number;
+  scale: number;
+  speed: number;
+  flip: boolean;
 }
 
 export interface Coin {
@@ -96,6 +135,19 @@ export interface EngineState {
   shieldCharges: number;
   magnetUntil: number;
   gemBoostActive: boolean;
+  sharks: Shark[];
+  bubbleBoosts: BubbleBoost[];
+  treasures: Treasure[];
+  floatingTexts: FloatingText[];
+  distantFish: DistantFish[];
+  elapsedSinceSharkSpawn: number;
+  elapsedSinceBubbleBoostSpawn: number;
+  elapsedSinceTreasureSpawn: number;
+  comboCount: number;
+  comboWindowEnd: number;
+  comboStage: number;
+  comboBadge: { text: string; until: number } | null;
+  hitFlashUntil: number;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -103,30 +155,47 @@ const MAX_EXTRA_LIVES = 2;
 const GEM_SPAWN_CHANCE = 0.09;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
+const SHARK_RADIUS = 26;
+const COMBO_WINDOW_MS = 1700;
+const COMBO_STAGE_2_COUNT = 3;
+const COMBO_STAGE_3_COUNT = 6;
+const BUBBLE_BOOST_MAGNET_MS = 5000;
+const BUBBLE_BOOST_BONUS_COINS = 3;
 
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
-  const bubbles: Bubble[] = Array.from({ length: 18 }, () => ({
+  const bubbles: Bubble[] = Array.from({ length: 20 }, () => ({
     x: Math.random() * width,
     y: Math.random() * height,
-    r: 3 + Math.random() * 7,
-    speed: 0.3 + Math.random() * 0.9,
-    drift: (Math.random() - 0.5) * 0.4,
+    r: 2.8 + Math.random() * 7.5,
+    speed: 0.28 + Math.random() * 0.85,
+    drift: (Math.random() - 0.5) * 0.38,
+  }));
+  const distantFish: DistantFish[] = Array.from({ length: 6 }, () => ({
+    x: Math.random() * width,
+    y: height * 0.12 + Math.random() * height * 0.55,
+    scale: 0.45 + Math.random() * 0.65,
+    speed: 0.09 + Math.random() * 0.14,
+    flip: Math.random() < 0.5,
   }));
   return {
     width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: 0, running: true,
     invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
     lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
+    sharks: [], bubbleBoosts: [], treasures: [], floatingTexts: [], distantFish,
+    elapsedSinceSharkSpawn: 2800, elapsedSinceBubbleBoostSpawn: 4200, elapsedSinceTreasureSpawn: 6200,
+    comboCount: 0, comboWindowEnd: 0, comboStage: 0, comboBadge: null, hitFlashUntil: 0,
   };
 }
 
 export function difficultyForScore(score: number) {
-  const speedSteps = Math.floor(score / 12);
-  const speed = Math.min(BASE.maxSpeed * 0.9, BASE.baseSpeed * 0.86 + speedSteps * 0.22);
-  const gap = Math.max(BASE.minGap + 24, BASE.baseGap + 24 - speedSteps * 4);
-  const spawnInterval = Math.max(1080, BASE.spawnInterval + 180 - speedSteps * 38);
+  const difficultyMultiplier = Math.min(1 + score / 600, 2.3);
+  const speedSteps = Math.floor(score / 13);
+  const speed = Math.min(BASE.maxSpeed, BASE.baseSpeed * 0.85 * difficultyMultiplier + speedSteps * 0.04);
+  const gap = Math.max(BASE.minGap + 22, BASE.baseGap + 22 - (difficultyMultiplier - 1) * 72);
+  const spawnInterval = Math.max(980, BASE.spawnInterval + 170 - (difficultyMultiplier - 1) * 410);
   const tier = getDifficultyTier(score);
-  return { speed, gap, spawnInterval, tier };
+  return { speed, gap, spawnInterval, tier, difficultyMultiplier };
 }
 
 export function jump(state: EngineState, settings: { vibration: boolean }) {
@@ -135,54 +204,66 @@ export function jump(state: EngineState, settings: { vibration: boolean }) {
   for (let i = 0; i < 6; i++) {
     state.particles.push({
       x: state.width * FISH_X_RATIO, y: state.fishY + BASE.fishRadius * 0.6,
-      vx: (Math.random() - 0.5) * 2.2, vy: 1 + Math.random() * 1.5,
-      life: 0, maxLife: 26 + Math.random() * 14, color: 'rgba(255,255,255,0.85)', size: 2 + Math.random() * 3,
+      vx: (Math.random() - 0.5) * 2.3, vy: 1.05 + Math.random() * 1.55,
+      life: 0, maxLife: 25 + Math.random() * 13, color: 'rgba(255,255,255,0.88)', size: 2.1 + Math.random() * 3.1,
     });
   }
   if (settings.vibration && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-    try { navigator.vibrate(12); } catch {}
+    try { navigator.vibrate(11); } catch {}
   }
 }
 
 function clampGapY(state: EngineState, gapY: number, gapSize: number) {
-  const safeMargin = Math.max(92, gapSize * 0.45);
+  const safeMargin = Math.max(90, gapSize * 0.44);
   return Math.max(safeMargin, Math.min(state.height - safeMargin, gapY));
 }
 
 function spawnObstacle(state: EngineState, score: number) {
   const { gap } = difficultyForScore(score);
-  const margin = Math.max(95, gap * 0.48);
+  const margin = Math.max(92, gap * 0.47);
   const rawGapY = margin + Math.random() * Math.max(1, state.height - margin * 2);
   const gapY = clampGapY(state, rawGapY, gap);
-  const hardMode = score >= 35;
-  const expertMode = score >= 70;
-  const legendaryMode = score >= 120;
-  const isDouble = expertMode && Math.random() < 0.1;
+  const hardMode = score >= 34;
+  const expertMode = score >= 68;
+  const legendaryMode = score >= 118;
+  const isDouble = expertMode && Math.random() < 0.095;
+
   state.obstacles.push({
-    x: state.width + BASE.obstacleWidth, gapY, gapSize: gap, passed: false,
-    bobbing: hardMode && Math.random() < 0.22, bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 12 + Math.random() * 10, glowing: legendaryMode, isDouble,
+    x: state.width + BASE.obstacleWidth,
+    gapY,
+    gapSize: gap,
+    passed: false,
+    bobbing: hardMode && Math.random() < 0.21,
+    bobPhase: Math.random() * Math.PI * 2,
+    bobAmount: 11 + Math.random() * 9.5,
+    glowing: legendaryMode,
+    isDouble,
   });
-  if (Math.random() < 0.68) {
+
+  if (Math.random() < 0.66) {
     state.coins.push({
-      x: state.width + BASE.obstacleWidth + 44, y: gapY + (Math.random() - 0.5) * (gap * 0.32),
-      collected: false, bonus: score >= 60 && Math.random() < 0.22,
+      x: state.width + BASE.obstacleWidth + 43,
+      y: gapY + (Math.random() - 0.5) * (gap * 0.31),
+      collected: false,
+      bonus: score >= 58 && Math.random() < 0.21,
     });
   }
-  // Gem spawn (boosted if shop gemBoostActive)
-  const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
+
+  const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.75 : GEM_SPAWN_CHANCE;
   if (Math.random() < gemChance) {
     state.gems.push({
-      x: state.width + BASE.obstacleWidth + 88, y: gapY + (Math.random() - 0.5) * (gap * 0.28),
-      collected: false, pulse: Math.random() * Math.PI * 2,
+      x: state.width + BASE.obstacleWidth + 86,
+      y: gapY + (Math.random() - 0.5) * (gap * 0.27),
+      collected: false,
+      pulse: Math.random() * Math.PI * 2,
     });
   }
-  // Rare power-up spawn (shield or magnet) - increased slightly for better shop value
-  if (Math.random() < 0.06) {
+
+  if (Math.random() < 0.055) {
     const type: 'shield' | 'magnet' = Math.random() < 0.5 ? 'shield' : 'magnet';
-    const puY = gapY + (Math.random() - 0.5) * (gap * 0.25);
+    const puY = gapY + (Math.random() - 0.5) * (gap * 0.24);
     state.powerUps.push({
-      x: state.width + BASE.obstacleWidth + 125,
+      x: state.width + BASE.obstacleWidth + 122,
       y: puY,
       type,
       collected: false,
@@ -191,26 +272,75 @@ function spawnObstacle(state: EngineState, score: number) {
   }
 }
 
+function spawnShark(state: EngineState, difficultyMultiplier: number) {
+  const margin = 68;
+  const baseY = margin + Math.random() * Math.max(1, state.height - margin * 2);
+  state.sharks.push({
+    x: state.width + SHARK_RADIUS * 2.1,
+    y: baseY,
+    baseY,
+    bobPhase: Math.random() * Math.PI * 2,
+    speedMult: 1 + Math.random() * 0.32 + (difficultyMultiplier - 1) * 0.12,
+  });
+}
+
+function spawnBubbleBoost(state: EngineState) {
+  const margin = 88;
+  state.bubbleBoosts.push({
+    x: state.width + 32,
+    y: margin + Math.random() * Math.max(1, state.height - margin * 2),
+    collected: false,
+    pulse: Math.random() * Math.PI * 2,
+  });
+}
+
+function spawnTreasure(state: EngineState) {
+  const margin = 88;
+  state.treasures.push({
+    x: state.width + 32,
+    y: margin + Math.random() * Math.max(1, state.height - margin * 2),
+    collected: false,
+    pulse: Math.random() * Math.PI * 2,
+    amount: Math.random() < 0.5 ? 10 : 18,
+  });
+}
+
+function spawnFloatingText(state: EngineState, x: number, y: number, text: string, color: string) {
+  state.floatingTexts.push({
+    x, y, text, color,
+    life: 0,
+    maxLife: 620 + Math.random() * 80,
+    vy: -1.85,
+  });
+  if (state.floatingTexts.length > 22) state.floatingTexts.shift();
+}
+
 function addBurst(state: EngineState, x: number, y: number, color: string, count: number, sizeBase = 2) {
   for (let i = 0; i < count; i++) {
     state.particles.push({
-      x, y, vx: (Math.random() - 0.5) * 3.6, vy: (Math.random() - 0.5) * 3.6,
-      life: 0, maxLife: 22 + Math.random() * 12, color, size: sizeBase + Math.random() * 3,
+      x, y,
+      vx: (Math.random() - 0.5) * 3.5,
+      vy: (Math.random() - 0.5) * 3.5,
+      life: 0,
+      maxLife: 21 + Math.random() * 11,
+      color,
+      size: sizeBase + Math.random() * 3.1,
     });
   }
 }
 
 function clearDangerousReviveArea(state: EngineState) {
   const fishX = state.width * FISH_X_RATIO;
-  state.obstacles = state.obstacles.filter((obs) => {
-    const halfWidth = BASE.obstacleWidth / 2;
-    const obsLeft = obs.x - halfWidth;
-    const obsRight = obs.x + halfWidth;
-    return obsRight < fishX - BASE.obstacleWidth * 2.2 || obsLeft > state.width + BASE.obstacleWidth * 1.4;
-  });
-  state.coins = state.coins.filter((coin) => coin.x < fishX - BASE.obstacleWidth * 2 || coin.x > state.width + BASE.obstacleWidth);
-  state.gems = state.gems.filter((gem) => gem.x < fishX - BASE.obstacleWidth * 2 || gem.x > state.width + BASE.obstacleWidth);
-  state.powerUps = state.powerUps.filter((pu) => pu.x < fishX - BASE.obstacleWidth * 2 || pu.x > state.width + BASE.obstacleWidth);
+  const safeLeft = fishX - BASE.obstacleWidth * 2.1;
+  const safeRight = state.width + BASE.obstacleWidth * 1.3;
+
+  state.obstacles = state.obstacles.filter(o => o.x + BASE.obstacleWidth / 2 < safeLeft || o.x - BASE.obstacleWidth / 2 > safeRight);
+  state.coins = state.coins.filter(c => c.x < safeLeft || c.x > safeRight);
+  state.gems = state.gems.filter(g => g.x < safeLeft || g.x > safeRight);
+  state.powerUps = state.powerUps.filter(p => p.x < safeLeft || p.x > safeRight);
+  state.sharks = state.sharks.filter(s => s.x < safeLeft || s.x > safeRight);
+  state.bubbleBoosts = state.bubbleBoosts.filter(b => b.x < safeLeft || b.x > safeRight);
+  state.treasures = state.treasures.filter(t => t.x < safeLeft || t.x > safeRight);
   state.elapsedSinceSpawn = -SAFE_REVIVE_DELAY_MS;
 }
 
@@ -223,46 +353,59 @@ function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   state.fishRotation = 0;
   clearDangerousReviveArea(state);
   callbacks.onLifeChange?.(state.lives);
-  callbacks.onShake(6);
-  addBurst(state, state.width * FISH_X_RATIO, state.fishY, 'rgba(80, 220, 255, 0.95)', 22, 3);
+  callbacks.onShake(6.5);
+  addBurst(state, state.width * FISH_X_RATIO, state.fishY, 'rgba(85, 225, 255, 0.92)', 23, 3);
   return true;
 }
 
 function killOrUseLife(state: EngineState, callbacks: EngineCallbacks) {
+  state.hitFlashUntil = state.timeMs + 210;
   if (spendExtraLife(state, callbacks)) return;
-  callbacks.onShake(14);
+  callbacks.onShake(13.5);
   callbacks.onDeath();
   state.running = false;
 }
 
 export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCallbacks, settings: { vibration: boolean }) {
   if (!state.running) return;
-  const dt = Math.min(2.2, dtMs / 16.67);
+
+  const dt = Math.min(2.25, dtMs / 16.6);
   state.timeMs += dtMs;
-  state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
+  state.legendaryPulse = (state.legendaryPulse + dtMs * 0.0021) % (Math.PI * 2);
+
   state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
   state.fishY += state.fishVY * dt;
-  state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
-  const groundY = state.height - 8;
-  const ceilingY = 8;
+  state.fishRotation = Math.max(-0.48, Math.min(0.88, state.fishVY * 0.057));
+
+  const groundY = state.height - 7;
+  const ceilingY = 7;
   const invincible = state.timeMs < state.invincibleUntil;
+
   if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
     state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
-    if (!invincible) { killOrUseLife(state, callbacks); return; }
+    if (!invincible) {
+      killOrUseLife(state, callbacks);
+      return;
+    }
     state.fishVY = 0;
   }
-  const { speed, spawnInterval } = difficultyForScore(state.score);
+
+  const { speed, spawnInterval, difficultyMultiplier } = difficultyForScore(state.score);
+
   state.elapsedSinceSpawn += dtMs;
   if (state.elapsedSinceSpawn >= spawnInterval) {
     spawnObstacle(state, state.score);
     state.elapsedSinceSpawn = 0;
   }
+
   const fishX = state.width * FISH_X_RATIO;
+
+  // === Obstacles ===
   for (const obs of state.obstacles) {
     obs.x -= speed * dt;
     if (obs.bobbing) {
       obs.bobPhase += dtMs * 0.002;
-      obs.gapY += Math.sin(obs.bobPhase) * 1.18 * dt;
+      obs.gapY += Math.sin(obs.bobPhase) * 1.15 * dt;
       obs.gapY = clampGapY(state, obs.gapY, obs.gapSize);
     }
     if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
@@ -270,27 +413,30 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       state.score += 1;
       callbacks.onScore(state.score);
     }
+
     if (!invincible) {
-      const withinX = fishX + BASE.fishRadius > obs.x - BASE.obstacleWidth / 2 && fishX - BASE.fishRadius < obs.x + BASE.obstacleWidth / 2;
+      const withinX = fishX + BASE.fishRadius > obs.x - BASE.obstacleWidth / 2 &&
+                      fishX - BASE.fishRadius < obs.x + BASE.obstacleWidth / 2;
       if (withinX) {
         const topGapEdge = obs.gapY - obs.gapSize / 2;
         const bottomGapEdge = obs.gapY + obs.gapSize / 2;
         let safe: boolean;
         if (obs.isDouble) {
-          const secondTop = bottomGapEdge + 58;
-          const secondBottom = secondTop + 52;
-          const inGap1 = state.fishY - BASE.fishRadius >= topGapEdge && state.fishY + BASE.fishRadius <= bottomGapEdge;
-          const inGap2 = state.fishY - BASE.fishRadius >= secondTop && state.fishY + BASE.fishRadius <= secondBottom;
-          safe = inGap1 || inGap2;
+          const secondTop = bottomGapEdge + 56;
+          const secondBottom = secondTop + 50;
+          safe = (state.fishY - BASE.fishRadius >= topGapEdge && state.fishY + BASE.fishRadius <= bottomGapEdge) ||
+                 (state.fishY - BASE.fishRadius >= secondTop && state.fishY + BASE.fishRadius <= secondBottom);
         } else {
-          safe = !(state.fishY - BASE.fishRadius < topGapEdge || state.fishY + BASE.fishRadius > bottomGapEdge);
+          safe = state.fishY - BASE.fishRadius >= topGapEdge && state.fishY + BASE.fishRadius <= bottomGapEdge;
         }
+
         if (!safe) {
           if (state.shieldCharges > 0) {
             state.shieldCharges = Math.max(0, state.shieldCharges - 1);
             state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
             callbacks.onShake(7);
-            addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 16, 3);
+            addBurst(state, fishX, state.fishY, 'rgba(100, 215, 255, 0.92)', 17, 3);
+            spawnFloatingText(state, fishX + 28, state.fishY - 28, 'Shield Block!', '#67e8f9');
           } else {
             killOrUseLife(state, callbacks);
             return;
@@ -299,23 +445,51 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       }
     }
   }
-  state.obstacles = state.obstacles.filter((o) => o.x > -BASE.obstacleWidth * 2);
+  state.obstacles = state.obstacles.filter(o => o.x > -BASE.obstacleWidth * 2);
+
+  // === Coins + Combo ===
   for (const coin of state.coins) {
     coin.x -= speed * dt;
     if (!coin.collected) {
       const dx = coin.x - fishX;
       const dy = coin.y - state.fishY;
-      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 13) {
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 12.5) {
         coin.collected = true;
         const amount = coin.bonus ? 5 : 1;
         state.score += amount;
         callbacks.onScore(state.score);
         callbacks.onCoinCollect(amount);
-        addBurst(state, coin.x, coin.y, coin.bonus ? '#ff9500' : '#ffd60a', 12, 2);
+        addBurst(state, coin.x, coin.y, coin.bonus ? '#fbbf24' : '#fde047', 12, 2);
+        spawnFloatingText(state, coin.x, coin.y - 17, coin.bonus ? '+5' : '+1', coin.bonus ? '#fbbf24' : '#fef08c');
+
+        if (state.timeMs <= state.comboWindowEnd) {
+          state.comboCount += 1;
+        } else {
+          state.comboCount = 1;
+        }
+        state.comboWindowEnd = state.timeMs + COMBO_WINDOW_MS;
+
+        if (state.comboCount === COMBO_STAGE_2_COUNT) {
+          state.score += 2;
+          callbacks.onScore(state.score);
+          spawnFloatingText(state, coin.x, coin.y - 32, 'Combo x2', '#fbbf24');
+          state.comboBadge = { text: 'Combo x2', until: state.timeMs + 850 };
+        } else if (state.comboCount >= COMBO_STAGE_3_COUNT) {
+          state.score += 3;
+          callbacks.onScore(state.score);
+          spawnFloatingText(state, coin.x, coin.y - 32, 'Combo x3', '#f59e0b');
+          state.comboBadge = { text: 'Combo x3', until: state.timeMs + 850 };
+          state.comboCount = 0;
+        }
       }
     }
   }
-  // Magnet: pull nearby uncollected coins toward fish
+
+  if (state.comboCount > 0 && state.timeMs > state.comboWindowEnd) {
+    state.comboCount = 0;
+  }
+
+  // Magnet pull
   if (state.magnetUntil > state.timeMs) {
     const fishXMag = state.width * FISH_X_RATIO;
     const fishYMag = state.fishY;
@@ -324,129 +498,282 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         const dx = coin.x - fishXMag;
         const dy = coin.y - fishYMag;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > 5 && dist < 130) {
-          const pull = 0.22 * dt;
+        if (dist > 4 && dist < 128) {
+          const pull = 0.23 * dt;
           coin.x -= dx * pull;
           coin.y -= dy * pull;
         }
       }
     }
   }
-  state.coins = state.coins.filter((c) => c.x > -40 && !c.collected);
+  state.coins = state.coins.filter(c => c.x > -42 && !c.collected);
+
+  // === Gems (now Heart) ===
   for (const gem of state.gems) {
     gem.x -= speed * dt;
-    gem.pulse += dtMs * 0.0045;
+    gem.pulse += dtMs * 0.0044;
     if (!gem.collected) {
       const dx = gem.x - fishX;
       const dy = gem.y - state.fishY;
-      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 16) {
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 15) {
         gem.collected = true;
         if (state.lives < state.maxLives) {
           state.lives += 1;
           callbacks.onGemCollect?.(state.lives);
           callbacks.onLifeChange?.(state.lives);
+          spawnFloatingText(state, gem.x, gem.y - 18, '+Life', '#f472b6');
         } else {
           state.score += 5;
           callbacks.onScore(state.score);
+          spawnFloatingText(state, gem.x, gem.y - 18, '+5', '#f472b6');
         }
         callbacks.onShake(5);
-        addBurst(state, gem.x, gem.y, '#7df9ff', 22, 3);
+        addBurst(state, gem.x, gem.y, '#f472b6', 23, 3);
       }
     }
   }
-  state.gems = state.gems.filter((g) => g.x > -50 && !g.collected);
-  // Power-up movement, collection (shield charges / magnet activate)
+  state.gems = state.gems.filter(g => g.x > -52 && !g.collected);
+
+  // Power-ups
   for (const pu of state.powerUps) {
     pu.x -= speed * dt;
-    if (pu.pulse !== undefined) pu.pulse += dtMs * 0.004;
     if (!pu.collected) {
       const dx = pu.x - fishX;
       const dy = pu.y - state.fishY;
-      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 18) {
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 17) {
         pu.collected = true;
         if (pu.type === 'shield') {
           state.shieldCharges = Math.min(3, state.shieldCharges + 1);
           callbacks.onShake?.(4);
-          addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
+          addBurst(state, pu.x, pu.y, 'rgba(103, 232, 249, 0.9)', 20, 3);
+          spawnFloatingText(state, pu.x, pu.y - 20, 'Shield', '#67e8f9');
         } else if (pu.type === 'magnet') {
-          state.magnetUntil = state.timeMs + 8000;
-          addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
+          state.magnetUntil = state.timeMs + 7800;
+          addBurst(state, pu.x, pu.y, 'rgba(251, 146, 60, 0.9)', 18, 3);
+          spawnFloatingText(state, pu.x, pu.y - 20, 'Magnet', '#fb923c');
         }
       }
     }
   }
-  state.powerUps = state.powerUps.filter((p) => p.x > -60 && !p.collected);
+  state.powerUps = state.powerUps.filter(p => p.x > -62 && !p.collected);
+
+  // === Shark ===
+  const sharkInterval = Math.max(3800, 6800 - (difficultyMultiplier - 1) * 2200);
+  state.elapsedSinceSharkSpawn += dtMs;
+  if (state.score >= 7 && state.elapsedSinceSharkSpawn > sharkInterval) {
+    state.elapsedSinceSharkSpawn = 0;
+    if (Math.random() < 0.82) spawnShark(state, difficultyMultiplier);
+  }
+
+  const sharkSpeed = speed * (1.08 + (difficultyMultiplier - 1) * 0.18);
+  for (const shark of state.sharks) {
+    shark.x -= sharkSpeed * shark.speedMult * dt;
+    shark.bobPhase += dtMs * 0.0021;
+    shark.y = shark.baseY + Math.sin(shark.bobPhase) * 15;
+
+    if (!invincible) {
+      const dx = shark.x - fishX;
+      const dy = shark.y - state.fishY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < BASE.fishRadius + SHARK_RADIUS * 0.7) {
+        if (state.shieldCharges > 0) {
+          state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+          state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+          callbacks.onShake(7);
+          addBurst(state, fishX, state.fishY, 'rgba(103, 232, 249, 0.92)', 17, 3);
+          spawnFloatingText(state, fishX, state.fishY - 28, 'Shield Block!', '#67e8f9');
+        } else {
+          killOrUseLife(state, callbacks);
+          return;
+        }
+      }
+    }
+  }
+  state.sharks = state.sharks.filter(s => s.x > -SHARK_RADIUS * 3);
+
+  // === Bubble Boost ===
+  state.elapsedSinceBubbleBoostSpawn += dtMs;
+  if (state.elapsedSinceBubbleBoostSpawn > 8800 && Math.random() < 0.38) {
+    state.elapsedSinceBubbleBoostSpawn = 0;
+    spawnBubbleBoost(state);
+  }
+  for (const boost of state.bubbleBoosts) {
+    boost.x -= speed * dt;
+    boost.pulse += dtMs * 0.0038;
+    if (!boost.collected) {
+      const dx = boost.x - fishX;
+      const dy = boost.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 19) {
+        boost.collected = true;
+        state.magnetUntil = Math.max(state.magnetUntil, state.timeMs + BUBBLE_BOOST_MAGNET_MS);
+        callbacks.onCoinCollect(BUBBLE_BOOST_BONUS_COINS);
+        callbacks.onShake(4);
+        addBurst(state, boost.x, boost.y, 'rgba(180, 240, 255, 0.88)', 19, 3);
+        spawnFloatingText(state, boost.x, boost.y - 17, 'Boost!', '#a5f3fc');
+      }
+    }
+  }
+  state.bubbleBoosts = state.bubbleBoosts.filter(b => b.x > -52 && !b.collected);
+
+  // === Treasure ===
+  state.elapsedSinceTreasureSpawn += dtMs;
+  if (state.elapsedSinceTreasureSpawn > 15500 && Math.random() < 0.28) {
+    state.elapsedSinceTreasureSpawn = 0;
+    spawnTreasure(state);
+  }
+  for (const chest of state.treasures) {
+    chest.x -= speed * dt;
+    chest.pulse += dtMs * 0.0032;
+    if (!chest.collected) {
+      const dx = chest.x - fishX;
+      const dy = chest.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 17) {
+        chest.collected = true;
+        state.score += chest.amount;
+        callbacks.onScore(state.score);
+        callbacks.onCoinCollect(chest.amount);
+        callbacks.onShake(5);
+        addBurst(state, chest.x, chest.y, '#fcd34d', 25, 3);
+        spawnFloatingText(state, chest.x, chest.y - 17, `Treasure +${chest.amount}`, '#fde047');
+      }
+    }
+  }
+  state.treasures = state.treasures.filter(t => t.x > -52 && !t.collected);
+
+  // Floating texts
+  for (const ft of state.floatingTexts) {
+    ft.life += dt;
+    ft.y += ft.vy * dt;
+    ft.vy *= 0.982;
+  }
+  state.floatingTexts = state.floatingTexts.filter(ft => ft.life < ft.maxLife);
+
+  if (state.comboBadge && state.timeMs > state.comboBadge.until) {
+    state.comboBadge = null;
+  }
+
+  // Distant fish (decorative)
+  for (const df of state.distantFish) {
+    df.x -= df.speed * speed * dt;
+    if (df.x < -45) {
+      df.x = state.width + 45;
+      df.y = state.height * 0.13 + Math.random() * state.height * 0.52;
+    }
+  }
+
+  // Bubbles
   for (const b of state.bubbles) {
     b.y -= b.speed * dt;
     b.x += Math.sin(state.timeMs * 0.001 + b.x) * b.drift * dt;
-    if (b.y < -20) { b.y = state.height + 10; b.x = Math.random() * state.width; }
+    if (b.y < -22) {
+      b.y = state.height + 12;
+      b.x = Math.random() * state.width;
+    }
   }
+
+  // Particles
   for (const p of state.particles) {
     p.life += dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    p.vy += 0.05 * dt;
+    p.vy += 0.048 * dt;
   }
-  state.particles = state.particles.filter((p) => p.life < p.maxLife);
-  state.shakeIntensity = Math.max(0, state.shakeIntensity - dtMs * 0.05);
+  state.particles = state.particles.filter(p => p.life < p.maxLife);
+
+  state.shakeIntensity = Math.max(0, state.shakeIntensity - dtMs * 0.048);
   void settings;
 }
+
+// ==================== DRAWING ====================
 
 function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   const { width, height } = state;
   const tier = getDifficultyTier(state.score);
-  const [c1, c2] = tier.bg;
+
   const grad = ctx.createLinearGradient(0, 0, 0, height);
-  grad.addColorStop(0, c1);
-  grad.addColorStop(1, c2);
+  grad.addColorStop(0, '#0a3d62');
+  grad.addColorStop(0.28, '#0c5a7a');
+  grad.addColorStop(0.55, '#0a4d6b');
+  grad.addColorStop(0.82, '#083d58');
+  grad.addColorStop(1, '#052c42');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
-  if (state.score >= 100) {
-    const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
-    ctx.fillStyle = `rgba(255, 214, 10, ${0.05 + pulse * 0.06})`;
-    ctx.fillRect(0, 0, width, height);
-  }
+
   ctx.save();
-  ctx.globalAlpha = 0.12;
-  for (let i = 0; i < 4; i++) {
-    const rx = (width / 4) * i + Math.sin(state.timeMs * 0.0002 + i) * 20;
+  ctx.globalAlpha = 0.07;
+  for (let i = 0; i < 5; i++) {
+    const x = width * (0.12 + i * 0.17);
     ctx.beginPath();
-    ctx.moveTo(rx, 0);
-    ctx.lineTo(rx + 60, 0);
-    ctx.lineTo(rx - 40, height);
-    ctx.lineTo(rx - 130, height);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x - 28, height * 0.65);
+    ctx.lineTo(x + 42, height * 0.65);
+    ctx.lineTo(x + 18, 0);
     ctx.closePath();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#7dd3fc';
     ctx.fill();
   }
   ctx.restore();
+
   ctx.save();
   for (const b of state.bubbles) {
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillStyle = 'rgba(255,255,255,0.23)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+    ctx.lineWidth = 0.9;
     ctx.stroke();
   }
   ctx.restore();
+
   ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = tier.name === 'Easy' ? '#0a6ea8' : '#04203f';
-  for (let i = 0; i < 6; i++) {
-    const cx = (width / 6) * i + 20;
-    const h = 30 + ((i * 37) % 50);
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = '#052c42';
+  for (let i = 0; i < 3; i++) {
+    const bx = width * (0.22 + i * 0.28);
     ctx.beginPath();
-    ctx.moveTo(cx, height);
-    ctx.quadraticCurveTo(cx - 14, height - h, cx, height - h - 10);
-    ctx.quadraticCurveTo(cx + 14, height - h, cx, height);
+    ctx.moveTo(bx, height);
+    ctx.quadraticCurveTo(bx + 75, height - 48, bx + 155, height);
     ctx.fill();
   }
   ctx.restore();
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.fillRect(0, height - 8, width, 8);
-  ctx.fillRect(0, 0, width, 8);
+
+  ctx.save();
+  for (const b of state.bubbles) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.23)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.52;
+  ctx.fillStyle = '#0f766e';
+  for (let i = 0; i < 8; i++) {
+    const sx = (width / 8) * i + 12;
+    const h = 36 + ((i * 19) % 38);
+    ctx.beginPath();
+    ctx.moveTo(sx, height);
+    ctx.quadraticCurveTo(sx - 11, height - h * 0.55, sx + 7, height - h);
+    ctx.quadraticCurveTo(sx + 19, height - h * 0.52, sx + 12, height);
+    ctx.fill();
+
+    if (i % 2 === 0) {
+      ctx.beginPath();
+      ctx.arc(sx + 5, height - h * 0.32, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#134e4a';
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(0, height - 6, width, 6);
+  ctx.fillRect(0, 0, width, 5);
 }
 
 function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: number) {
@@ -454,198 +781,71 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   const bottomGapEdge = obs.gapY + obs.gapSize / 2;
   const w = BASE.obstacleWidth;
   const x = obs.x - w / 2;
+
   const grad = ctx.createLinearGradient(x, 0, x + w, 0);
   if (obs.glowing) {
-    grad.addColorStop(0, '#ffd60a');
-    grad.addColorStop(1, '#ff9500');
+    grad.addColorStop(0, '#fef08c');
+    grad.addColorStop(0.5, '#fcd34d');
+    grad.addColorStop(1, '#f59e0b');
   } else {
-    grad.addColorStop(0, '#2a9d8f');
-    grad.addColorStop(1, '#1d7870');
+    grad.addColorStop(0, '#14b8a6');
+    grad.addColorStop(0.48, '#0f766e');
+    grad.addColorStop(1, '#134e4a');
   }
+
+  ctx.save();
+  ctx.shadowColor = obs.glowing ? '#fef08c' : 'rgba(15, 23, 42, 0.45)';
+  ctx.shadowBlur = obs.glowing ? 24 : 10;
+  ctx.shadowOffsetX = obs.glowing ? 0 : 1.5;
   ctx.fillStyle = grad;
-  if (obs.glowing) {
-    ctx.save();
-    ctx.shadowColor = '#ffe066';
-    ctx.shadowBlur = 22;
-  }
   ctx.fillRect(x, 0, w, topGapEdge);
-  ctx.fillRect(x - 6, topGapEdge - 18, w + 12, 18);
   ctx.fillRect(x, bottomGapEdge, w, height - bottomGapEdge);
-  ctx.fillRect(x - 6, bottomGapEdge, w + 12, 18);
-  if (obs.glowing) ctx.restore();
+  ctx.restore();
+
+  const lipR = 8;
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(x - 5, topGapEdge - 15, w + 10, 15, lipR);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.roundRect(x - 5, bottomGapEdge, w + 10, 15, lipR);
+  ctx.fill();
+
   if (obs.isDouble) {
-    const secondTop = bottomGapEdge + 58;
-    const secondBottom = secondTop + 52;
-    ctx.clearRect(x - 6, secondTop, w + 12, secondBottom - secondTop);
-    ctx.fillStyle = '#e63946';
-    ctx.fillRect(x - 6, secondBottom, w + 12, 8);
+    const secondTop = bottomGapEdge + 55;
+    const secondBottom = secondTop + 48;
+    ctx.clearRect(x - 5, secondTop, w + 10, secondBottom - secondTop);
+    ctx.fillStyle = '#e11d48';
+    ctx.beginPath();
+    ctx.roundRect(x - 5, secondBottom, w + 10, 7, 3);
+    ctx.fill();
   }
 }
 
+// drawFish is DISABLED on real-3d-models branch
+// The player fish is now fully rendered with Three.js (Fish3D.tsx)
 function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: number, invincible: boolean) {
-  const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
-  const blink = invincible && Math.floor(state.timeMs / 100) % 2 === 0;
-  if (blink) return;
-  const r = BASE.fishRadius;
-  const id = skin.id;
-  const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
-  const { body, belly, fin, glow } = skin.colors;
-  ctx.save();
-  ctx.translate(fishX, state.fishY);
-  ctx.rotate(state.fishRotation);
-  if (id === 'legendary') {
-    ctx.save();
-    ctx.globalAlpha = 0.28 + pulse * 0.2;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.9, r * 1.35, 0, 0, Math.PI * 2);
-    ctx.fillStyle = glow;
-    ctx.fill();
-    ctx.globalAlpha = 0.5 + pulse * 0.25;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.6, r * 1.12, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = glow;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.restore();
-  }
-  ctx.save();
-  ctx.shadowColor = glow;
-  ctx.shadowBlur = id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
-  // Tail
-  if (id === 'ruby') {
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.6, -r * 1.3, -r * 2.3, -r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.9, 0, -r * 2.3, r * 0.6);
-    ctx.quadraticCurveTo(-r * 1.6, r * 1.3, -r * 0.85, 0);
-    ctx.closePath();
-    ctx.fillStyle = fin;
-    ctx.fill();
-  } else if (id === 'legendary') {
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.9, 0);
-    ctx.quadraticCurveTo(-r * 1.7, -r * 1.25, -r * 2.4, -r * 0.45);
-    ctx.lineTo(-r * 1.8, 0);
-    ctx.quadraticCurveTo(-r * 2.4, r * 0.45, -r * 1.7, r * 1.25);
-    ctx.closePath();
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fill();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.85, 0);
-    ctx.quadraticCurveTo(-r * 1.45, -r * 0.95, -r * 1.95, -r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.55, 0, -r * 1.95, r * 0.35);
-    ctx.quadraticCurveTo(-r * 1.45, r * 0.95, -r * 0.85, 0);
-    ctx.closePath();
-    ctx.fillStyle = fin;
-    ctx.fill();
-  }
-  // Body
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.9, 0);
-  ctx.quadraticCurveTo(-r * 0.55, -r * 0.95, r * 0.15, -r * 0.88);
-  ctx.quadraticCurveTo(r * 0.95, -r * 0.5, r * 1.05, 0);
-  ctx.quadraticCurveTo(r * 0.95, r * 0.5, r * 0.15, r * 0.88);
-  ctx.quadraticCurveTo(-r * 0.55, r * 0.95, -r * 0.9, 0);
-  ctx.closePath();
-  const bodyGrad = ctx.createLinearGradient(-r, -r, r, r);
-  if (id === 'legendary') {
-    bodyGrad.addColorStop(0, '#1a1a1a');
-    bodyGrad.addColorStop(0.5, '#ffd60a');
-    bodyGrad.addColorStop(1, '#1a1a1a');
-  } else {
-    bodyGrad.addColorStop(0, belly);
-    bodyGrad.addColorStop(0.4, body);
-    bodyGrad.addColorStop(1, fin);
-  }
-  ctx.fillStyle = bodyGrad;
-  ctx.fill();
-  // Belly
-  ctx.beginPath();
-  ctx.ellipse(r * 0.1, r * 0.28, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
-  ctx.fillStyle = belly;
-  ctx.globalAlpha = 0.85;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  // Dorsal
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.15, -r * 0.7);
-  ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
-  ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = id === 'legendary' ? '#ffd60a' : fin;
-  ctx.fill();
-  // Pectoral
-  ctx.beginPath();
-  ctx.moveTo(r * 0.25, r * 0.1);
-  ctx.quadraticCurveTo(r * 1.05, -r * 0.2, r * 1.1, r * 0.35);
-  ctx.quadraticCurveTo(r * 0.7, r * 0.3, r * 0.25, r * 0.1);
-  ctx.closePath();
-  ctx.fillStyle = fin;
-  ctx.fill();
-  // Eye
-  ctx.beginPath();
-  ctx.arc(r * 0.55, -r * 0.15, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a1200';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-
-  // === VISUAL POWER-UP INDICATORS ===
-  // Shield active: pulsing blue protective bubble
-  if (state.shieldCharges > 0) {
-    const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
-    ctx.save();
-    ctx.globalAlpha = 0.22 + shieldPulse * 0.18;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.65, 0, Math.PI * 2);
-    ctx.fillStyle = '#4fc3f7';
-    ctx.fill();
-    ctx.globalAlpha = 0.65 + shieldPulse * 0.25;
-    ctx.strokeStyle = '#e3f2fd';
-    ctx.lineWidth = 3.5 + shieldPulse * 1.2;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // Magnet active: enhanced orange magnetic glow + field
-  if (state.magnetUntil > state.timeMs) {
-    const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
-    ctx.save();
-    ctx.shadowColor = '#ff6d00';
-    ctx.shadowBlur = 32 + magPulse * 14;
-    ctx.globalAlpha = 0.4 + magPulse * 0.25;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ff9500';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  ctx.restore();
-  ctx.restore();
+  // TEMPORARILY DISABLED - 3D fish is used instead
+  return;
 }
 
 function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   if (coin.collected) return;
-  const bob = Math.sin(timeMs * 0.004 + coin.x) * 1.2;
+  const bob = Math.sin(timeMs * 0.0036 + coin.x) * 1.05;
   ctx.save();
   ctx.translate(coin.x, coin.y + bob);
   ctx.beginPath();
-  ctx.arc(0, 0, coin.bonus ? 12 : 9, 0, Math.PI * 2);
-  ctx.fillStyle = coin.bonus ? '#ff9500' : '#ffd60a';
-  ctx.shadowColor = coin.bonus ? '#ffb347' : '#fff275';
-  ctx.shadowBlur = 10;
+  ctx.arc(0, 0, coin.bonus ? 11, 9, 0, Math.PI * 2);
+  ctx.fillStyle = coin.bonus ? '#fbbf24' : '#fde047';
+  ctx.shadowColor = coin.bonus ? '#f59e0b' : '#fef08c';
+  ctx.shadowBlur = 8;
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = '#a97400';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#854d0e';
+  ctx.lineWidth = 1.3;
   ctx.stroke();
-  ctx.fillStyle = '#fff8e0';
-  ctx.font = `${coin.bonus ? 11 : 9}px sans-serif`;
+  ctx.fillStyle = '#854d0e';
+  ctx.font = `${coin.bonus ? 9.5 : 8}px system-ui`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(coin.bonus ? '+5' : '+1', 0, 0);
@@ -654,32 +854,31 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
 
 function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   if (gem.collected) return;
-  const bob = Math.sin(timeMs * 0.003 + gem.x) * 1.5;
+  const bob = Math.sin(timeMs * 0.0027 + gem.x) * 1.3;
   const pulse = (Math.sin(gem.pulse) + 1) / 2;
-  const size = 12 + pulse * 1.4;
+  const s = 11 + pulse * 1.2;
+
   ctx.save();
   ctx.translate(gem.x, gem.y + bob);
-  ctx.shadowColor = '#7df9ff';
-  ctx.shadowBlur = 18;
+  ctx.shadowColor = '#f472b6';
+  ctx.shadowBlur = 15;
+
   ctx.beginPath();
-  ctx.moveTo(0, -size);
-  ctx.lineTo(size, -2);
-  ctx.lineTo(size * 0.55, size);
-  ctx.lineTo(-size * 0.55, size);
-  ctx.lineTo(-size, -2);
+  ctx.moveTo(0, s * 0.35);
+  ctx.bezierCurveTo(-s * 0.9, -s * 0.3, -s * 0.9, -s * 0.85, 0, -s * 0.45);
+  ctx.bezierCurveTo(s * 0.9, -s * 0.85, s * 0.9, -s * 0.3, 0, s * 0.35);
   ctx.closePath();
-  const grad = ctx.createLinearGradient(-size, -size, size, size);
-  grad.addColorStop(0, '#e8ffff');
-  grad.addColorStop(0.45, '#7df9ff');
-  grad.addColorStop(1, '#2176ff');
-  ctx.fillStyle = grad;
+
+  ctx.fillStyle = '#f472b6';
   ctx.fill();
+
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#fda4af';
+  ctx.lineWidth = 1.2;
   ctx.stroke();
+
   ctx.fillStyle = '#ffffff';
-  ctx.font = '11px sans-serif';
+  ctx.font = '10px system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('+♥', 0, 2);
@@ -688,38 +887,43 @@ function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
 
 function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number) {
   if (pu.collected) return;
-  const bob = Math.sin(timeMs * 0.003 + pu.x) * 1.3;
+  const bob = Math.sin(timeMs * 0.0024 + pu.x) * 1.15;
+
   ctx.save();
   ctx.translate(pu.x, pu.y + bob);
+
   if (pu.type === 'shield') {
-    ctx.shadowColor = '#4fc3f7';
-    ctx.shadowBlur = 14;
+    ctx.shadowColor = '#67e8f9';
+    ctx.shadowBlur = 12;
     ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    ctx.fillStyle = '#4fc3f7';
+    ctx.arc(0, 0, 9.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#67e8f9';
     ctx.fill();
-    ctx.strokeStyle = '#e3f2fd';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#a5f3fc';
+    ctx.lineWidth = 1.7;
     ctx.stroke();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 13px sans-serif';
+    ctx.font = 'bold 11.5px system-ui';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🛡️', 0, 1);
+    ctx.fillText('🛡️', 0, 0);
   } else {
-    ctx.shadowColor = '#ff6d00';
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = '#ff6d00';
+    ctx.shadowColor = '#fb923c';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#fb923c';
+
     ctx.beginPath();
-    ctx.ellipse(-2, -3, 7, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(-2, 3, 7, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(-5, -7, 6, 14);
-    ctx.fillStyle = '#ff6d00';
-    ctx.fillRect(-4, -6, 4, 12);
+    ctx.moveTo(-7, -6);
+    ctx.lineTo(-7, 6);
+    ctx.quadraticCurveTo(0, 9, 7, 6);
+    ctx.lineTo(7, -6);
+    ctx.lineWidth = 4.5;
+    ctx.strokeStyle = '#fb923c';
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-3, -7, 6, 3);
+    ctx.fillRect(-3, 4, 6, 3);
   }
   ctx.restore();
 }
@@ -727,7 +931,7 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
 function drawParticle(ctx: CanvasRenderingContext2D, particle: Particle) {
   const alpha = 1 - particle.life / particle.maxLife;
   ctx.save();
-  ctx.globalAlpha = Math.max(0, alpha);
+  ctx.globalAlpha = Math.max(0.12, alpha);
   ctx.beginPath();
   ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
   ctx.fillStyle = particle.color;
@@ -739,20 +943,43 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   const { width, height } = state;
   ctx.clearRect(0, 0, width, height);
   ctx.save();
-  if (state.shakeIntensity > 0.2) {
-    const dx = (Math.random() - 0.5) * state.shakeIntensity;
-    const dy = (Math.random() - 0.5) * state.shakeIntensity;
+
+  if (state.shakeIntensity > 0.12) {
+    const dx = (Math.random() - 0.5) * state.shakeIntensity * 0.7;
+    const dy = (Math.random() - 0.5) * state.shakeIntensity * 0.7;
     ctx.translate(dx, dy);
-    }
+  }
+
   drawBackground(ctx, state);
+
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
+
+  for (const shark of state.sharks) drawShark(ctx, shark);
+
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
   for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
   for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);
+
+  for (const boost of state.bubbleBoosts) drawBubbleBoost(ctx, boost, state.timeMs);
+  for (const chest of state.treasures) drawTreasure(ctx, chest, state.timeMs);
+
   const fishX = width * FISH_X_RATIO;
   const invincible = state.timeMs < state.invincibleUntil;
-  drawFish(ctx, state, fishX, invincible);
+
+  // drawFish is DISABLED - 3D version is used instead
+  // drawFish(ctx, state, fishX, invincible);
+
   for (const particle of state.particles) drawParticle(ctx, particle);
+
+  for (const ft of state.floatingTexts) drawFloatingText(ctx, ft);
+  drawComboBadge(ctx, state);
+
+  if (state.timeMs < state.hitFlashUntil) {
+    const remain = (state.hitFlashUntil - state.timeMs) / 210;
+    ctx.fillStyle = `rgba(239, 68, 68, ${0.18 * Math.max(0, remain)})`;
+    ctx.fillRect(0, 0, width, height);
+  }
+
   ctx.restore();
 }
 
