@@ -7,7 +7,7 @@ import { FISH_X_RATIO } from './engine';
 // ==========================================
 // ADJUSTABLE TUNING CONSTANTS (Near top)
 // ==========================================
-const SCALE = 24.0;            // Base scale of the 3D fish model (adjusted to match 2D collider perfectly)
+const SCALE = 36.0;            // Base scale of the 3D fish model (enlarged to match 2D fish size perfectly or slightly larger)
 const OFFSET_X = 0.0;          // Fine-tune player X position (relative to 2D center)
 const OFFSET_Y = 0.0;          // Fine-tune player Y position (relative to 2D center)
 const OFFSET_Z = 0.0;          // Distance/Depth placement (normally 0 for orthographic)

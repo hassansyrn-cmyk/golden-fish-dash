@@ -118,13 +118,8 @@ export default function GoldenFishRush() {
     paused: enginePaused,
     skin,
     onGameOver: handleGameOver,
+    hide2DFish: isThreeDActive,
   });
-
-  useEffect(() => {
-    if (engineStateRef?.current) {
-      engineStateRef.current.hide2DFish = isThreeDActive;
-    }
-  }, [isThreeDActive, engineStateRef]);
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {

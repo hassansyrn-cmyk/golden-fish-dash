@@ -27,6 +27,7 @@ interface UseGameEngineOptions {
   paused: boolean;
   skin: SkinId;
   onGameOver: (finalScore: number) => void;
+  hide2DFish?: boolean;
 }
 
 function safeVibrate(pattern: number | number[], enabled: boolean) {
@@ -148,7 +149,7 @@ function playSound(name: SoundName, enabled: boolean) {
   }
 }
 
-export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
+export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hide2DFish }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
@@ -162,6 +163,16 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+
+  const hide2DFishRef = useRef(hide2DFish);
+  hide2DFishRef.current = hide2DFish;
+
+  useEffect(() => {
+    hide2DFishRef.current = hide2DFish;
+    if (stateRef.current) {
+      stateRef.current.hide2DFish = hide2DFish;
+    }
+  }, [hide2DFish]);
 
   const onGameOverRef = useRef(onGameOver);
 
@@ -181,6 +192,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     canvas.height = height;
 
     const engine = createEngine(width, height, skin);
+    engine.hide2DFish = hide2DFishRef.current;
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
