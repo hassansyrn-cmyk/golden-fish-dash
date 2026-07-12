@@ -15,7 +15,6 @@ import LuckySpinScreen from './screens/LuckySpinScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
-import Fish3DOverlay from './Fish3DOverlay';
 import {
   getSelectedSkin,
   incrementGameOverCount,
@@ -41,7 +40,6 @@ export default function GoldenFishRush() {
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
   const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
-  const [isThreeDActive, setIsThreeDActive] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
@@ -114,13 +112,13 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt, engineStateRef } = useGameEngine({
+  const { score, roundCoins, lives, doJump, reviveAt, engineStateRef } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
     onGameOver: handleGameOver,
-    hide2DFish: isThreeDActive,
+    hide2DFish: false,
   });
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
@@ -258,15 +256,6 @@ export default function GoldenFishRush() {
           onPointerDown={handlePointerDown}
           onClick={handlePointerDown}
         />
-
-        {keepEngineAlive && (
-          <Fish3DOverlay
-            engineStateRef={engineStateRef}
-            canvasRef={canvasRef}
-            onLoaded={() => setIsThreeDActive(true)}
-            onError={() => setIsThreeDActive(false)}
-          />
-        )}
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">

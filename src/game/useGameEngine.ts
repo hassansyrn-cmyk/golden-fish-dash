@@ -32,7 +32,6 @@ interface UseGameEngineOptions {
   paused: boolean;
   skin: SkinId;
   onGameOver: (finalScore: number) => void;
-  hide2DFish?: boolean;
 }
 
 function safeVibrate(pattern: number | number[], enabled: boolean) {
@@ -47,7 +46,7 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
   }
 }
 
-export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hide2DFish }: UseGameEngineOptions) {
+export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
@@ -61,16 +60,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
-
-  const hide2DFishRef = useRef(hide2DFish);
-  hide2DFishRef.current = hide2DFish;
-
-  useEffect(() => {
-    hide2DFishRef.current = hide2DFish;
-    if (stateRef.current) {
-      stateRef.current.hide2DFish = hide2DFish;
-    }
-  }, [hide2DFish]);
 
   const onGameOverRef = useRef(onGameOver);
 
@@ -90,7 +79,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver, hid
     canvas.height = height;
 
     const engine = createEngine(width, height, skin);
-    engine.hide2DFish = hide2DFishRef.current;
 
     // Apply upgrade levels directly to starting engine configurations
     const shieldLvl = getUpgradeLevel('shield');

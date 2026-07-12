@@ -158,7 +158,6 @@ export interface EngineState {
   lastCoinCollectedTime: number;
   isRedFlashing?: boolean;
   redFlashTimer?: number;
-  hide2DFish?: boolean;
 
   // Phase 2 features
   seaMines: SeaMine[];
@@ -1021,7 +1020,7 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
 
-  if (!state.hide2DFish) {
+  {
     if (id === 'legendary' || isFever) {
       ctx.save();
       ctx.globalAlpha = 0.28 + pulse * 0.2;
