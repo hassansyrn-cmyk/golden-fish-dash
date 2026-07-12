@@ -450,5 +450,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
+    engineStateRef: stateRef,
   };
 }
