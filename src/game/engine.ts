@@ -307,7 +307,15 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = coin.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 13) {
         coin.collected = true;
-        const amount = coin.bonus ? 5 : 1;
+
+        // === Phase 7: Progressive coin value ===
+        let baseAmount = coin.bonus ? 5 : 1;
+        let multiplier = 1;
+        if (state.score >= 200) multiplier = 1.5;
+        else if (state.score >= 100) multiplier = 1.25;
+
+        const amount = Math.floor(baseAmount * multiplier);
+
         state.score += amount;
         callbacks.onScore(state.score);
         callbacks.onCoinCollect(amount);
