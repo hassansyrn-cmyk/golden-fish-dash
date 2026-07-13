@@ -7,6 +7,7 @@ export interface SkinDef {
   name: string;
   unlockScore: number;
   colors: { body: string; belly: string; fin: string; glow: string };
+  ability: string;
 }
 
 export interface LeaderboardEntry {
