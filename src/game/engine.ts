@@ -267,8 +267,9 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, bonus: score >= 60 && Math.random() < 0.22,
     });
   }
-  // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive)
-  const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
+  // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive, or Discus +30%)
+  const discusBoost = state.skin === 'diamond' ? 1.3 : 1.0;
+  const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 * discusBoost : GEM_SPAWN_CHANCE * discusBoost;
   if (Math.random() < gemChance) {
     state.gems.push({
       x: state.width + BASE.obstacleWidth + 88, y: gapY + (Math.random() - 0.5) * (gap * 0.28),
@@ -399,7 +400,8 @@ function clearDangerousReviveArea(state: EngineState) {
 function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   if (state.lives <= 0) return false;
   state.lives -= 1;
-  state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+  const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
+  state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
   state.fishY = state.height / 2;
   state.fishVY = 0;
   state.fishRotation = 0;
@@ -554,7 +556,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (!safe) {
           if (state.shieldCharges > 0) {
             state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-            state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+            const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
+            state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
             callbacks.onShake(3); // Screen shake is very light & minor
             triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
             addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
@@ -586,7 +589,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       if (withinX && withinY) {
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+          const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
+          state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
           callbacks.onShake(3); // Light non-distracting screen shake
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
           addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
@@ -618,7 +622,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+          const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
+          state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
         } else {
           killOrUseLife(state, callbacks);
@@ -648,7 +653,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+          const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
+          state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
         } else {
           killOrUseLife(state, callbacks);
@@ -771,7 +777,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           triggerFloatingText(state, 'Shield', pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
         } else if (pu.type === 'magnet') {
-          state.magnetUntil = state.timeMs + 8000;
+          const mandarinBonus = state.skin === 'emerald' ? 1.25 : 1.0;
+          state.magnetUntil = state.timeMs + (8000 * mandarinBonus);
           triggerFloatingText(state, 'Magnet', pu.x, pu.y - 15, '#ffa726', true);
           addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
         } else if (pu.type === 'fever') {

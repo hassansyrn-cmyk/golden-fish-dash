@@ -221,6 +221,11 @@ export default function SettingsScreen({ onBack }: Props) {
 
               <span>{skin.name}</span>
 
+              {/* Display custom balanced skin gameplay ability */}
+              <span className="skin-ability-desc" style={{ fontSize: '10px', color: '#80deea', margin: '4px 0 2px 0', fontWeight: 'bold' }}>
+                {skin.ability}
+              </span>
+
               {!isUnlocked && <span className="skin-lock-req">{progressText}</span>}
 
               {isUnlocked && !isSelected && (
