@@ -11,6 +11,7 @@ import AchievementsModal from './screens/AchievementsModal';
 import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
 import DailyRewardsScreen from './screens/DailyRewardsScreen';
+import LuckySpinScreen from './screens/LuckySpinScreen';
 import { BannerAd, InterstitialAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
@@ -19,6 +20,9 @@ import {
   incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
+  getShopItemCount,
+  consumeShopItem,
+  getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
@@ -26,6 +30,7 @@ import { Capacitor } from '@capacitor/core';
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
+const MAGNET_SHOP_DURATION = 8000;
 
 export default function GoldenFishRush() {
   const [screen, setScreen] = useState<ScreenName>('loading');
@@ -63,7 +68,8 @@ export default function GoldenFishRush() {
           screen === 'settings' ||
           screen === 'leaderboard' ||
           screen === 'howto' ||
-          screen === 'dailyRewards'
+          screen === 'dailyRewards' ||
+          screen === 'luckySpin'
         ) {
           setScreen('menu');
         } else if (screen === 'playing') {
@@ -106,12 +112,13 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, lives, doJump, reviveAt } = useGameEngine({
+  const { score, roundCoins, lives, doJump, reviveAt, engineStateRef } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
     onGameOver: handleGameOver,
+    hide2DFish: false,
   });
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
@@ -211,6 +218,35 @@ export default function GoldenFishRush() {
     setScreen('menu');
   }, []);
 
+  const handleOpenLuckySpin = useCallback(() => {
+    setScreen('luckySpin');
+  }, []);
+
+  const handleLuckySpinBack = useCallback(() => {
+    setScreen('menu');
+  }, []);
+
+  const handleGoToLeaderboard = useCallback(() => {
+    setScreen('leaderboard');
+  }, []);
+
+  const handleGoToHowTo = useCallback(() => {
+    setScreen('howto');
+  }, []);
+
+  const handleGoToSettings = useCallback(() => {
+    setScreen('settings');
+  }, []);
+
+  const handleGoToMenu = useCallback(() => {
+    setReviveCountdown(null);
+    setScreen('menu');
+  }, []);
+
+  const handleResumePlaying = useCallback(() => {
+    setScreen('playing');
+  }, []);
+
   return (
     <div className="gfr-root">
       <div className="gfr-game-area">
@@ -262,31 +298,31 @@ export default function GoldenFishRush() {
         {screen === 'menu' && (
           <MainMenu
             onPlay={startRun}
-            onLeaderboard={() => setScreen('leaderboard')}
-            onHowTo={() => setScreen('howto')}
-            onSettings={() => setScreen('settings')}
+            onLeaderboard={handleGoToLeaderboard}
+            onHowTo={handleGoToHowTo}
+            onSettings={handleGoToSettings}
             onShop={handleOpenShop}
             onDailyRewards={handleOpenDailyRewards}
+            onLuckySpin={handleOpenLuckySpin}
           />
         )}
 
-        {screen === 'howto' && <HowToPlay onBack={() => setScreen('menu')} />}
+        {screen === 'howto' && <HowToPlay onBack={handleGoToMenu} />}
 
-        {screen === 'settings' && <SettingsScreen onBack={() => setScreen('menu')} />}
+        {screen === 'settings' && <SettingsScreen onBack={handleGoToMenu} />}
 
-        {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('menu')} />}
+        {screen === 'leaderboard' && <LeaderboardScreen onBack={handleGoToMenu} />}
 
         {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
 
         {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleDailyBack} />}
 
+        {screen === 'luckySpin' && <LuckySpinScreen onBack={handleLuckySpinBack} />}
+
         {screen === 'paused' && (
           <PauseScreen
-            onResume={() => setScreen('playing')}
-            onMenu={() => {
-              setReviveCountdown(null);
-              setScreen('menu');
-            }}
+            onResume={handleResumePlaying}
+            onMenu={handleGoToMenu}
           />
         )}
 
@@ -300,11 +336,12 @@ export default function GoldenFishRush() {
         {screen === 'gameover' && !newUnlocks && (
           <GameOverScreen
             finalScore={finalScore}
+            roundCoins={roundCoins}
             canContinue={!usedSecondChanceThisRun}
             onWatchAd={handleWatchAd}
             onPlayAgain={startRun}
-            onLeaderboard={() => setScreen('leaderboard')}
-            onMenu={() => setScreen('menu')}
+            onLeaderboard={handleGoToLeaderboard}
+            onMenu={handleGoToMenu}
             onNewUnlocks={handleNewUnlocks}
             onShop={handleOpenShop}
           />

@@ -53,7 +53,8 @@ export type ScreenName =
   | 'leaderboard'
   | 'settings'
   | 'shop'
-  | 'dailyRewards';
+  | 'dailyRewards'
+  | 'luckySpin';
 
 export type PowerUpType = 'shield' | 'magnet';
 
@@ -74,4 +75,27 @@ export interface ShopInventory {
 export interface DailyRewardState {
   lastClaimDate: string; // YYYY-MM-DD
   streakDay: number; // 1 to 7, loops back
+}
+
+// Extra details for custom enhancements:
+export interface FloatingText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  size: number;
+  createdAt: number; // game time elapsed or timestamp
+  durationMs: number;
+}
+
+export interface MissionDef {
+  id: string;
+  description: string;
+  target: number;
+  progress: number;
+  completed: boolean;
+  rewardCoins: number;
+  rewardXP: number;
+  claimed: boolean;
 }

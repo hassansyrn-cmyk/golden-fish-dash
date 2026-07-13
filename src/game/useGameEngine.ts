@@ -10,6 +10,9 @@ import {
   setPersonalBest,
   unlockAchievement,
   updateDailyChallengeProgress,
+  incrementMissionProgress,
+  addXP,
+  getUpgradeLevel,
 } from './storage';
 import {
   FISH_X_RATIO,
@@ -20,7 +23,8 @@ import {
 } from './engine';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
-import { playSound } from './audio';
+import { audioManager } from './managers/AudioManager';
+import type { SoundName } from './managers/AudioManager';
 
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -41,8 +45,6 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
     // Ignore unsupported vibration errors.
   }
 }
-
-
 
 export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
@@ -77,6 +79,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     canvas.height = height;
 
     const engine = createEngine(width, height, skin);
+
+    // Apply upgrade levels directly to starting engine configurations
+    const shieldLvl = getUpgradeLevel('shield');
+    const magnetLvl = getUpgradeLevel('magnet');
+    const gemLvl = getUpgradeLevel('gemBoost');
+
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
@@ -84,16 +92,20 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
 
-    if (inv.shield > 0) {
-      consumeShopItem('shield');
-      engine.shieldCharges = 1;
+    if (inv.shield > 0 || shieldLvl > 0) {
+      if (inv.shield > 0) consumeShopItem('shield');
+      // Upgrade increases starting shield charges
+      engine.shieldCharges = 1 + shieldLvl;
+      incrementMissionProgress('m_shield', 1);
     }
-    if (inv.magnet > 0) {
-      consumeShopItem('magnet');
-      engine.magnetUntil = engine.timeMs + 8000;
+    if (inv.magnet > 0 || magnetLvl > 0) {
+      if (inv.magnet > 0) consumeShopItem('magnet');
+      // Upgrade increases starting magnet duration (8s base + 3s per level)
+      engine.magnetUntil = engine.timeMs + 8000 + (magnetLvl * 3000);
     }
-    if (inv.gemBoost > 0) {
-      consumeShopItem('gemBoost');
+    if (inv.gemBoost > 0 || gemLvl > 0) {
+      if (inv.gemBoost > 0) consumeShopItem('gemBoost');
+      // Upgrade increases gem spawn rate even further
       engine.gemBoostActive = true;
     }
 
@@ -130,9 +142,21 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       return safelyBehindFish || farAhead;
     });
 
+    state.sharks = state.sharks.filter((shark) => {
+      return shark.x < fishX - 80 || shark.x > state.width + 100;
+    });
+
+    state.seaMines = state.seaMines.filter((mine) => {
+      return mine.x < fishX - 80 || mine.x > state.width + 100;
+    });
+
+    state.jellyfish = state.jellyfish.filter((jelly) => {
+      return jelly.x < fishX - 80 || jelly.x > state.width + 100;
+    });
+
     state.elapsedSinceSpawn = -850;
 
-    playSound('reward', settings.sound);
+    audioManager.playSound('reward', settings.sound);
     safeVibrate([45, 35, 45], settings.vibration);
   }, []);
 
@@ -170,29 +194,46 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
                 if (milestone > lastMilestoneRef.current && newScore > 0) {
                   lastMilestoneRef.current = milestone;
-                  playSound('milestone', settings.sound);
+                  audioManager.playSound('milestone', settings.sound);
                   safeVibrate(25, settings.vibration);
                 }
               },
 
               onCoinCollect: (amount) => {
-                roundCoinsRef.current += amount;
+                // Apply Coin Multiplier Upgrade level directly to coin earnings (+1 coin per level)
+                const multLevel = getUpgradeLevel('coinMultiplier');
+                const bonusCoins = multLevel;
+                const finalAmount = amount + bonusCoins;
+
+                roundCoinsRef.current += finalAmount;
                 setRoundCoins(roundCoinsRef.current);
 
-                let total = addCoins(amount);
+                let total = addCoins(finalAmount);
 
-                playSound('coin', settings.sound);
+                audioManager.playSound('coin', settings.sound);
                 safeVibrate(18, settings.vibration);
+
+                // If massive coin amount collected (e.g. 15 from treasure chest)
+                if (amount >= 15) {
+                  unlockAchievement('treasure_hunter');
+                }
 
                 const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
                   'coins',
-                  amount,
+                  finalAmount,
                 );
 
                 if (justCompleted) {
                   total = addCoins(challengeState.challenge.rewardCoins);
-                  playSound('achievement', settings.sound);
+                  audioManager.playSound('achievement', settings.sound);
                   safeVibrate([25, 25, 35], settings.vibration);
+                }
+
+                incrementMissionProgress('m_coins', finalAmount);
+
+                // Check coin combos for combo master achievement
+                if (stateRef.current && stateRef.current.coinStreakCount >= 20) {
+                  unlockAchievement('combo_master');
                 }
 
                 setCoins(total);
@@ -204,8 +245,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
               onGemCollect: (currentLives) => {
                 setLives(currentLives);
-                playSound('gem', settings.sound);
+                audioManager.playSound('gem', settings.sound);
                 safeVibrate([35, 25, 55], settings.vibration);
+                incrementMissionProgress('m_gems', 1);
               },
 
               onLifeChange: (currentLives) => {
@@ -220,12 +262,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 const finalScore = state.score;
                 const best = getPersonalBest();
 
-                playSound('gameover', settings.sound);
+                audioManager.playSound('gameover', settings.sound);
                 safeVibrate([80, 50, 120], settings.vibration);
 
                 if (finalScore > best) {
                   setPersonalBest(finalScore);
-                  playSound('achievement', settings.sound);
+                  audioManager.playSound('achievement', settings.sound);
                 }
 
                 if (finalScore >= 10) unlockAchievement('getting_better');
@@ -233,12 +275,17 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 if (finalScore >= 50) unlockAchievement('ocean_master');
                 if (finalScore >= 100) unlockAchievement('legendary_swimmer');
 
+                // Perfect Run (Survivor) achievement check: score >= 20 and full remaining lives
+                if (finalScore >= 20 && state.lives === state.maxLives) {
+                  unlockAchievement('no_damage');
+                }
+
                 const scoreProgress = updateDailyChallengeProgress('score', finalScore);
 
                 if (scoreProgress.justCompleted) {
                   const total = addCoins(scoreProgress.state.challenge.rewardCoins);
                   setCoins(total);
-                  playSound('achievement', settings.sound);
+                  audioManager.playSound('achievement', settings.sound);
                   safeVibrate([25, 25, 45], settings.vibration);
                 }
 
@@ -248,10 +295,16 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   if (hardModeProgress.justCompleted) {
                     const total = addCoins(hardModeProgress.state.challenge.rewardCoins);
                     setCoins(total);
-                    playSound('achievement', settings.sound);
+                    audioManager.playSound('achievement', settings.sound);
                     safeVibrate([25, 25, 45], settings.vibration);
                   }
                 }
+
+                // Award Player progression XP based on performance: final score & coins
+                const xpAward = Math.floor(finalScore * 2.5 + roundCoinsRef.current * 1.5);
+                addXP(xpAward);
+
+                incrementMissionProgress('m_rounds', 1);
 
                 onGameOverRef.current(finalScore);
               },
@@ -260,9 +313,25 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 state.shakeIntensity = intensity;
 
                 if (intensity >= 4) {
-                  playSound('hit', settings.sound);
+                  audioManager.playSound('hit', settings.sound);
                   safeVibrate(55, settings.vibration);
                 }
+              },
+
+              onRedFlash: () => {
+                state.isRedFlashing = true;
+                state.redFlashTimer = 180; // flash screen in ms
+              },
+
+              onNearMiss: () => {
+                audioManager.playSound('milestone', settings.sound);
+                safeVibrate(22, settings.vibration);
+              },
+
+              onFeverStart: () => {
+                audioManager.playSound('reward', settings.sound);
+                setTimeout(() => audioManager.playSound('achievement', settings.sound), 150);
+                safeVibrate([30, 20, 50], settings.vibration);
               },
             },
             { vibration: settings.vibration },
@@ -317,7 +386,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     const settings = getSettings();
 
-    playSound('jump', settings.sound);
+    audioManager.playSound('jump', settings.sound);
     safeVibrate(10, settings.vibration);
 
     jumpEngine(state, { vibration: settings.vibration });
@@ -333,5 +402,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
+    engineStateRef: stateRef,
   };
 }
