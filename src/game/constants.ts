@@ -16,6 +16,10 @@ export const STORAGE_KEYS = {
   gameOverCount: 'gfr_game_over_count',
   shopInventory: 'gfr_shop_inventory',
   dailyReward: 'gfr_daily_reward',
+  xp: 'gfr_xp',
+  level: 'gfr_level',
+  upgrades: 'gfr_upgrades',
+  missions: 'gfr_missions',
 } as const;
 
 // Base gameplay tuning. Difficulty scales off these values as score increases.
@@ -99,6 +103,9 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'coin_collector', name: 'Coin Collector', description: 'Collect 50 coins total.' },
   { id: 'comeback', name: 'Comeback', description: 'Use a second chance once.' },
   { id: 'persistent_player', name: 'Persistent Player', description: 'Play 10 rounds.' },
+  { id: 'combo_master', name: 'Combo Master', description: 'Reach a coin combo streak of x3 or higher.' },
+  { id: 'treasure_hunter', name: 'Treasure Hunter', description: 'Find and collect a Sunken Treasure Chest.' },
+  { id: 'no_damage', name: 'Survivor', description: 'Perfect Run! Score 20+ points with 0 lives lost.' },
 ];
 
 // Pool of daily challenges; one is deterministically chosen per calendar day.

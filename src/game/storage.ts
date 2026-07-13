@@ -394,3 +394,138 @@ export function claimDailyReward(): { success: boolean; day: number; label: stri
     message,
   };
 }
+
+// =======================================================================
+// PHASE 3 ADDITIONS: Player Progression, Upgrades, and Missions
+// =======================================================================
+
+// ---- Player Level & XP ----
+export function getXP(): number {
+  return readJSON(STORAGE_KEYS.xp, 0);
+}
+
+export function getLevel(): number {
+  return readJSON(STORAGE_KEYS.level, 1);
+}
+
+export function addXP(amount: number): {
+  leveledUp: boolean;
+  newLevel: number;
+  rewardCoins: number;
+  xpAdded: number;
+} {
+  const currentXP = getXP();
+  const currentLevel = getLevel();
+  const totalXP = currentXP + amount;
+
+  // Level progression formula: each level takes Level * 150 XP
+  let level = currentLevel;
+  let xpNeeded = level * 150;
+  let remainingXP = totalXP;
+  let leveledUp = false;
+  let rewardCoins = 0;
+
+  while (remainingXP >= xpNeeded) {
+    remainingXP -= xpNeeded;
+    level += 1;
+    xpNeeded = level * 150;
+    leveledUp = true;
+    rewardCoins += level * 30; // Level-up coin reward scales with level
+  }
+
+  writeJSON(STORAGE_KEYS.xp, remainingXP);
+  writeJSON(STORAGE_KEYS.level, level);
+
+  if (rewardCoins > 0) {
+    addCoins(rewardCoins);
+  }
+
+  return {
+    leveledUp,
+    newLevel: level,
+    rewardCoins,
+    xpAdded: amount,
+  };
+}
+
+// ---- Multi-level Upgrades ----
+// Supported upgrade items: 'shield', 'magnet', 'gemBoost', 'coinMultiplier'
+export function getUpgradeLevel(itemId: string): number {
+  const upgrades = readJSON<Record<string, number>>(STORAGE_KEYS.upgrades, {});
+  return upgrades[itemId] ?? 0;
+}
+
+export function purchaseUpgradeLevel(itemId: string, cost: number): boolean {
+  const currentCoins = getCoins();
+  if (currentCoins < cost) {
+    return false;
+  }
+  const upgrades = readJSON<Record<string, number>>(STORAGE_KEYS.upgrades, {});
+  const currentLvl = upgrades[itemId] ?? 0;
+  if (currentLvl >= 5) {
+    return false; // already maxed
+  }
+
+  spendCoins(cost);
+  upgrades[itemId] = currentLvl + 1;
+  writeJSON(STORAGE_KEYS.upgrades, upgrades);
+  return true;
+}
+
+// ---- Missions ----
+import type { MissionDef } from './types';
+
+const INITIAL_MISSIONS: MissionDef[] = [
+  { id: 'm_coins', description: 'Collect 250 Coins', target: 250, progress: 0, completed: false, rewardCoins: 80, rewardXP: 150, claimed: false },
+  { id: 'm_gems', description: 'Collect 10 Gems (Hearts)', target: 10, progress: 0, completed: false, rewardCoins: 100, rewardXP: 200, claimed: false },
+  { id: 'm_rounds', description: 'Play 6 Game Rounds', target: 6, progress: 0, completed: false, rewardCoins: 60, rewardXP: 100, claimed: false },
+  { id: 'm_shield', description: 'Use 4 Shield Charges', target: 4, progress: 0, completed: false, rewardCoins: 50, rewardXP: 90, claimed: false },
+];
+
+export function getMissions(): MissionDef[] {
+  let stored = readJSON<MissionDef[] | null>(STORAGE_KEYS.missions, null);
+  if (!stored) {
+    stored = INITIAL_MISSIONS;
+    writeJSON(STORAGE_KEYS.missions, stored);
+  }
+  return stored;
+}
+
+export function incrementMissionProgress(id: string, amount: number): MissionDef[] {
+  const list = getMissions();
+  const updated = list.map((m) => {
+    if (m.id === id && !m.completed) {
+      const progress = Math.min(m.target, m.progress + amount);
+      const completed = progress >= m.target;
+      return { ...m, progress, completed };
+    }
+    return m;
+  });
+  writeJSON(STORAGE_KEYS.missions, updated);
+  return updated;
+}
+
+export function claimMissionReward(id: string): { success: boolean; coins: number; xp: number } {
+  const list = getMissions();
+  let coinsRewarded = 0;
+  let xpRewarded = 0;
+  let success = false;
+
+  const updated = list.map((m) => {
+    if (m.id === id && m.completed && !m.claimed) {
+      m.claimed = true;
+      coinsRewarded = m.rewardCoins;
+      xpRewarded = m.rewardXP;
+      success = true;
+    }
+    return m;
+  });
+
+  if (success) {
+    writeJSON(STORAGE_KEYS.missions, updated);
+    addCoins(coinsRewarded);
+    addXP(xpRewarded);
+  }
+
+  return { success, coins: coinsRewarded, xp: xpRewarded };
+}

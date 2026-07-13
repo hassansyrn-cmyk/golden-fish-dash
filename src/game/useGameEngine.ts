@@ -10,6 +10,9 @@ import {
   setPersonalBest,
   unlockAchievement,
   updateDailyChallengeProgress,
+  incrementMissionProgress,
+  addXP,
+  getUpgradeLevel,
 } from './storage';
 import {
   FISH_X_RATIO,
@@ -20,6 +23,8 @@ import {
 } from './engine';
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
+import { audioManager } from './managers/AudioManager';
+import type { SoundName } from './managers/AudioManager';
 
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -38,113 +43,6 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
     navigator.vibrate(pattern);
   } catch {
     // Ignore unsupported vibration errors.
-  }
-}
-
-type SoundName =
-  | 'jump'
-  | 'coin'
-  | 'gem'
-  | 'reward'
-  | 'achievement'
-  | 'hit'
-  | 'gameover'
-  | 'milestone';
-
-let audioContext: AudioContext | null = null;
-
-function getAudioContext() {
-  if (typeof window === 'undefined') return null;
-
-  const AudioContextClass =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
-  if (!AudioContextClass) return null;
-
-  if (!audioContext) {
-    audioContext = new AudioContextClass();
-  }
-
-  return audioContext;
-}
-
-function playTone(frequency: number, durationMs: number, type: OscillatorType, gainValue = 0.045) {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-
-  try {
-    if (ctx.state === 'suspended') {
-      void ctx.resume();
-    }
-
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    oscillator.type = type;
-    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime);
-
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(gainValue, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
-
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + durationMs / 1000 + 0.02);
-  } catch {
-    // Ignore audio errors.
-  }
-}
-
-function playSound(name: SoundName, enabled: boolean) {
-  if (!enabled) return;
-
-  switch (name) {
-    case 'jump':
-      playTone(520, 70, 'sine', 0.035);
-      break;
-
-    case 'coin':
-      playTone(880, 75, 'triangle', 0.045);
-      setTimeout(() => playTone(1180, 65, 'triangle', 0.035), 55);
-      break;
-
-    case 'gem':
-      playTone(960, 90, 'triangle', 0.045);
-      setTimeout(() => playTone(1280, 100, 'sine', 0.04), 80);
-      setTimeout(() => playTone(1600, 130, 'triangle', 0.035), 170);
-      break;
-
-    case 'reward':
-      playTone(740, 80, 'triangle', 0.045);
-      setTimeout(() => playTone(980, 80, 'triangle', 0.04), 70);
-      setTimeout(() => playTone(1320, 110, 'triangle', 0.035), 140);
-      break;
-
-    case 'achievement':
-      playTone(660, 80, 'sine', 0.045);
-      setTimeout(() => playTone(880, 90, 'sine', 0.04), 80);
-      setTimeout(() => playTone(1100, 120, 'sine', 0.035), 165);
-      break;
-
-    case 'hit':
-      playTone(180, 120, 'sawtooth', 0.04);
-      break;
-
-    case 'gameover':
-      playTone(260, 130, 'sawtooth', 0.04);
-      setTimeout(() => playTone(170, 180, 'sawtooth', 0.035), 130);
-      break;
-
-    case 'milestone':
-      playTone(600, 75, 'square', 0.035);
-      setTimeout(() => playTone(900, 90, 'square', 0.03), 80);
-      break;
-
-    default:
-      break;
   }
 }
 
@@ -181,28 +79,34 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     canvas.height = height;
 
     const engine = createEngine(width, height, skin);
+
+    // Apply upgrade levels directly to starting engine configurations
+    const shieldLvl = getUpgradeLevel('shield');
+    const magnetLvl = getUpgradeLevel('magnet');
+    const gemLvl = getUpgradeLevel('gemBoost');
+
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
     // This runs every time a new engine is created for a run.
     // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
-    let applied = false;
 
-    if (inv.shield > 0) {
-      consumeShopItem('shield');
-      engine.shieldCharges = 1;
-      applied = true;
+    if (inv.shield > 0 || shieldLvl > 0) {
+      if (inv.shield > 0) consumeShopItem('shield');
+      // Upgrade increases starting shield charges
+      engine.shieldCharges = 1 + shieldLvl;
+      incrementMissionProgress('m_shield', 1);
     }
-    if (inv.magnet > 0) {
-      consumeShopItem('magnet');
-      engine.magnetUntil = engine.timeMs + 8000;
-      applied = true;
+    if (inv.magnet > 0 || magnetLvl > 0) {
+      if (inv.magnet > 0) consumeShopItem('magnet');
+      // Upgrade increases starting magnet duration (8s base + 3s per level)
+      engine.magnetUntil = engine.timeMs + 8000 + (magnetLvl * 3000);
     }
-    if (inv.gemBoost > 0) {
-      consumeShopItem('gemBoost');
+    if (inv.gemBoost > 0 || gemLvl > 0) {
+      if (inv.gemBoost > 0) consumeShopItem('gemBoost');
+      // Upgrade increases gem spawn rate even further
       engine.gemBoostActive = true;
-      applied = true;
     }
 
     roundCoinsRef.current = 0;
@@ -238,9 +142,21 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       return safelyBehindFish || farAhead;
     });
 
+    state.sharks = state.sharks.filter((shark) => {
+      return shark.x < fishX - 80 || shark.x > state.width + 100;
+    });
+
+    state.seaMines = state.seaMines.filter((mine) => {
+      return mine.x < fishX - 80 || mine.x > state.width + 100;
+    });
+
+    state.jellyfish = state.jellyfish.filter((jelly) => {
+      return jelly.x < fishX - 80 || jelly.x > state.width + 100;
+    });
+
     state.elapsedSinceSpawn = -850;
 
-    playSound('reward', settings.sound);
+    audioManager.playSound('reward', settings.sound);
     safeVibrate([45, 35, 45], settings.vibration);
   }, []);
 
@@ -278,29 +194,46 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
                 if (milestone > lastMilestoneRef.current && newScore > 0) {
                   lastMilestoneRef.current = milestone;
-                  playSound('milestone', settings.sound);
+                  audioManager.playSound('milestone', settings.sound);
                   safeVibrate(25, settings.vibration);
                 }
               },
 
               onCoinCollect: (amount) => {
-                roundCoinsRef.current += amount;
+                // Apply Coin Multiplier Upgrade level directly to coin earnings (+1 coin per level)
+                const multLevel = getUpgradeLevel('coinMultiplier');
+                const bonusCoins = multLevel;
+                const finalAmount = amount + bonusCoins;
+
+                roundCoinsRef.current += finalAmount;
                 setRoundCoins(roundCoinsRef.current);
 
-                let total = addCoins(amount);
+                let total = addCoins(finalAmount);
 
-                playSound('coin', settings.sound);
+                audioManager.playSound('coin', settings.sound);
                 safeVibrate(18, settings.vibration);
+
+                // If massive coin amount collected (e.g. 15 from treasure chest)
+                if (amount >= 15) {
+                  unlockAchievement('treasure_hunter');
+                }
 
                 const { state: challengeState, justCompleted } = updateDailyChallengeProgress(
                   'coins',
-                  amount,
+                  finalAmount,
                 );
 
                 if (justCompleted) {
                   total = addCoins(challengeState.challenge.rewardCoins);
-                  playSound('achievement', settings.sound);
+                  audioManager.playSound('achievement', settings.sound);
                   safeVibrate([25, 25, 35], settings.vibration);
+                }
+
+                incrementMissionProgress('m_coins', finalAmount);
+
+                // Check coin combos for combo master achievement
+                if (stateRef.current && stateRef.current.coinStreakCount >= 20) {
+                  unlockAchievement('combo_master');
                 }
 
                 setCoins(total);
@@ -312,8 +245,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
               onGemCollect: (currentLives) => {
                 setLives(currentLives);
-                playSound('gem', settings.sound);
+                audioManager.playSound('gem', settings.sound);
                 safeVibrate([35, 25, 55], settings.vibration);
+                incrementMissionProgress('m_gems', 1);
               },
 
               onLifeChange: (currentLives) => {
@@ -328,12 +262,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 const finalScore = state.score;
                 const best = getPersonalBest();
 
-                playSound('gameover', settings.sound);
+                audioManager.playSound('gameover', settings.sound);
                 safeVibrate([80, 50, 120], settings.vibration);
 
                 if (finalScore > best) {
                   setPersonalBest(finalScore);
-                  playSound('achievement', settings.sound);
+                  audioManager.playSound('achievement', settings.sound);
                 }
 
                 if (finalScore >= 10) unlockAchievement('getting_better');
@@ -341,12 +275,17 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 if (finalScore >= 50) unlockAchievement('ocean_master');
                 if (finalScore >= 100) unlockAchievement('legendary_swimmer');
 
+                // Perfect Run (Survivor) achievement check: score >= 20 and full remaining lives
+                if (finalScore >= 20 && state.lives === state.maxLives) {
+                  unlockAchievement('no_damage');
+                }
+
                 const scoreProgress = updateDailyChallengeProgress('score', finalScore);
 
                 if (scoreProgress.justCompleted) {
                   const total = addCoins(scoreProgress.state.challenge.rewardCoins);
                   setCoins(total);
-                  playSound('achievement', settings.sound);
+                  audioManager.playSound('achievement', settings.sound);
                   safeVibrate([25, 25, 45], settings.vibration);
                 }
 
@@ -356,10 +295,16 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   if (hardModeProgress.justCompleted) {
                     const total = addCoins(hardModeProgress.state.challenge.rewardCoins);
                     setCoins(total);
-                    playSound('achievement', settings.sound);
+                    audioManager.playSound('achievement', settings.sound);
                     safeVibrate([25, 25, 45], settings.vibration);
                   }
                 }
+
+                // Award Player progression XP based on performance: final score & coins
+                const xpAward = Math.floor(finalScore * 2.5 + roundCoinsRef.current * 1.5);
+                addXP(xpAward);
+
+                incrementMissionProgress('m_rounds', 1);
 
                 onGameOverRef.current(finalScore);
               },
@@ -368,9 +313,25 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 state.shakeIntensity = intensity;
 
                 if (intensity >= 4) {
-                  playSound('hit', settings.sound);
+                  audioManager.playSound('hit', settings.sound);
                   safeVibrate(55, settings.vibration);
                 }
+              },
+
+              onRedFlash: () => {
+                state.isRedFlashing = true;
+                state.redFlashTimer = 180; // flash screen in ms
+              },
+
+              onNearMiss: () => {
+                audioManager.playSound('milestone', settings.sound);
+                safeVibrate(22, settings.vibration);
+              },
+
+              onFeverStart: () => {
+                audioManager.playSound('reward', settings.sound);
+                setTimeout(() => audioManager.playSound('achievement', settings.sound), 150);
+                safeVibrate([30, 20, 50], settings.vibration);
               },
             },
             { vibration: settings.vibration },
@@ -425,7 +386,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     const settings = getSettings();
 
-    playSound('jump', settings.sound);
+    audioManager.playSound('jump', settings.sound);
     safeVibrate(10, settings.vibration);
 
     jumpEngine(state, { vibration: settings.vibration });
@@ -441,5 +402,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
+    engineStateRef: stateRef,
   };
 }

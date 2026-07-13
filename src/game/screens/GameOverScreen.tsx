@@ -9,18 +9,22 @@ import {
   setPersonalBest,
   setSelectedSkin,
   submitScoreToServer,
+  getLevel,
+  getXP,
 } from '../storage';
 import { SKINS } from '../constants';
 import type { SkinId } from '../types';
 
 interface Props {
   finalScore: number;
+  roundCoins?: number;
   canContinue: boolean;
   onWatchAd: () => void;
   onPlayAgain: () => void;
   onLeaderboard: () => void;
   onMenu: () => void;
   onNewUnlocks?: (ids: SkinId[]) => void;
+  onShop?: () => void;
 }
 
 function encouragement(finalScore: number, best: number): string {
@@ -43,8 +47,12 @@ function getSkinById(id: SkinId) {
   return SKINS.find((skin) => skin.id === id);
 }
 
+import { addCoins, addXP } from '../storage';
+import { audioManager } from '../managers/AudioManager';
+
 export default function GameOverScreen({
   finalScore,
+  roundCoins = 0,
   canContinue,
   onWatchAd,
   onPlayAgain,
@@ -63,6 +71,37 @@ export default function GameOverScreen({
   const [name, setName] = useState('');
   const [newlyUnlocked, setNewlyUnlocked] = useState<SkinId[]>([]);
   const [selectedSkin, setSelectedSkinState] = useState<SkinId>(() => getSelectedSkin());
+
+  const [level, setLevel] = useState(1);
+  const [xp, setXp] = useState(0);
+  const [rewardsDoubled, setRewardsDoubled] = useState(false);
+  const [doubleMsg, setDoubleMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLevel(getLevel());
+    setXp(getXP());
+  }, []);
+
+  const handleDoubleRewards = () => {
+    if (rewardsDoubled) return;
+
+    // Double coins earned and double XP earned from this run!
+    const extraXP = Math.floor(finalScore * 2.5 + roundCoins * 1.5);
+
+    addCoins(roundCoins);
+    const prog = addXP(extraXP);
+
+    audioManager.playSound('reward', true);
+    setRewardsDoubled(true);
+    setDoubleMsg(`Double Rewards Activated! +🪙${roundCoins} Coins & +⚡${extraXP} XP Added!`);
+
+    // Refresh level and XP bars with the new values
+    setLevel(getLevel());
+    setXp(getXP());
+  };
+
+  const xpNeeded = level * 150;
+  const xpPercent = Math.min(100, Math.floor((xp / xpNeeded) * 100));
 
   useEffect(() => {
     const before = new Set(getUnlockedSkins());
@@ -127,6 +166,26 @@ export default function GameOverScreen({
           <span className="stat-value">#{rank}</span>
         </div>
       </div>
+
+      {/* Game Over Player Level Progress */}
+      <div style={{ width: '100%', maxWidth: '320px', margin: '14px auto', padding: '12px', backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>
+          <span>Level {level} Progression</span>
+          <span style={{ fontSize: '11px', color: '#ffd54f' }}>{xp} / {xpNeeded} XP</span>
+        </div>
+        <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ width: `${xpPercent}%`, height: '100%', backgroundColor: '#ffd54f', borderRadius: '4px', transition: 'width 0.4s ease' }} />
+        </div>
+        <p style={{ fontSize: '11px', color: '#b0bec5', margin: '6px 0 0 0', textAlign: 'center' }}>
+          Final score and coin counts converted into extra level XP!
+        </p>
+      </div>
+
+      {doubleMsg && (
+        <div style={{ margin: '10px 0', padding: '10px', background: 'rgba(76,175,80,0.25)', border: '1px solid #4caf50', borderRadius: '8px', fontSize: '13px', color: '#81c784', fontWeight: 'bold', textAlign: 'center' }}>
+          {doubleMsg}
+        </div>
+      )}
 
       <p className="gameover-encourage">{encouragement(finalScore, prevBest)}</p>
 
@@ -201,6 +260,17 @@ export default function GameOverScreen({
         {canContinue && (
           <button className="btn btn-ad" onClick={onWatchAd}>
             Watch Ad to Continue
+          </button>
+        )}
+
+        {/* Double Rewards Ad Simulator Button */}
+        {!rewardsDoubled && (roundCoins > 0 || finalScore > 0) && (
+          <button
+            className="btn btn-ad"
+            onClick={handleDoubleRewards}
+            style={{ background: 'linear-gradient(135deg, #fb8500, #ffb703)', border: 'none', color: '#000814' }}
+          >
+            📺 Double Coins & XP (Ad)
           </button>
         )}
 
