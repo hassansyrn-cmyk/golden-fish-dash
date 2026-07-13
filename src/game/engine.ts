@@ -165,6 +165,17 @@ export interface EngineState {
   feverUntil: number;
   elapsedSinceFeverCoinSpawn: number;
   hourglassUntil: number;
+
+  // Squash and stretch parameters
+  squashX: number;
+  squashY: number;
+
+  // Dynamic Camera parameters
+  cameraY: number;
+  cameraZoom: number;
+
+  // Hit freeze / slowdown timer for massive hit weight
+  hitFreezeTimer: number;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -203,6 +214,14 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     feverUntil: 0,
     elapsedSinceFeverCoinSpawn: 0,
     hourglassUntil: 0,
+
+    squashX: 1.0,
+    squashY: 1.0,
+
+    cameraY: 0,
+    cameraZoom: 1.0,
+
+    hitFreezeTimer: 0,
   };
 }
 
@@ -227,6 +246,9 @@ export function difficultyForScore(score: number, timeMs: number = 0) {
 export function jump(state: EngineState, settings: { vibration: boolean }) {
   if (!state.running) return;
   state.fishVY = BASE.jumpVelocity;
+  // Trigger snappy horizontal stretch & vertical squash on jump launch
+  state.squashX = 0.72;
+  state.squashY = 1.35;
   for (let i = 0; i < 6; i++) {
     state.particles.push({
       x: state.width * FISH_X_RATIO, y: state.fishY + BASE.fishRadius * 0.6,
@@ -399,6 +421,7 @@ function clearDangerousReviveArea(state: EngineState) {
 function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   if (state.lives <= 0) return false;
   state.lives -= 1;
+  state.hitFreezeTimer = 180; // Crisp cinematic freeze on losing a life
   state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
   state.fishY = state.height / 2;
   state.fishVY = 0;
@@ -413,6 +436,7 @@ function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
 
 function killOrUseLife(state: EngineState, callbacks: EngineCallbacks) {
   if (spendExtraLife(state, callbacks)) return;
+  state.hitFreezeTimer = 220; // Crisp cinematic freeze on final game over collision
   callbacks.onShake(8); // Reduced shake on gameover/death
   callbacks.onRedFlash?.();
   callbacks.onDeath();
@@ -435,12 +459,38 @@ function triggerFloatingText(state: EngineState, text: string, x: number, y: num
 
 export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCallbacks, settings: { vibration: boolean }) {
   if (!state.running) return;
+
+  // Skip frames if in hit stop / hit freeze (massive hit weight visual feel)
+  if (state.hitFreezeTimer > 0) {
+    state.hitFreezeTimer -= dtMs;
+    return;
+  }
+
   const dt = Math.min(2.2, dtMs / 16.67);
   state.timeMs += dtMs;
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
+
+  // Water resistance and smooth float simulation
   state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
+  state.fishVY *= Math.pow(0.985, dt); // Damps velocity for water resistance feel
   state.fishY += state.fishVY * dt;
   state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
+
+  // Dynamic squash & stretch relaxation and velocity-based scaling
+  const targetSquashX = 1.0 - Math.min(0.12, Math.abs(state.fishVY) * 0.015);
+  const targetSquashY = 1.0 + Math.min(0.15, Math.abs(state.fishVY) * 0.02);
+  state.squashX += (targetSquashX - state.squashX) * 0.12 * dt;
+  state.squashY += (targetSquashY - state.squashY) * 0.12 * dt;
+
+  // Dynamic Camera vertical easing and zoom scaling
+  const isFever = state.feverUntil > state.timeMs;
+  const isHourglass = state.hourglassUntil > state.timeMs;
+  const targetCamY = Math.max(-35, Math.min(35, state.fishY - state.height / 2));
+  state.cameraY += (targetCamY - state.cameraY) * 0.07 * dt;
+
+  const targetZoom = isHourglass ? 1.04 : isFever ? 0.96 : 1.0;
+  state.cameraZoom += (targetZoom - state.cameraZoom) * 0.06 * dt;
+
   const groundY = state.height - 8;
   const ceilingY = 8;
   const invincible = state.timeMs < state.invincibleUntil;
@@ -554,6 +604,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (!safe) {
           if (state.shieldCharges > 0) {
             state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+            state.hitFreezeTimer = 80; // Crisp impact hit-stop on shield absorption
             state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
             callbacks.onShake(3); // Screen shake is very light & minor
             triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
@@ -586,6 +637,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       if (withinX && withinY) {
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+          state.hitFreezeTimer = 80; // Crisp impact hit-stop on shield absorption
           state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
           callbacks.onShake(3); // Light non-distracting screen shake
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
@@ -618,6 +670,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+          state.hitFreezeTimer = 80; // Crisp impact hit-stop on shield absorption
+          state.hitFreezeTimer = 80; // Crisp impact hit-stop on shield absorption
           state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
         } else {
@@ -840,6 +894,34 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     p.vy += 0.05 * dt;
   }
   state.particles = state.particles.filter((p) => p.life < p.maxLife);
+
+  // Spawns highly polished tail bubble & sparkle trails behind the fish's motion path
+  if (Math.random() < 0.35) {
+    const tailX = state.width * FISH_X_RATIO - BASE.fishRadius;
+    const tailY = state.fishY + (Math.random() - 0.5) * 8;
+    const hasMagnet = state.magnetUntil > state.timeMs;
+    const isFever = state.feverUntil > state.timeMs;
+    const isHourglass = state.hourglassUntil > state.timeMs;
+
+    const trailColor = isFever
+      ? `hsla(${(state.timeMs / 4) % 360}, 100%, 75%, 0.8)`
+      : hasMagnet
+      ? 'rgba(0, 229, 255, 0.75)'
+      : isHourglass
+      ? 'rgba(0, 229, 255, 0.8)'
+      : 'rgba(255, 255, 255, 0.6)';
+
+    state.particles.push({
+      x: tailX,
+      y: tailY,
+      vx: -(speed * 0.4 + Math.random() * 1.5),
+      vy: (Math.random() - 0.5) * 1.0,
+      life: 0,
+      maxLife: 20 + Math.random() * 15,
+      color: trailColor,
+      size: 1.5 + Math.random() * 2.0
+    });
+  }
   state.shakeIntensity = Math.max(0, state.shakeIntensity - dtMs * 0.05);
   void settings;
 }
@@ -929,12 +1011,57 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   }
   ctx.restore();
 
-  // 4. Seaweeds & beautiful coral decor at the bottom
+  // 4. Water Caustics (refracting sunlight lines)
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    for (let x = 0; x < width + 40; x += 40) {
+      const y = (height * 0.2) + (i * 120) + Math.sin(x * 0.015 + state.timeMs * 0.0012 + i) * 15;
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 5. Floating Plankton / Dust particles (Plankton floating gently)
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#b2ebf2';
+  for (let i = 0; i < 12; i++) {
+    const px = (state.timeMs * 0.02 + i * 180) % (width + 100) - 50;
+    const py = (height - (i * 75) - state.timeMs * 0.015) % height;
+    ctx.beginPath();
+    ctx.arc(px, py, 1.5 + (i % 2), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 6. Deep Seaweed Parallax Layer (Deeper background layer, dark & slow)
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = '#002535';
+  for (let i = 0; i < 8; i++) {
+    const cx = (width / 7) * i + Math.sin(state.timeMs * 0.0003 + i) * 6;
+    const h = 30 + ((i * 37) % 45);
+    ctx.beginPath();
+    ctx.moveTo(cx, height);
+    ctx.quadraticCurveTo(cx - 10, height - h, cx, height - h - 10);
+    ctx.quadraticCurveTo(cx + 10, height - h, cx, height);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 7. Foreground Seaweeds & beautiful coral decor (Closer, vivid & fast)
   ctx.save();
   ctx.globalAlpha = 0.42;
-  ctx.fillStyle = tier.name === 'Easy' ? '#004d40' : '#002d3f';
-  for (let i = 0; i < 10; i++) {
-    const cx = (width / 9) * i + Math.sin(state.timeMs * 0.0006 + i) * 10;
+  ctx.fillStyle = tier.name === 'Easy' ? '#00695c' : '#00364c';
+  for (let i = 0; i < 11; i++) {
+    const cx = (width / 10) * i + Math.sin(state.timeMs * 0.0006 + i) * 10;
     const h = 40 + ((i * 47) % 65);
     ctx.beginPath();
     ctx.moveTo(cx, height);
@@ -947,6 +1074,15 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     ctx.quadraticCurveTo(cx + 18, height - h * 0.7, cx + 10, height);
     ctx.fill();
   }
+  ctx.restore();
+
+  // 8. Soft Vignette for underwater depth feeling
+  ctx.save();
+  const vig = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.5, width / 2, height / 2, Math.max(width, height) * 0.75);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(1,15,31,0.45)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, width, height);
   ctx.restore();
 
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -1029,6 +1165,11 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.save();
   ctx.translate(fishX, state.fishY);
   ctx.rotate(state.fishRotation);
+
+  // Apply visual squash and stretch matrix scaling
+  const sqX = state.squashX ?? 1.0;
+  const sqY = state.squashY ?? 1.0;
+  ctx.scale(sqX, sqY);
 
   {
     if (id === 'legendary' || isFever) {
@@ -1612,6 +1753,14 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     ctx.translate(dx, dy);
   }
   drawBackground(ctx, state);
+
+  // Apply smooth visual camera vertical easing and dynamic zoom scaling
+  ctx.save();
+  ctx.translate(width / 2, height / 2);
+  ctx.scale(state.cameraZoom ?? 1.0, state.cameraZoom ?? 1.0);
+  ctx.translate(-width / 2, -height / 2);
+  ctx.translate(0, -(state.cameraY ?? 0));
+
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const shark of state.sharks) drawShark(ctx, shark, state.timeMs);
   for (const mine of state.seaMines) drawSeaMine(ctx, mine, state.timeMs);
@@ -1631,7 +1780,8 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     drawFloatingText(ctx, text, state.timeMs);
   }
 
-  ctx.restore();
+  ctx.restore(); // Restore camera transformation
+  ctx.restore(); // Restore shake translation
 
   if (state.isRedFlashing) {
     ctx.save();

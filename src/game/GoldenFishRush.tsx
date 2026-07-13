@@ -259,22 +259,29 @@ export default function GoldenFishRush() {
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
-            <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`}>
-              {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => (
-                <span
-                  key={index}
-                  className={index < visibleLives ? 'hud-heart hud-heart-full' : 'hud-heart hud-heart-empty'}
-                >
-                  {index < visibleLives ? '♥' : '♡'}
-                </span>
-              ))}
+            <div className="hud-left-group">
+              <div className="hud-lives-panel" aria-label={`Extra lives: ${visibleLives}`}>
+                {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => (
+                  <span
+                    key={index}
+                    className={index < visibleLives ? 'hud-heart hud-heart-full' : 'hud-heart hud-heart-empty'}
+                  >
+                    {index < visibleLives ? '♥' : '♡'}
+                  </span>
+                ))}
+              </div>
+
+              <div className="hud-coins-panel">
+                <span className="hud-coin-symbol">🪙</span>
+                <span className="hud-coin-count">{roundCoins}</span>
+              </div>
             </div>
 
             <div className="hud-score">{score}</div>
 
             {screen === 'playing' && (
               <button
-                className="hud-pause-btn"
+                className="hud-pause-panel"
                 onClick={(event) => {
                   event.stopPropagation();
                   setScreen('paused');
