@@ -1,0 +1,531 @@
+// -----------------------------------------------------------------------
+// Local persistence layer for Golden Fish Rush.
+// Everything here is localStorage-backed for now. Each function is written
+// so it can be swapped for real backend calls later without touching
+// call sites — see submitScoreToServer / fetchGlobalLeaderboard below.
+// -----------------------------------------------------------------------
+
+import {
+  ACHIEVEMENTS,
+  DAILY_CHALLENGE_POOL,
+  SAMPLE_GLOBAL_SCORES,
+  SKINS,
+  STORAGE_KEYS,
+  dateKey,
+} from './constants';
+import type {
+  DailyChallengeState,
+  DailyRewardState,
+  LeaderboardEntry,
+  Settings,
+  ShopInventory,
+  ShopItemId,
+  SkinId,
+} from './types';
+import { submitLeaderboardScore as submitToFirebase, fetchGlobalLeaderboard as fetchFromFirebase } from './firebaseLeaderboard';
+
+function readJSON<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJSON(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage may be unavailable (private mode, quota). Fail silently —
+    // gameplay should never crash because persistence failed.
+  }
+}
+
+// ---- Personal best ----
+export function getPersonalBest(): number {
+  return readJSON(STORAGE_KEYS.personalBest, 0);
+}
+export function setPersonalBest(score: number) {
+  writeJSON(STORAGE_KEYS.personalBest, score);
+}
+export function resetPersonalBest() {
+  writeJSON(STORAGE_KEYS.personalBest, 0);
+}
+
+// ---- Coins ----
+export function getCoins(): number {
+  return readJSON(STORAGE_KEYS.coins, 0);
+}
+export function addCoins(amount: number): number {
+  const total = getCoins() + amount;
+  writeJSON(STORAGE_KEYS.coins, total);
+  return total;
+}
+export function spendCoins(amount: number): number {
+  const current = getCoins();
+  const newTotal = Math.max(0, current - Math.max(0, amount));
+  writeJSON(STORAGE_KEYS.coins, newTotal);
+  return newTotal;
+}
+
+// ---- Skins ----
+export function getUnlockedSkins(): SkinId[] {
+  return readJSON<SkinId[]>(STORAGE_KEYS.unlockedSkins, ['golden']);
+}
+export function getSelectedSkin(): SkinId {
+  return readJSON<SkinId>(STORAGE_KEYS.selectedSkin, 'golden');
+}
+export function setSelectedSkin(skin: SkinId) {
+  writeJSON(STORAGE_KEYS.selectedSkin, skin);
+}
+export function refreshUnlockedSkins(bestScore: number): SkinId[] {
+  const unlocked = new Set(getUnlockedSkins());
+  for (const skin of SKINS) {
+    if (bestScore >= skin.unlockScore) unlocked.add(skin.id);
+  }
+  const result = Array.from(unlocked);
+  writeJSON(STORAGE_KEYS.unlockedSkins, result);
+  return result;
+}
+
+// ---- Achievements ----
+export function getUnlockedAchievements(): string[] {
+  return readJSON<string[]>(STORAGE_KEYS.achievements, []);
+}
+export function unlockAchievement(id: string): boolean {
+  const unlocked = new Set(getUnlockedAchievements());
+  if (unlocked.has(id)) return false;
+  unlocked.add(id);
+  writeJSON(STORAGE_KEYS.achievements, Array.from(unlocked));
+  return true;
+}
+export function getAllAchievements() {
+  const unlocked = new Set(getUnlockedAchievements());
+  return ACHIEVEMENTS.map((a) => ({ ...a, unlocked: unlocked.has(a.id) }));
+}
+
+// ---- Rounds played / second chance tracking ----
+export function getRoundsPlayed(): number {
+  return readJSON(STORAGE_KEYS.roundsPlayed, 0);
+}
+export function incrementRoundsPlayed(): number {
+  const total = getRoundsPlayed() + 1;
+  writeJSON(STORAGE_KEYS.roundsPlayed, total);
+  return total;
+}
+export function hasUsedSecondChanceEver(): boolean {
+  return readJSON(STORAGE_KEYS.usedSecondChanceEver, false);
+}
+export function markUsedSecondChanceEver() {
+  writeJSON(STORAGE_KEYS.usedSecondChanceEver, true);
+}
+
+// ---- Interstitial ad cadence ----
+export function getGameOverCount(): number {
+  return readJSON(STORAGE_KEYS.gameOverCount, 0);
+}
+export function incrementGameOverCount(): number {
+  const total = getGameOverCount() + 1;
+  writeJSON(STORAGE_KEYS.gameOverCount, total);
+  return total;
+}
+
+// ---- Settings ----
+const DEFAULT_SETTINGS: Settings = { sound: true, music: true, vibration: true };
+export function getSettings(): Settings {
+  return readJSON(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
+}
+export function setSettings(settings: Settings) {
+  writeJSON(STORAGE_KEYS.settings, settings);
+}
+
+// ---- Shop Inventory ----
+const DEFAULT_SHOP_INVENTORY: ShopInventory = {
+  shield: 0,
+  magnet: 0,
+  gemBoost: 0,
+  continueToken: 0,
+};
+
+export function getShopInventory(): ShopInventory {
+  return readJSON<ShopInventory>(STORAGE_KEYS.shopInventory, DEFAULT_SHOP_INVENTORY);
+}
+
+function saveShopInventory(inventory: ShopInventory) {
+  writeJSON(STORAGE_KEYS.shopInventory, inventory);
+}
+
+export function getShopItemCount(itemId: ShopItemId): number {
+  const inv = getShopInventory();
+  return inv[itemId] ?? 0;
+}
+export function buyShopItem(itemId: ShopItemId, cost: number): boolean {
+  const currentCoins = getCoins();
+  if (currentCoins < cost) {
+    return false;
+  }
+  const inv = getShopInventory();
+  const newInv: ShopInventory = { ...inv, [itemId]: (inv[itemId] ?? 0) + 1 };
+  spendCoins(cost);
+  saveShopInventory(newInv);
+  return true;
+}
+export function consumeShopItem(itemId: ShopItemId): boolean {
+  const inv = getShopInventory();
+  const current = inv[itemId] ?? 0;
+  if (current <= 0) {
+    return false;
+  }
+  const newInv: ShopInventory = { ...inv, [itemId]: current - 1 };
+  saveShopInventory(newInv);
+  return true;
+}
+
+// Helper to add free shop item (used by daily rewards)
+function addShopItem(itemId: ShopItemId, count: number = 1): ShopInventory {
+  const inv = getShopInventory();
+  const newInv: ShopInventory = { ...inv, [itemId]: (inv[itemId] ?? 0) + count };
+  saveShopInventory(newInv);
+  return newInv;
+}
+
+// ---- Local leaderboard ----
+// Seeded once with sample "global" scores so the board never looks empty.
+// Structured to be a drop-in replacement target for a real backend: once
+// a server exists, fetchGlobalLeaderboard() below can fetch a merged list
+// instead of reading localStorage.
+function ensureLeaderboardSeeded(): LeaderboardEntry[] {
+  const existing = readJSON<LeaderboardEntry[] | null>(STORAGE_KEYS.leaderboard, null);
+  if (existing) return existing;
+  const seeded: LeaderboardEntry[] = SAMPLE_GLOBAL_SCORES.map((s) => ({
+    name: s.name,
+    score: s.score,
+    date: dateKey(),
+  }));
+  writeJSON(STORAGE_KEYS.leaderboard, seeded);
+  return seeded;
+}
+
+export function getLocalLeaderboard(): LeaderboardEntry[] {
+  return ensureLeaderboardSeeded()
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+}
+export function getGlobalBestScore(): number {
+  const board = ensureLeaderboardSeeded();
+  return board.reduce((max, e) => Math.max(max, e.score), 0);
+}
+export function addLocalLeaderboardEntry(name: string, score: number): LeaderboardEntry[] {
+  const board = ensureLeaderboardSeeded();
+  board.push({ name: name.slice(0, 16) || 'Player', score, date: dateKey() });
+  board.sort((a, b) => b.score - a.score);
+  const trimmed = board.slice(0, 50); // keep some history beyond the visible top 10
+  writeJSON(STORAGE_KEYS.leaderboard, trimmed);
+  return trimmed;
+}
+
+export function qualifiesForLeaderboard(score: number): boolean {
+  const board = getLocalLeaderboard();
+  return score > 0 && (board.length < 10 || score > board[board.length - 1].score);
+}
+export function estimateGlobalRank(score: number): number {
+  const board = ensureLeaderboardSeeded();
+  const better = board.filter((e) => e.score > score).length;
+  return better + 1;
+}
+
+// -----------------------------------------------------------------------
+// Backend functions now powered by Firebase Firestore.
+// Falls back to local storage on any error so the game never crashes.
+// -----------------------------------------------------------------------
+
+export async function submitScoreToServer(playerName: string, score: number): Promise<{ rank: number }> {
+  const trimmed = (playerName || 'Player').trim().slice(0, 16) || 'Player';
+  const safeScore = Math.floor(Math.max(0, score || 0));
+
+  try {
+    await submitToFirebase(trimmed, safeScore);
+    return { rank: estimateGlobalRank(safeScore) };
+  } catch (firebaseError) {
+    console.warn('[Storage] Firebase submit failed, falling back to local.', firebaseError);
+    addLocalLeaderboardEntry(trimmed, safeScore);
+    return { rank: estimateGlobalRank(safeScore) };
+  }
+}
+
+export async function fetchGlobalLeaderboard(): Promise<LeaderboardEntry[]> {
+  try {
+    const remote = await fetchFromFirebase(10);
+    if (remote && remote.length > 0) {
+      return remote;
+    }
+  } catch (e) {
+    console.warn('[Storage] Firebase fetch failed, using local leaderboard.', e);
+  }
+  return getLocalLeaderboard();
+}
+
+export async function fetchGlobalBestFromServer(): Promise<number> {
+  try {
+    const board = await fetchGlobalLeaderboard();
+    if (board.length > 0) {
+      return board[0].score;
+    }
+  } catch {
+    // ignore
+  }
+  return getGlobalBestScore();
+}
+
+// ---- Daily challenge ----
+function pickChallengeForDate(key: string) {
+  // Deterministic pseudo-random pick based on the date string so every
+  // player sees the same challenge on the same day without a server.
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return DAILY_CHALLENGE_POOL[hash % DAILY_CHALLENGE_POOL.length];
+}
+
+export function getDailyChallenge(): DailyChallengeState {
+  const today = dateKey();
+  const stored = readJSON<DailyChallengeState | null>(STORAGE_KEYS.dailyChallenge, null);
+  if (stored && stored.dateKey === today) return stored;
+  const fresh: DailyChallengeState = {
+    dateKey: today,
+    challenge: pickChallengeForDate(today),
+    progress: 0,
+    completed: false,
+  };
+  writeJSON(STORAGE_KEYS.dailyChallenge, fresh);
+  return fresh;
+}
+
+export function updateDailyChallengeProgress(metric: 'score' | 'coins' | 'hardMode', value: number): {
+  state: DailyChallengeState;
+  justCompleted: boolean;
+} {
+  const state = getDailyChallenge();
+  if (state.completed || state.challenge.metric !== metric) {
+    return { state, justCompleted: false };
+  }
+  const progress = metric === 'coins' ? state.progress + value : Math.max(state.progress, value);
+  const completed = progress >= state.challenge.target;
+  const next: DailyChallengeState = { ...state, progress, completed };
+  writeJSON(STORAGE_KEYS.dailyChallenge, next);
+  return { state: next, justCompleted: completed };
+}
+
+// ---- Daily Rewards (7-day cycle) ----
+// Rewards cycle: Day 1-7 then loop
+// Uses dateKey for calendar day check. Safe reset on corruption.
+
+const DAILY_REWARDS: Array<{ day: number; type: 'coins' | ShopItemId; amount: number; label: string }> = [
+  { day: 1, type: 'coins', amount: 10, label: '10 Coins' },
+  { day: 2, type: 'coins', amount: 15, label: '15 Coins' },
+  { day: 3, type: 'shield', amount: 1, label: 'Shield' },
+  { day: 4, type: 'coins', amount: 25, label: '25 Coins' },
+  { day: 5, type: 'magnet', amount: 1, label: 'Coin Magnet' },
+  { day: 6, type: 'gemBoost', amount: 1, label: 'Gem Boost' },
+  { day: 7, type: 'continueToken', amount: 1, label: 'Continue Token' },
+];
+
+const DEFAULT_DAILY_REWARD: DailyRewardState = { lastClaimDate: '', streakDay: 1 };
+
+export function getDailyRewardState(): DailyRewardState {
+  return readJSON<DailyRewardState>(STORAGE_KEYS.dailyReward, DEFAULT_DAILY_REWARD);
+}
+
+export function canClaimDailyReward(): boolean {
+  const state = getDailyRewardState();
+  const today = dateKey();
+  return state.lastClaimDate !== today;
+}
+
+export function getCurrentDailyReward(): { day: number; label: string; type: string; amount: number } {
+  const state = getDailyRewardState();
+  const day = ((state.streakDay - 1) % 7) + 1;
+  const reward = DAILY_REWARDS.find((r) => r.day === day) || DAILY_REWARDS[0];
+  return { day, label: reward.label, type: reward.type, amount: reward.amount };
+}
+
+export function claimDailyReward(): { success: boolean; day: number; label: string; message: string } {
+  if (!canClaimDailyReward()) {
+    return { success: false, day: 0, label: '', message: 'Already claimed today' };
+  }
+
+  const today = dateKey();
+  const yesterday = dateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+
+  const state = getDailyRewardState();
+  let newStreak = 1;
+  if (state.lastClaimDate === yesterday) {
+    newStreak = state.streakDay + 1;
+    if (newStreak > 7) newStreak = 1;
+  }
+
+  const day = ((state.streakDay - 1) % 7) + 1; // reward for current streak position
+  const rewardDef = DAILY_REWARDS.find((r) => r.day === day) || DAILY_REWARDS[0];
+
+  let message = '';
+
+  if (rewardDef.type === 'coins') {
+    addCoins(rewardDef.amount);
+    message = `+${rewardDef.amount} Coins added!`;
+  } else {
+    const itemId = rewardDef.type as ShopItemId;
+    addShopItem(itemId, rewardDef.amount);
+    const itemName = rewardDef.label;
+    message = `${itemName} added to your inventory!`;
+  }
+
+  const newState: DailyRewardState = {
+    lastClaimDate: today,
+    streakDay: newStreak,
+  };
+  writeJSON(STORAGE_KEYS.dailyReward, newState);
+
+  return {
+    success: true,
+    day,
+    label: rewardDef.label,
+    message,
+  };
+}
+
+// =======================================================================
+// PHASE 3 ADDITIONS: Player Progression, Upgrades, and Missions
+// =======================================================================
+
+// ---- Player Level & XP ----
+export function getXP(): number {
+  return readJSON(STORAGE_KEYS.xp, 0);
+}
+
+export function getLevel(): number {
+  return readJSON(STORAGE_KEYS.level, 1);
+}
+
+export function addXP(amount: number): {
+  leveledUp: boolean;
+  newLevel: number;
+  rewardCoins: number;
+  xpAdded: number;
+} {
+  const currentXP = getXP();
+  const currentLevel = getLevel();
+  const totalXP = currentXP + amount;
+
+  // Level progression formula: each level takes Level * 150 XP
+  let level = currentLevel;
+  let xpNeeded = level * 150;
+  let remainingXP = totalXP;
+  let leveledUp = false;
+  let rewardCoins = 0;
+
+  while (remainingXP >= xpNeeded) {
+    remainingXP -= xpNeeded;
+    level += 1;
+    xpNeeded = level * 150;
+    leveledUp = true;
+    rewardCoins += level * 30; // Level-up coin reward scales with level
+  }
+
+  writeJSON(STORAGE_KEYS.xp, remainingXP);
+  writeJSON(STORAGE_KEYS.level, level);
+
+  if (rewardCoins > 0) {
+    addCoins(rewardCoins);
+  }
+
+  return {
+    leveledUp,
+    newLevel: level,
+    rewardCoins,
+    xpAdded: amount,
+  };
+}
+
+// ---- Multi-level Upgrades ----
+// Supported upgrade items: 'shield', 'magnet', 'gemBoost', 'coinMultiplier'
+export function getUpgradeLevel(itemId: string): number {
+  const upgrades = readJSON<Record<string, number>>(STORAGE_KEYS.upgrades, {});
+  return upgrades[itemId] ?? 0;
+}
+
+export function purchaseUpgradeLevel(itemId: string, cost: number): boolean {
+  const currentCoins = getCoins();
+  if (currentCoins < cost) {
+    return false;
+  }
+  const upgrades = readJSON<Record<string, number>>(STORAGE_KEYS.upgrades, {});
+  const currentLvl = upgrades[itemId] ?? 0;
+  if (currentLvl >= 5) {
+    return false; // already maxed
+  }
+
+  spendCoins(cost);
+  upgrades[itemId] = currentLvl + 1;
+  writeJSON(STORAGE_KEYS.upgrades, upgrades);
+  return true;
+}
+
+// ---- Missions ----
+import type { MissionDef } from './types';
+
+const INITIAL_MISSIONS: MissionDef[] = [
+  { id: 'm_coins', description: 'Collect 250 Coins', target: 250, progress: 0, completed: false, rewardCoins: 80, rewardXP: 150, claimed: false },
+  { id: 'm_gems', description: 'Collect 10 Gems (Hearts)', target: 10, progress: 0, completed: false, rewardCoins: 100, rewardXP: 200, claimed: false },
+  { id: 'm_rounds', description: 'Play 6 Game Rounds', target: 6, progress: 0, completed: false, rewardCoins: 60, rewardXP: 100, claimed: false },
+  { id: 'm_shield', description: 'Use 4 Shield Charges', target: 4, progress: 0, completed: false, rewardCoins: 50, rewardXP: 90, claimed: false },
+];
+
+export function getMissions(): MissionDef[] {
+  let stored = readJSON<MissionDef[] | null>(STORAGE_KEYS.missions, null);
+  if (!stored) {
+    stored = INITIAL_MISSIONS;
+    writeJSON(STORAGE_KEYS.missions, stored);
+  }
+  return stored;
+}
+
+export function incrementMissionProgress(id: string, amount: number): MissionDef[] {
+  const list = getMissions();
+  const updated = list.map((m) => {
+    if (m.id === id && !m.completed) {
+      const progress = Math.min(m.target, m.progress + amount);
+      const completed = progress >= m.target;
+      return { ...m, progress, completed };
+    }
+    return m;
+  });
+  writeJSON(STORAGE_KEYS.missions, updated);
+  return updated;
+}
+
+export function claimMissionReward(id: string): { success: boolean; coins: number; xp: number } {
+  const list = getMissions();
+  let coinsRewarded = 0;
+  let xpRewarded = 0;
+  let success = false;
+
+  const updated = list.map((m) => {
+    if (m.id === id && m.completed && !m.claimed) {
+      m.claimed = true;
+      coinsRewarded = m.rewardCoins;
+      xpRewarded = m.rewardXP;
+      success = true;
+    }
+    return m;
+  });
+
+  if (success) {
+    writeJSON(STORAGE_KEYS.missions, updated);
+    addCoins(coinsRewarded);
+    addXP(xpRewarded);
+  }
+
+  return { success, coins: coinsRewarded, xp: xpRewarded };
+}

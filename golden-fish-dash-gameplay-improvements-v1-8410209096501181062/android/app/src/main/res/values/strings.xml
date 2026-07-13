@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Golden Fish Dash</string>
+    <string name="title_activity_main">Golden Fish Dash</string>
+    <string name="package_name">com.husseinbostan.goldenfishdash</string>
+    <string name="custom_url_scheme">com.husseinbostan.goldenfishdash</string>
+</resources>

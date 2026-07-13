@@ -1,0 +1,101 @@
+// Shared type definitions for Golden Fish Rush
+
+export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary';
+
+export interface SkinDef {
+  id: SkinId;
+  name: string;
+  unlockScore: number;
+  colors: { body: string; belly: string; fin: string; glow: string };
+}
+
+export interface LeaderboardEntry {
+  name: string;
+  score: number;
+  date: string; // ISO date
+}
+
+export interface AchievementDef {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface DailyChallengeDef {
+  id: string;
+  description: string;
+  target: number;
+  metric: 'score' | 'coins' | 'hardMode';
+  rewardCoins: number;
+}
+
+export interface DailyChallengeState {
+  dateKey: string;
+  challenge: DailyChallengeDef;
+  progress: number;
+  completed: boolean;
+}
+
+export interface Settings {
+  sound: boolean;
+  music: boolean;
+  vibration: boolean;
+}
+
+export type ScreenName =
+  | 'loading'
+  | 'menu'
+  | 'howto'
+  | 'playing'
+  | 'paused'
+  | 'continueAd'
+  | 'gameover'
+  | 'leaderboard'
+  | 'settings'
+  | 'shop'
+  | 'dailyRewards'
+  | 'luckySpin';
+
+export type PowerUpType = 'shield' | 'magnet';
+
+export interface PowerUpState {
+  shieldCharges: number;
+  magnetUntil: number; // timestamp when magnet expires, 0 if inactive
+}
+
+export type ShopItemId = 'shield' | 'magnet' | 'gemBoost' | 'continueToken';
+
+export interface ShopInventory {
+  shield: number;
+  magnet: number;
+  gemBoost: number;
+  continueToken: number;
+}
+
+export interface DailyRewardState {
+  lastClaimDate: string; // YYYY-MM-DD
+  streakDay: number; // 1 to 7, loops back
+}
+
+// Extra details for custom enhancements:
+export interface FloatingText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  size: number;
+  createdAt: number; // game time elapsed or timestamp
+  durationMs: number;
+}
+
+export interface MissionDef {
+  id: string;
+  description: string;
+  target: number;
+  progress: number;
+  completed: boolean;
+  rewardCoins: number;
+  rewardXP: number;
+  claimed: boolean;
+}
