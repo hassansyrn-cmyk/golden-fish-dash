@@ -178,8 +178,8 @@ export default function LuckySpinScreen({ onBack }: Props) {
         setIsSubSpinning(false);
         cancelAnimationFrame(animationRef.current!);
 
-        // Determine slice under pointer
-        const normalizedAngle = (Math.PI * 2.5 - (currentAngleRef.current % (Math.PI * 2))) % (Math.PI * 2);
+        // Determine slice under pointer (At the top of the wheel, i.e., 270 degrees / 1.5 * PI)
+        const normalizedAngle = (Math.PI * 3.5 - (currentAngleRef.current % (Math.PI * 2))) % (Math.PI * 2);
         const idx = Math.floor(normalizedAngle / arcSize);
         const prize = PRIZES[idx];
 

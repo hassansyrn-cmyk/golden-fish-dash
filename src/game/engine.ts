@@ -39,7 +39,7 @@ export interface Gem {
 export interface PowerUp {
   x: number;
   y: number;
-  type: 'shield' | 'magnet' | 'fever';
+  type: 'shield' | 'magnet' | 'fever' | 'hourglass';
   collected: boolean;
   pulse: number;
 }
@@ -164,6 +164,7 @@ export interface EngineState {
   jellyfish: Jellyfish[];
   feverUntil: number;
   elapsedSinceFeverCoinSpawn: number;
+  hourglassUntil: number;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -201,27 +202,26 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     jellyfish: [],
     feverUntil: 0,
     elapsedSinceFeverCoinSpawn: 0,
+    hourglassUntil: 0,
   };
 }
 
 export function difficultyForScore(score: number, timeMs: number = 0) {
-  // Gradual difficulty multiplier based on score and elapsed run time (every 30 seconds)
-  const timeFactor = Math.min(1 + Math.floor(timeMs / 30000) * 0.12, 1.8);
-  const diffMultiplier = Math.min(1 + score / 600, 2.3) * timeFactor;
+  // Constant speed of 3.0 as requested to prevent the game from becoming too fast / impossible.
+  const speed = 3.0;
 
   const speedSteps = Math.floor(score / 12);
-  const baseSpeedVal = BASE.baseSpeed * 0.86 + speedSteps * 0.22;
-  const speed = Math.min(BASE.maxSpeed * 0.9, baseSpeedVal) * diffMultiplier;
 
-  // Reduce gap size based on score and run time for progressive pressure
-  const baseGapVal = BASE.baseGap + 24 - speedSteps * 4 - Math.floor(timeMs / 30000) * 8;
-  const gap = Math.max(BASE.minGap, baseGapVal);
+  // Reduce gap size based on score and run time for progressive pressure, but keep it very fair.
+  const baseGapVal = BASE.baseGap + 24 - speedSteps * 3 - Math.floor(timeMs / 30000) * 4;
+  const gap = Math.max(130, baseGapVal);
 
-  const baseSpawnInterval = Math.max(1080, BASE.spawnInterval + 180 - speedSteps * 38);
-  const spawnInterval = Math.max(750, baseSpawnInterval / diffMultiplier);
+  const baseSpawnInterval = Math.max(1200, BASE.spawnInterval + 180 - speedSteps * 25);
+  // Spawn interval is fairly balanced
+  const spawnInterval = Math.max(900, baseSpawnInterval);
 
   const tier = getDifficultyTier(score);
-  return { speed, gap, spawnInterval, tier, diffMultiplier };
+  return { speed, gap, spawnInterval, tier, diffMultiplier: 1.0 };
 }
 
 export function jump(state: EngineState, settings: { vibration: boolean }) {
@@ -275,10 +275,13 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, pulse: Math.random() * Math.PI * 2,
     });
   }
-  // Power-up spawn (shield, magnet, or Fever mode Star!)
-  if (Math.random() < 0.08) {
+  // Power-up spawn (shield, magnet, Fever mode Star, or Hourglass!)
+  if (Math.random() < 0.09) {
     const roll = Math.random();
-    const type: 'shield' | 'magnet' | 'fever' = roll < 0.35 ? 'shield' : roll < 0.70 ? 'magnet' : 'fever';
+    const type: 'shield' | 'magnet' | 'fever' | 'hourglass' =
+      roll < 0.25 ? 'shield' :
+      roll < 0.50 ? 'magnet' :
+      roll < 0.75 ? 'fever' : 'hourglass';
     const puY = gapY + (Math.random() - 0.5) * (gap * 0.25);
     state.powerUps.push({
       x: state.width + BASE.obstacleWidth + 125,
@@ -460,7 +463,9 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     return state.timeMs - t.createdAt < t.durationMs;
   });
 
-  const { speed, spawnInterval } = difficultyForScore(state.score, state.timeMs);
+  const { speed: baseSpeed, spawnInterval } = difficultyForScore(state.score, state.timeMs);
+  const isHourglassActive = state.hourglassUntil > state.timeMs;
+  const speed = isHourglassActive ? baseSpeed * 0.6 : baseSpeed;
   state.elapsedSinceSpawn += dtMs;
   if (state.elapsedSinceSpawn >= spawnInterval) {
     spawnObstacle(state, state.score);
@@ -775,6 +780,11 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           callbacks.onFeverStart?.();
           triggerFloatingText(state, '⚡ FEVER MODE ⚡', pu.x, pu.y - 15, '#e040fb', true);
           addBurst(state, pu.x, pu.y, 'rgba(224, 64, 251, 0.95)', 26, 3);
+        } else if (pu.type === 'hourglass') {
+          state.hourglassUntil = state.timeMs + 5000;
+          callbacks.onShake?.(1); // Light non-distracting shake
+          triggerFloatingText(state, 'Slow Mo ⏳', pu.x, pu.y - 15, '#00e5ff', true);
+          addBurst(state, pu.x, pu.y, 'rgba(0, 229, 255, 0.95)', 20, 3);
         }
       }
     }
@@ -1482,6 +1492,23 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('⭐', 0, 1);
+  } else if (pu.type === 'hourglass') {
+    const pulse = (Math.sin(timeMs * 0.008) + 1) / 2;
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 14 + pulse * 6;
+    ctx.fillStyle = '#00e5ff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⏳', 0, 1);
   }
   ctx.restore();
 }
@@ -1609,6 +1636,17 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   if (state.isRedFlashing) {
     ctx.save();
     ctx.fillStyle = 'rgba(211, 47, 47, 0.22)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  if (state.hourglassUntil > state.timeMs) {
+    ctx.save();
+    // Beautiful cyan vignette gradient
+    const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.4, width / 2, height / 2, Math.max(width, height) * 0.7);
+    vignette.addColorStop(0, 'rgba(0, 229, 255, 0)');
+    vignette.addColorStop(1, 'rgba(0, 229, 255, 0.18)');
+    ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
   }
