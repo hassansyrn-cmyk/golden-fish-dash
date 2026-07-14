@@ -16,15 +16,29 @@ interface Prize {
 }
 
 const PRIZES: Prize[] = [
-  { name: '+50 Coins', type: 'coins', amount: 50, color: '#fb8500' },
-  { name: 'Shield Charge', type: 'item', itemId: 'shield', amount: 1, color: '#2196f3' },
-  { name: '+100 Coins', type: 'coins', amount: 100, color: '#ff9800' },
-  { name: 'Coin Magnet', type: 'item', itemId: 'magnet', amount: 1, color: '#e91e63' },
-  { name: '+300 Coins', type: 'coins', amount: 300, color: '#ffeb3b' },
-  { name: 'Gem Boost', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },
-  { name: '+150 Coins', type: 'coins', amount: 150, color: '#ffb703' },
-  { name: 'Continue Token', type: 'item', itemId: 'continueToken', amount: 1, color: '#4caf50' },
+  { name: '+50 Coins', type: 'coins', amount: 50, color: '#ffb703' },            // index 0: 25%
+  { name: 'Shield Charge', type: 'item', itemId: 'shield', amount: 1, color: '#2196f3' }, // index 1: 12%
+  { name: '+100 Coins', type: 'coins', amount: 100, color: '#fb8500' },          // index 2: 20%
+  { name: 'Coin Magnet', type: 'item', itemId: 'magnet', amount: 1, color: '#e91e63' },   // index 3: 10%
+  { name: '+150 Coins', type: 'coins', amount: 150, color: '#ffeb3b' },          // index 4: 15%
+  { name: 'Gem Boost', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },   // index 5: 8%
+  { name: '+300 Coins', type: 'coins', amount: 300, color: '#ff5722' },          // index 6: 5%
+  { name: 'Continue Token', type: 'item', itemId: 'continueToken', amount: 1, color: '#4caf50' }, // index 7: 5%
 ];
+
+const WEIGHTS = [25, 12, 20, 10, 15, 8, 5, 5];
+
+function rollWeightedPrizeIndex(): number {
+  const r = Math.random() * 100;
+  let cumulative = 0;
+  for (let i = 0; i < WEIGHTS.length; i++) {
+    cumulative += WEIGHTS[i];
+    if (r < cumulative) {
+      return i;
+    }
+  }
+  return 0; // fallback
+}
 
 export default function LuckySpinScreen({ onBack }: Props) {
   const [coins, setCoins] = useState(getCoins());
@@ -45,7 +59,7 @@ export default function LuckySpinScreen({ onBack }: Props) {
     setHasFreeSpin(lastSpin !== today);
     setCoins(getCoins());
 
-    // Apply Moorish Idol (legendary) 20% discount on Lucky Spin cost
+    // Apply 20% legendary Moorish Idol skin discount on mount
     const activeSkin = getSelectedSkin();
     if (activeSkin === 'legendary') {
       setCost(120);
@@ -160,77 +174,52 @@ export default function LuckySpinScreen({ onBack }: Props) {
     setResultMessage(null);
     audioManager.playSound('jump', true);
 
-    // Dynamic but balanced selection using weighted probabilities:
-    // Slices list:
-    // 0: +50 Coins (High Probability: 25%)
-    // 1: Shield Charge (Medium Probability: 15%)
-    // 2: +100 Coins (High Probability: 22%)
-    // 3: Coin Magnet (Medium Probability: 15%)
-    // 4: +300 Coins (Low Probability: 6%) -- Legendary / Major payout
-    // 5: Gem Boost (Medium Probability: 11%)
-    // 6: +150 Coins (High Probability: 12%) -- Cost recovery
-    // 7: Continue Token (Low Probability: 4%) -- Very high value consumable
-    const weights = [0.22, 0.16, 0.20, 0.16, 0.06, 0.11, 0.11, 0.04];
-    const roll = Math.random();
-    let selectedIdx = 0;
-    let sum = 0;
-    for (let i = 0; i < weights.length; i++) {
-      sum += weights[i];
-      if (roll <= sum) {
-        selectedIdx = i;
-        break;
-      }
-    }
-
+    // Roll weighted prize index beforehand
+    const targetIdx = rollWeightedPrizeIndex();
     const arcSize = (Math.PI * 2) / PRIZES.length;
 
-    // We want the wheel to decelerate and halt with the target slice (selectedIdx) under the top pointer.
-    // The top pointer is physically at 12 o'clock, which corresponds to 3*PI/2 (270 degrees) on a standard unit circle.
-    // However, when we draw the wheel, we translate, rotate by currentAngle, and draw slice i at [i*arcSize, (i+1)*arcSize].
-    // Slice i is under pointer if: (currentAngle + i * arcSize + arcSize / 2) is aligned with top pointer (3*PI/2).
-    // Let's do the math:
-    // rotationOffsetForTarget = (1.5 * Math.PI) - (selectedIdx * arcSize + arcSize / 2).
-    // To add satisfying speed and spin iterations:
-    // targetFinalAngle = Math.PI * 10 + rotationOffsetForTarget + (Math.random() - 0.5) * (arcSize * 0.7);
-    const rotationOffsetForTarget = (Math.PI * 1.5) - (selectedIdx * arcSize + arcSize / 2);
-    const targetFinalAngle = (Math.PI * 2 * 6) + rotationOffsetForTarget + (Math.random() - 0.5) * (arcSize * 0.65);
+    // Calculate final exact target angle to align pointer exactly with targetIdx
+    const targetNormalizedAngle = (targetIdx + 0.5) * arcSize;
+    const finalAngleMod = (Math.PI * 3.5 - targetNormalizedAngle + Math.PI * 4) % (Math.PI * 2);
 
-    let currentRotation = currentAngleRef.current % (Math.PI * 2);
-    currentAngleRef.current = currentRotation; // reset to avoid overflowing large values over time
+    const initialAngleMod = currentAngleRef.current % (Math.PI * 2);
+    const laps = 6 + Math.floor(Math.random() * 4); // 6 to 9 full laps
+    let deltaAngle = laps * Math.PI * 2 + finalAngleMod - initialAngleMod;
+    if (deltaAngle < Math.PI * 4) {
+      deltaAngle += Math.PI * 2;
+    }
 
-    // Smooth Quintic ease-out calculation:
-    // x = ratio of time elapsed
-    // y = 1 - (1 - x)^5
-    const durationMs = 4500;
-    const startTime = performance.now();
+    const targetFinalAngle = currentAngleRef.current + deltaAngle;
+
+    // Set starting velocity so friction stops exactly at targetFinalAngle
+    const friction = 0.982; // Friction factor
+    velocityRef.current = deltaAngle * (1 - friction);
+
     let lastTickAngle = 0;
 
-    const animate = (time: number) => {
-      const elapsed = time - startTime;
-      const progress = Math.min(1, elapsed / durationMs);
-
-      // Quintic ease out formula
-      const ease = 1 - Math.pow(1 - progress, 5);
-      const angle = currentRotation + (targetFinalAngle - currentRotation) * ease;
-      currentAngleRef.current = angle;
+    const animate = () => {
+      currentAngleRef.current += velocityRef.current;
+      velocityRef.current *= friction;
 
       // Play light ticking sound as slices rotate past pointer
-      const currentTickIdx = Math.floor(angle / arcSize);
+      const currentTickIdx = Math.floor(currentAngleRef.current / arcSize);
       if (currentTickIdx !== lastTickAngle) {
         lastTickAngle = currentTickIdx;
         audioManager.playTone(600, 15, 'sine', 0.1);
       }
 
-      drawWheel(angle);
+      drawWheel(currentAngleRef.current);
 
-      if (progress < 1) {
-        animationRef.current = requestAnimationFrame(animate);
-      } else {
+      if (velocityRef.current < 0.0018) {
         // Spin finished!
         setIsSubSpinning(false);
         cancelAnimationFrame(animationRef.current!);
 
-        const prize = PRIZES[selectedIdx];
+        // Force exact targeted final angle to resolve any float truncation
+        currentAngleRef.current = targetFinalAngle;
+        drawWheel(currentAngleRef.current);
+
+        const prize = PRIZES[targetIdx];
 
         // Reward player
         if (prize.type === 'coins') {
@@ -245,6 +234,8 @@ export default function LuckySpinScreen({ onBack }: Props) {
         }
 
         audioManager.playSound('reward', true);
+      } else {
+        animationRef.current = requestAnimationFrame(animate);
       }
     };
 

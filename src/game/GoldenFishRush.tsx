@@ -28,6 +28,74 @@ import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 
+// Custom 3D/Glossy Heart Icon component for the HUD
+const HeartIcon = ({ full }: { full: boolean }) => {
+  return (
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        margin: '0 3px',
+        filter: full
+          ? 'drop-shadow(0 0 6px rgba(255, 77, 109, 0.75)) drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
+          : 'drop-shadow(0 2px 3px rgba(0,0,0,0.25))',
+        transition: 'transform 0.2s ease-in-out',
+      }}
+    >
+      <defs>
+        {/* Full Heart Gradient */}
+        <radialGradient id="heart-grad-full" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#ffccd5" />
+          <stop offset="40%" stopColor="#ff4d6d" />
+          <stop offset="100%" stopColor="#800f2f" />
+        </radialGradient>
+
+        {/* Empty Heart Gradient */}
+        <radialGradient id="heart-grad-empty" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="rgba(240, 240, 240, 0.35)" />
+          <stop offset="60%" stopColor="rgba(120, 120, 120, 0.25)" />
+          <stop offset="100%" stopColor="rgba(40, 40, 40, 0.15)" />
+        </radialGradient>
+      </defs>
+
+      {/* Main Heart Path */}
+      <path
+        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+        fill={full ? "url(#heart-grad-full)" : "url(#heart-grad-empty)"}
+        stroke={full ? "#ff4d6d" : "rgba(255, 255, 255, 0.55)"}
+        strokeWidth="1.2"
+      />
+
+      {/* Glossy Overlay Highlight for Full Heart */}
+      {full && (
+        <ellipse
+          cx="7.5"
+          cy="6.5"
+          rx="2.5"
+          ry="1.2"
+          transform="rotate(-25 7.5 6.5)"
+          fill="rgba(255, 255, 255, 0.85)"
+        />
+      )}
+
+      {/* Glossy Overlay Highlight for Empty Heart */}
+      {!full && (
+        <ellipse
+          cx="7.5"
+          cy="6.5"
+          rx="2.5"
+          ry="1.2"
+          transform="rotate(-25 7.5 6.5)"
+          fill="rgba(255, 255, 255, 0.2)"
+        />
+      )}
+    </svg>
+  );
+};
+
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
 const MAGNET_SHOP_DURATION = 8000;
@@ -259,15 +327,19 @@ export default function GoldenFishRush() {
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
-            <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`}>
-              {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => (
-                <span
-                  key={index}
-                  className={index < visibleLives ? 'hud-heart hud-heart-full' : 'hud-heart hud-heart-empty'}
-                >
-                  {index < visibleLives ? '♥' : '♡'}
-                </span>
-              ))}
+            <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`} style={{ display: 'flex', alignItems: 'center' }}>
+              {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => {
+                const isFull = index < visibleLives;
+                return (
+                  <span
+                    key={index}
+                    className={isFull ? 'hud-heart-wrapper hud-heart-full' : 'hud-heart-wrapper hud-heart-empty'}
+                    style={{ display: 'inline-flex', alignItems: 'center' }}
+                  >
+                    <HeartIcon full={isFull} />
+                  </span>
+                );
+              })}
             </div>
 
             <div className="hud-score">{score}</div>
@@ -313,7 +385,7 @@ export default function GoldenFishRush() {
 
         {screen === 'leaderboard' && <LeaderboardScreen onBack={handleGoToMenu} />}
 
-        {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
+        {screen === 'shop' && <ShopScreen onBack={handleShopBack} onNewUnlocks={handleNewUnlocks} />}
 
         {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleDailyBack} />}
 

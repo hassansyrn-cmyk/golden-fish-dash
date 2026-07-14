@@ -47,7 +47,7 @@ export const SKINS: SkinDef[] = [
       fin: '#ff7b00',
       glow: '#ffd166',
     },
-    ability: 'Bonus Coins +10%',
+    ability: '+10% Bonus Coins',
   },
   {
     id: 'ruby',
@@ -59,7 +59,7 @@ export const SKINS: SkinDef[] = [
       fin: '#780000',
       glow: '#ff4d6d',
     },
-    ability: 'Invincibility & Shield duration +30%',
+    ability: '+30% Shield / Invincibility Duration',
   },
   {
     id: 'emerald',
@@ -71,7 +71,7 @@ export const SKINS: SkinDef[] = [
       fin: '#00b4d8',
       glow: '#48cae4',
     },
-    ability: 'Coin Magnet duration +25%',
+    ability: '+25% Coin Magnet Duration',
   },
   {
     id: 'diamond',
@@ -83,7 +83,7 @@ export const SKINS: SkinDef[] = [
       fin: '#4361ee',
       glow: '#a5d8ff',
     },
-    ability: 'Hearts / Lives spawn rate +30%',
+    ability: '+30% Extra Life Drop Chance',
   },
   {
     id: 'legendary',
@@ -95,7 +95,7 @@ export const SKINS: SkinDef[] = [
       fin: '#1a1a1a',
       glow: '#ffe066',
     },
-    ability: 'Lucky Spin cost -20% & 15% Free Shield start',
+    ability: '20% Lucky Spin Discount & 15% Free Starting Shield',
   },
 ];
 

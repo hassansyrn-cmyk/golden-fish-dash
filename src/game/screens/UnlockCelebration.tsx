@@ -114,6 +114,10 @@ export default function UnlockCelebration({ unlockedIds, onContinue }: Props) {
 
               <span className="unlock-fish-name">{skin.name}</span>
 
+              <div style={{ fontSize: '12px', color: '#ffd54f', margin: '4px 0', fontWeight: 'bold', lineHeight: '1.2' }}>
+                {skin.ability}
+              </div>
+
               <span className="unlock-fish-score">Score {skin.unlockScore}+</span>
 
               <button

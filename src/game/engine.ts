@@ -173,6 +173,14 @@ const GEM_SPAWN_CHANCE = 0.09;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
 
+const getInvincibilityDuration = (state: EngineState) => {
+  const base = HIT_INVINCIBILITY_MS;
+  if (state.skin === 'ruby') {
+    return Math.round(base * 1.30); // Betta skin: +30% duration
+  }
+  return base;
+};
+
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({
     x: Math.random() * width,
@@ -267,9 +275,11 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, bonus: score >= 60 && Math.random() < 0.22,
     });
   }
-  // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive, or Discus +30%)
-  const discusBoost = state.skin === 'diamond' ? 1.3 : 1.0;
-  const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 * discusBoost : GEM_SPAWN_CHANCE * discusBoost;
+  // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive, or Discus skin ability)
+  let gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
+  if (state.skin === 'diamond') {
+    gemChance *= 1.30; // Discus skin: +30% Extra Life drop chance
+  }
   if (Math.random() < gemChance) {
     state.gems.push({
       x: state.width + BASE.obstacleWidth + 88, y: gapY + (Math.random() - 0.5) * (gap * 0.28),
@@ -400,8 +410,7 @@ function clearDangerousReviveArea(state: EngineState) {
 function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   if (state.lives <= 0) return false;
   state.lives -= 1;
-  const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
-  state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
+  state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
   state.fishY = state.height / 2;
   state.fishVY = 0;
   state.fishRotation = 0;
@@ -556,8 +565,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (!safe) {
           if (state.shieldCharges > 0) {
             state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-            const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
-            state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
+            state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
             callbacks.onShake(3); // Screen shake is very light & minor
             triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
             addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
@@ -589,8 +597,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       if (withinX && withinY) {
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
-          state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           callbacks.onShake(3); // Light non-distracting screen shake
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
           addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
@@ -622,8 +629,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
-          state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
         } else {
           killOrUseLife(state, callbacks);
@@ -653,8 +659,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          const bettaBonus = state.skin === 'ruby' ? 1.3 : 1.0;
-          state.invincibleUntil = state.timeMs + (HIT_INVINCIBILITY_MS * bettaBonus);
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
         } else {
           killOrUseLife(state, callbacks);
@@ -774,23 +779,24 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (pu.type === 'shield') {
           state.shieldCharges = Math.min(3, state.shieldCharges + 1);
           callbacks.onShake?.(1); // Light non-distracting shake
-          triggerFloatingText(state, 'Shield', pu.x, pu.y - 15, '#29b6f6', true);
+          triggerFloatingText(state, 'Shield!', pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
         } else if (pu.type === 'magnet') {
-          const mandarinBonus = state.skin === 'emerald' ? 1.25 : 1.0;
-          state.magnetUntil = state.timeMs + (8000 * mandarinBonus);
-          triggerFloatingText(state, 'Magnet', pu.x, pu.y - 15, '#ffa726', true);
+          const baseDuration = 8000;
+          const duration = state.skin === 'emerald' ? baseDuration * 1.25 : baseDuration;
+          state.magnetUntil = state.timeMs + duration;
+          triggerFloatingText(state, 'Magnet!', pu.x, pu.y - 15, '#ffa726', true);
           addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
         } else if (pu.type === 'fever') {
           state.feverUntil = state.timeMs + 6000;
           state.elapsedSinceFeverCoinSpawn = 180; // trigger immediate coin spawn
           callbacks.onFeverStart?.();
-          triggerFloatingText(state, '⚡ FEVER MODE ⚡', pu.x, pu.y - 15, '#e040fb', true);
+          triggerFloatingText(state, 'Fever Mode!', pu.x, pu.y - 15, '#e040fb', true);
           addBurst(state, pu.x, pu.y, 'rgba(224, 64, 251, 0.95)', 26, 3);
         } else if (pu.type === 'hourglass') {
           state.hourglassUntil = state.timeMs + 5000;
           callbacks.onShake?.(1); // Light non-distracting shake
-          triggerFloatingText(state, 'Slow Mo ⏳', pu.x, pu.y - 15, '#00e5ff', true);
+          triggerFloatingText(state, 'Slow Mo!', pu.x, pu.y - 15, '#00e5ff', true);
           addBurst(state, pu.x, pu.y, 'rgba(0, 229, 255, 0.95)', 20, 3);
         }
       }
@@ -1423,33 +1429,71 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
 
 function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   if (gem.collected) return;
-  const angle = (timeMs * 0.002) % (Math.PI * 2);
-  const scaleX = Math.abs(Math.cos(angle));
-  const bobY = Math.sin(timeMs * 0.002 + gem.x) * 1.6;
+
+  // Gentle heartbeat pulse effect
+  const pulse = 1.0 + 0.12 * Math.sin(timeMs * 0.008 + gem.x * 0.05);
+  const bobY = Math.sin(timeMs * 0.0025 + gem.x) * 2.0;
 
   ctx.save();
   ctx.translate(gem.x, gem.y + bobY);
-  ctx.scale(scaleX, 1);
-  ctx.shadowColor = '#ff4d6d';
-  ctx.shadowBlur = 16;
+  ctx.scale(pulse, pulse);
 
-  const size = 11;
+  // Soft heart glow
+  ctx.shadowColor = '#ff1744';
+  ctx.shadowBlur = 12;
+
+  const size = 15; // Beautiful larger radius
+
   ctx.beginPath();
+  // Standard high-quality heart path starting from the center cleft going down and back around
   ctx.moveTo(0, size * 0.35);
   ctx.bezierCurveTo(-size * 0.45, -size * 0.65, -size * 1.25, -size * 0.35, 0, size * 0.95);
   ctx.bezierCurveTo(size * 1.25, -size * 0.35, size * 0.45, -size * 0.65, 0, size * 0.35);
   ctx.closePath();
 
-  const heartGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, size);
-  heartGrad.addColorStop(0, '#ffccd5');
-  heartGrad.addColorStop(0.5, '#ff4d6d');
-  heartGrad.addColorStop(1, '#c1121f');
+  // Solid glossy 3D-style radial gradient (matching HUD heart)
+  const heartGrad = ctx.createRadialGradient(-size * 0.25, -size * 0.25, 1, 0, 0, size * 1.2);
+  heartGrad.addColorStop(0, '#ffccd5'); // bright center highlight
+  heartGrad.addColorStop(0.35, '#ff4d6d'); // rich red
+  heartGrad.addColorStop(0.85, '#ff0033'); // base red
+  heartGrad.addColorStop(1, '#800f2f'); // deep shaded shadow edge
   ctx.fillStyle = heartGrad;
   ctx.fill();
 
-  ctx.strokeStyle = '#ffffff';
+  // Fine white stroke for high visibility on dark water
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
   ctx.lineWidth = 1.2;
   ctx.stroke();
+
+  // Shimmer / white reflection highlight on the left lobe
+  ctx.beginPath();
+  ctx.ellipse(-size * 0.35, -size * 0.25, size * 0.28, size * 0.14, -Math.PI / 6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fill();
+
+  // Animate a subtle diagonal silver/white shimmer band across the heart periodically
+  const shimmerPos = ((timeMs * 0.0015) % 3) - 1.5; // moves from -1.5 to 1.5
+  if (shimmerPos > -1.0 && shimmerPos < 1.0) {
+    ctx.save();
+    // Clip to heart path so shimmer stays inside
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.35);
+    ctx.bezierCurveTo(-size * 0.45, -size * 0.65, -size * 1.25, -size * 0.35, 0, size * 0.95);
+    ctx.bezierCurveTo(size * 1.25, -size * 0.35, size * 0.45, -size * 0.65, 0, size * 0.35);
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.rotate(Math.PI / 4);
+    const shimmerX = shimmerPos * size * 1.5;
+    const shimGrad = ctx.createLinearGradient(shimmerX - 3, -size * 2, shimmerX + 3, size * 2);
+    shimGrad.addColorStop(0, 'rgba(255,255,255,0)');
+    shimGrad.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+    shimGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shimGrad;
+    ctx.fillRect(shimmerX - 5, -size * 2, 10, size * 4);
+    ctx.restore();
+  }
+
   ctx.restore();
 }
 
@@ -1460,62 +1504,300 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
   ctx.translate(pu.x, pu.y + bob);
 
   if (pu.type === 'shield') {
-    ctx.shadowColor = '#4fc3f7';
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    ctx.fillStyle = '#4fc3f7';
-    ctx.fill();
-    ctx.strokeStyle = '#e3f2fd';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🛡️', 0, 1);
-  } else if (pu.type === 'magnet') {
-    ctx.shadowColor = '#ff3d00';
-    ctx.shadowBlur = 12;
-
-    ctx.strokeStyle = '#ff1744';
-    ctx.lineWidth = 5.5;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(0, -2, 7, 0, Math.PI, false);
-    ctx.stroke();
-
-    ctx.fillStyle = '#cfd8dc';
-    ctx.fillRect(-9.5, -6, 5, 4);
-    ctx.fillStyle = '#0288d1';
-    ctx.fillRect(4.5, -6, 5, 4);
-  } else if (pu.type === 'fever') {
-    // Shimmering rainbow star icon
-    const starPulse = (Math.sin(timeMs * 0.01) + 1) / 2;
-    ctx.shadowColor = '#e040fb';
-    ctx.shadowBlur = 15 + starPulse * 8;
-    ctx.fillStyle = `hsl(${(timeMs / 10) % 360}, 100%, 72%)`;
-    ctx.font = 'bold 15px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('⭐', 0, 1);
-  } else if (pu.type === 'hourglass') {
-    const pulse = (Math.sin(timeMs * 0.008) + 1) / 2;
+    // Soft outer blue/cyan halo glow
     ctx.shadowColor = '#00e5ff';
-    ctx.shadowBlur = 14 + pulse * 6;
-    ctx.fillStyle = '#00e5ff';
+    ctx.shadowBlur = 15;
+
+    const r = 13; // shield base bounding radius
+
+    // 1. Draw outer silver/white border of shield
     ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.moveTo(0, -r);
+    ctx.quadraticCurveTo(r * 0.8, -r, r, -r * 0.3);
+    ctx.quadraticCurveTo(r * 0.9, r * 0.5, 0, r * 1.1);
+    ctx.quadraticCurveTo(-r * 0.9, r * 0.5, -r, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 0.8, -r, 0, -r);
+    ctx.closePath();
+
+    const silverGrad = ctx.createLinearGradient(-r, -r, r, r);
+    silverGrad.addColorStop(0, '#ffffff');
+    silverGrad.addColorStop(0.5, '#cfd8dc');
+    silverGrad.addColorStop(1, '#78909c');
+    ctx.fillStyle = silverGrad;
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 2. Draw inner cyan/blue glowing core
+    const ri = r * 0.75;
+    ctx.beginPath();
+    ctx.moveTo(0, -ri);
+    ctx.quadraticCurveTo(ri * 0.8, -ri, ri, -ri * 0.3);
+    ctx.quadraticCurveTo(ri * 0.9, ri * 0.5, 0, ri * 1.1);
+    ctx.quadraticCurveTo(-ri * 0.9, ri * 0.5, -ri, -ri * 0.3);
+    ctx.quadraticCurveTo(-ri * 0.8, -ri, 0, -ri);
+    ctx.closePath();
+
+    const shieldGrad = ctx.createRadialGradient(0, -ri * 0.3, 1, 0, 0, ri);
+    shieldGrad.addColorStop(0, '#e0f7fa');
+    shieldGrad.addColorStop(0.4, '#00e5ff');
+    shieldGrad.addColorStop(1, '#006064');
+    ctx.fillStyle = shieldGrad;
+    ctx.fill();
+
+    // 3. Glossy highlight at top-left
+    ctx.beginPath();
+    ctx.ellipse(-ri * 0.3, -ri * 0.3, ri * 0.3, ri * 0.15, -Math.PI / 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.fill();
+
+  } else if (pu.type === 'magnet') {
+    // Red horseshoe magnet with silver tips and animated magnetic waves
+    ctx.shadowColor = '#ff1744';
+    ctx.shadowBlur = 15;
+
+    ctx.save();
+    ctx.rotate(Math.PI * 0.15); // slightly tilted for dynamic cartoon feel
+
+    // Draw background pulsating magnetic waves
+    const wavePulse = (Math.sin(timeMs * 0.015) + 1) / 2;
+    ctx.strokeStyle = `rgba(0, 229, 255, ${0.3 + wavePulse * 0.4})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 11, 14 + wavePulse * 6, Math.PI * 0.1, Math.PI * 0.9);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 11, 8 + wavePulse * 4, Math.PI * 0.1, Math.PI * 0.9);
+    ctx.stroke();
+
+    // Draw Horseshoe magnet shape
+    const outR = 12;
+    const inR = 6.5;
+    const armH = 7;
+
+    ctx.beginPath();
+    // Outer top curve (semi circle from -outR to +outR)
+    ctx.arc(0, -2, outR, Math.PI, 0, false);
+    // Right arm outer side going down
+    ctx.lineTo(outR, armH);
+    // Right tip going inwards
+    ctx.lineTo(inR, armH);
+    // Right arm inner side going up to the inner top curve
+    ctx.lineTo(inR, -2);
+    // Inner top curve
+    ctx.arc(0, -2, inR, 0, Math.PI, true);
+    // Left arm inner side going down
+    ctx.lineTo(-inR, armH);
+    // Left tip going outwards
+    ctx.lineTo(-outR, armH);
+    // Left arm outer side going up
+    ctx.closePath();
+
+    // Fill with glossy red gradient
+    const redGrad = ctx.createRadialGradient(-3, -4, 2, 0, 0, outR + 2);
+    redGrad.addColorStop(0, '#ff8a80');
+    redGrad.addColorStop(0.4, '#ff1744');
+    redGrad.addColorStop(1, '#b71c1c');
+    ctx.fillStyle = redGrad;
+    ctx.fill();
+
+    // Draw Silver tips for magnetic poles
+    // Left pole
+    ctx.beginPath();
+    ctx.rect(-outR, armH - 4, outR - inR, 4);
+    const tipGrad = ctx.createLinearGradient(-outR, 0, -inR, 0);
+    tipGrad.addColorStop(0, '#ffffff');
+    tipGrad.addColorStop(0.5, '#cfd8dc');
+    tipGrad.addColorStop(1, '#78909c');
+    ctx.fillStyle = tipGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    // Right pole
+    ctx.beginPath();
+    ctx.rect(inR, armH - 4, outR - inR, 4);
+    const tipGradR = ctx.createLinearGradient(inR, 0, outR, 0);
+    tipGradR.addColorStop(0, '#78909c');
+    tipGradR.addColorStop(0.5, '#cfd8dc');
+    tipGradR.addColorStop(1, '#ffffff');
+    ctx.fillStyle = tipGradR;
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw gloss reflection highlight on the curve
+    ctx.beginPath();
+    ctx.ellipse(-outR * 0.6, -outR * 0.6, 3, 1.5, Math.PI / 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.fill();
+
+    ctx.restore();
+
+  } else if (pu.type === 'fever') {
+    // 3D yellow/gold lightning bolt with sparkles
+    ctx.save();
+    const starPulse = (Math.sin(timeMs * 0.015) + 1) / 2;
+    ctx.shadowColor = '#ffd600';
+    ctx.shadowBlur = 15 + starPulse * 8;
+
+    // sparkles
+    const sparkleAngle = timeMs * 0.005;
+    ctx.fillStyle = '#ffffff';
+    const sparkles = [
+      { x: -12, y: -10, r: 2.5 },
+      { x: 12, y: 8, r: 2 },
+      { x: -8, y: 12, r: 1.5 },
+    ];
+    for (const s of sparkles) {
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const ang = sparkleAngle + (i * Math.PI) / 2;
+        ctx.lineTo(s.x + Math.cos(ang) * s.r, s.y + Math.sin(ang) * s.r);
+        ctx.lineTo(s.x + Math.cos(ang + Math.PI / 4) * (s.r * 0.4), s.y + Math.sin(ang + Math.PI / 4) * (s.r * 0.4));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Draw lightning bolt
+    ctx.beginPath();
+    ctx.moveTo(3, -14);   // Top right
+    ctx.lineTo(-9, -1);   // To middle-left indent
+    ctx.lineTo(-2, -1);   // Middle horizontal step right
+    ctx.lineTo(-6, 14);   // Bottom point
+    ctx.lineTo(7, 1);     // Up to middle-right indent
+    ctx.lineTo(0, 1);     // Middle horizontal step left
+    ctx.closePath();
+
+    const boltGrad = ctx.createLinearGradient(-6, -14, 7, 14);
+    boltGrad.addColorStop(0, '#fffde7');
+    boltGrad.addColorStop(0.3, '#ffd600');
+    boltGrad.addColorStop(0.8, '#ffab00');
+    boltGrad.addColorStop(1, '#ff6d00');
+    ctx.fillStyle = boltGrad;
+    ctx.fill();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Gloss highlight down the front facet
+    ctx.beginPath();
+    ctx.moveTo(1.5, -12);
+    ctx.lineTo(-7.5, -1);
+    ctx.lineTo(-2.5, -1);
+    ctx.lineTo(-4, 4);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('⏳', 0, 1);
+    ctx.restore();
+
+  } else if (pu.type === 'hourglass') {
+    // Hourglass with golden frames and cyan sand
+    ctx.save();
+    const pulse = (Math.sin(timeMs * 0.008) + 1) / 2;
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 15 + pulse * 6;
+
+    const w = 11; // Plate width
+    const h = 13; // Half-height
+
+    // Draw the glass body (figure 8 curve)
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.7, -h + 2);
+    ctx.bezierCurveTo(-w * 0.7, -h * 0.4, -2, -2, -2, 0);
+    ctx.bezierCurveTo(-2, 2, -w * 0.7, h * 0.4, -w * 0.7, h - 2);
+    ctx.lineTo(w * 0.7, h - 2);
+    ctx.bezierCurveTo(w * 0.7, h * 0.4, 2, 2, 2, 0);
+    ctx.bezierCurveTo(2, -2, w * 0.7, -h * 0.4, w * 0.7, -h + 2);
+    ctx.closePath();
+
+    const glassGrad = ctx.createLinearGradient(-w, 0, w, 0);
+    glassGrad.addColorStop(0, 'rgba(255,255,255,0.4)');
+    glassGrad.addColorStop(0.5, 'rgba(0,229,255,0.15)');
+    glassGrad.addColorStop(1, 'rgba(255,255,255,0.15)');
+    ctx.fillStyle = glassGrad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw the glowing cyan sand inside (top)
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.55, -h + 3);
+    ctx.lineTo(w * 0.55, -h + 3);
+    ctx.bezierCurveTo(w * 0.3, -h * 0.3, 1, -1, 0, 0);
+    ctx.bezierCurveTo(-1, -1, -w * 0.3, -h * 0.3, -w * 0.55, -h + 3);
+    ctx.closePath();
+    const sandGradTop = ctx.createLinearGradient(0, -h, 0, 0);
+    sandGradTop.addColorStop(0, '#e0f7fa');
+    sandGradTop.addColorStop(1, '#00e5ff');
+    ctx.fillStyle = sandGradTop;
+    ctx.fill();
+
+    // Dripping sand line in center
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.moveTo(0, -1);
+    ctx.lineTo(0, h - 4);
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset line dash
+
+    // Bottom sand (pile accumulating)
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-1, 2, -w * 0.5, h * 0.5, -w * 0.6, h - 2.5);
+    ctx.lineTo(w * 0.6, h - 2.5);
+    ctx.bezierCurveTo(w * 0.5, h * 0.5, 1, 2, 0, 0);
+    ctx.closePath();
+    ctx.fillStyle = '#00e5ff';
+    ctx.fill();
+
+    // Draw top and bottom golden frames/plates
+    ctx.fillStyle = '#ffd600';
+    ctx.strokeStyle = '#ffab00';
+    ctx.lineWidth = 1;
+
+    // Top plate
+    ctx.beginPath();
+    ctx.roundRect(-w, -h, w * 2, 3, 1.5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Bottom plate
+    ctx.beginPath();
+    ctx.roundRect(-w, h - 3, w * 2, 3, 1.5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Golden frame side pillars
+    ctx.strokeStyle = '#ffab00';
+    ctx.lineWidth = 1.2;
+    // Left pillar
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.8, -h + 2);
+    ctx.lineTo(-w * 0.8, h - 2);
+    ctx.stroke();
+    // Right pillar
+    ctx.beginPath();
+    ctx.moveTo(w * 0.8, -h + 2);
+    ctx.lineTo(w * 0.8, h - 2);
+    ctx.stroke();
+
+    // Highlights on pillars
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.8 + 0.5, -h + 3);
+    ctx.lineTo(-w * 0.8 + 0.5, h - 3);
+    ctx.stroke();
+
+    ctx.restore();
   }
   ctx.restore();
 }

@@ -10,8 +10,9 @@ import {
   claimMissionReward,
   addCoins,
   addXP,
+  getUnlockedSkins,
 } from '../storage';
-import type { ShopItemId, MissionDef } from '../types';
+import type { ShopItemId, MissionDef, SkinId } from '../types';
 import { audioManager } from '../managers/AudioManager';
 
 interface ShopItem {
@@ -94,21 +95,21 @@ const CHEST_ITEMS: ChestItem[] = [
   {
     tier: 'bronze',
     name: '📦 Bronze Chest',
-    description: 'Contains random coin rewards (15-40 coins) or consumable shields and magnets.',
+    description: 'Contains simple rewards (1 to 2 shields, magnets, gem boosts, low coins, rare continue token).',
     cost: 400,
     color: '#cd7f32',
   },
   {
     tier: 'silver',
     name: '🥈 Silver Chest',
-    description: 'Contains larger coins bundles (40-90 coins), double powerups, or gem boosts.',
+    description: 'Contains mid-tier rewards (2 to 5 helper items, 60-150 coins, rare continue tokens).',
     cost: 800,
     color: '#c0c0c0',
   },
   {
     tier: 'gold',
     name: '👑 Legendary Gold Chest',
-    description: 'Contains massive coin pools (80-200 coins), continue tokens, gem boosts, or level XP!',
+    description: 'Contains high rewards (5-10 items), massive coins, or a 3% rare chance to directly unlock Moorish Idol skin!',
     cost: 1500,
     color: '#ffd700',
   },
@@ -116,9 +117,10 @@ const CHEST_ITEMS: ChestItem[] = [
 
 interface Props {
   onBack: () => void;
+  onNewUnlocks?: (ids: SkinId[]) => void;
 }
 
-export default function ShopScreen({ onBack }: Props) {
+export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
   const [coins, setCoins] = useState(getCoins());
   const [inventory, setInventory] = useState(getShopInventory());
   const [missions, setMissions] = useState<MissionDef[]>([]);
@@ -203,64 +205,120 @@ export default function ShopScreen({ onBack }: Props) {
 
     if (tier === 'bronze') {
       const roll = Math.random();
-      if (roll < 0.6) {
-        const rewardCoins = 15 + Math.floor(Math.random() * 25);
-        addCoins(rewardCoins);
-        rewardText = `Won +🪙${rewardCoins} Coins!`;
-      } else if (roll < 0.8) {
-        const inv = getShopInventory();
-        inv.shield = (inv.shield ?? 0) + 1;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won 1x Shield Charge! 🛡️`;
-      } else {
-        const inv = getShopInventory();
-        inv.magnet = (inv.magnet ?? 0) + 1;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won 1x Coin Magnet! 🧲`;
-      }
-    } else if (tier === 'silver') {
-      const roll = Math.random();
-      if (roll < 0.5) {
-        const rewardCoins = 40 + Math.floor(Math.random() * 50);
-        addCoins(rewardCoins);
-        rewardText = `Won +🪙${rewardCoins} Coins!`;
-      } else if (roll < 0.7) {
-        const inv = getShopInventory();
-        inv.shield = (inv.shield ?? 0) + 2;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won 2x Shield Charges! 🛡️`;
-      } else if (roll < 0.9) {
-        const inv = getShopInventory();
-        inv.magnet = (inv.magnet ?? 0) + 2;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won 2x Coin Magnets! 🧲`;
-      } else {
-        const inv = getShopInventory();
-        inv.gemBoost = (inv.gemBoost ?? 0) + 1;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won 1x Gem Boost charge! 💎`;
-      }
-    } else {
-      // Gold chest
-      const roll = Math.random();
-      if (roll < 0.4) {
-        const rewardCoins = 80 + Math.floor(Math.random() * 120);
+      if (roll < 0.3) {
+        const rewardCoins = 40 + Math.floor(Math.random() * 61); // 40 to 100 coins
         addCoins(rewardCoins);
         rewardText = `Won +🪙${rewardCoins} Coins!`;
       } else if (roll < 0.6) {
+        const amt = Math.random() < 0.5 ? 1 : 2;
+        const inv = getShopInventory();
+        inv.shield = (inv.shield ?? 0) + amt;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won ${amt}x Shield Charge! 🛡️`;
+      } else if (roll < 0.8) {
+        const amt = Math.random() < 0.5 ? 1 : 2;
+        const inv = getShopInventory();
+        inv.magnet = (inv.magnet ?? 0) + amt;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won ${amt}x Coin Magnet! 🧲`;
+      } else if (roll < 0.95) {
+        const amt = Math.random() < 0.5 ? 1 : 2;
+        const inv = getShopInventory();
+        inv.gemBoost = (inv.gemBoost ?? 0) + amt;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won ${amt}x Gem Boost! 💎`;
+      } else {
         const inv = getShopInventory();
         inv.continueToken = (inv.continueToken ?? 0) + 1;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
         rewardText = `Won 1x Continue Token! 🔄`;
-      } else if (roll < 0.8) {
+      }
+    } else if (tier === 'silver') {
+      const roll = Math.random();
+      if (roll < 0.3) {
+        const rewardCoins = 100 + Math.floor(Math.random() * 151); // 100 to 250 coins
+        addCoins(rewardCoins);
+        rewardText = `Won +🪙${rewardCoins} Coins!`;
+      } else if (roll < 0.55) {
+        const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
         const inv = getShopInventory();
-        inv.gemBoost = (inv.gemBoost ?? 0) + 2;
+        inv.shield = (inv.shield ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won 2x Gem Boost charges! 💎`;
+        rewardText = `Won ${amt}x Shield Charges! 🛡️`;
+      } else if (roll < 0.75) {
+        const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
+        const inv = getShopInventory();
+        inv.magnet = (inv.magnet ?? 0) + amt;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won ${amt}x Coin Magnets! 🧲`;
+      } else if (roll < 0.9) {
+        const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
+        const inv = getShopInventory();
+        inv.gemBoost = (inv.gemBoost ?? 0) + amt;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won ${amt}x Gem Boost charges! 💎`;
       } else {
-        const rewardXP = 50 + Math.floor(Math.random() * 100);
-        addXP(rewardXP);
-        rewardText = `Won +⚡${rewardXP} Level XP!`;
+        const amt = 1 + Math.floor(Math.random() * 3); // 1 to 3
+        const inv = getShopInventory();
+        inv.continueToken = (inv.continueToken ?? 0) + amt;
+        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        rewardText = `Won ${amt}x Continue Tokens! 🔄`;
+      }
+    } else {
+      // Gold chest
+      const skinRoll = Math.random();
+      if (skinRoll < 0.03) {
+        // 3% rare chance to win Moorish Idol Legendary skin!
+        const unlockedSkins = getUnlockedSkins();
+        if (unlockedSkins.includes('legendary')) {
+          // Compensation rewards
+          addCoins(600);
+          const inv = getShopInventory();
+          inv.shield = (inv.shield ?? 0) + 2;
+          inv.continueToken = (inv.continueToken ?? 0) + 1;
+          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          rewardText = "Won Legendary Duplicate Compensation: +🪙600 Coins, +2🛡️ Shields, +1🔄 Continue Token!";
+        } else {
+          // Unlock skin
+          const updated = [...unlockedSkins, 'legendary' as SkinId];
+          localStorage.setItem('gfr_unlocked_skins', JSON.stringify(updated));
+          rewardText = "LEGENDARY UNLOCK! You won the Moorish Idol skin directly from the Golden Chest! 👑";
+          if (onNewUnlocks) {
+            onNewUnlocks(['legendary']);
+          }
+        }
+      } else {
+        // Roll standard Gold chest prizes
+        const roll = Math.random();
+        if (roll < 0.25) {
+          const rewardCoins = 300 + Math.floor(Math.random() * 451); // 300 to 750 coins
+          addCoins(rewardCoins);
+          rewardText = `Won +🪙${rewardCoins} Coins!`;
+        } else if (roll < 0.5) {
+          const amt = 5 + Math.floor(Math.random() * 6); // 5 to 10
+          const inv = getShopInventory();
+          inv.shield = (inv.shield ?? 0) + amt;
+          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          rewardText = `Won ${amt}x Shield Charges! 🛡️`;
+        } else if (roll < 0.7) {
+          const amt = 3 + Math.floor(Math.random() * 6); // 3 to 8
+          const inv = getShopInventory();
+          inv.magnet = (inv.magnet ?? 0) + amt;
+          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          rewardText = `Won ${amt}x Coin Magnets! 🧲`;
+        } else if (roll < 0.88) {
+          const amt = 3 + Math.floor(Math.random() * 6); // 3 to 8
+          const inv = getShopInventory();
+          inv.gemBoost = (inv.gemBoost ?? 0) + amt;
+          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          rewardText = `Won ${amt}x Gem Boost charges! 💎`;
+        } else {
+          const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
+          const inv = getShopInventory();
+          inv.continueToken = (inv.continueToken ?? 0) + amt;
+          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          rewardText = `Won ${amt}x Continue Tokens! 🔄`;
+        }
       }
     }
 

@@ -92,21 +92,24 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
 
-    // Moorish Idol has a 15% chance to start the round with a free shield
-    const freeShieldBonus = (skin === 'legendary' && Math.random() < 0.15);
-
-    if (inv.shield > 0 || shieldLvl > 0 || freeShieldBonus) {
-      if (inv.shield > 0 && !freeShieldBonus) consumeShopItem('shield');
-      // Upgrade increases starting shield charges, Moorish Idol grants +1 starting charge
+    if (inv.shield > 0 || shieldLvl > 0) {
+      if (inv.shield > 0) consumeShopItem('shield');
+      // Upgrade increases starting shield charges
       engine.shieldCharges = 1 + shieldLvl;
       incrementMissionProgress('m_shield', 1);
     }
+
+    // Moorish Idol legendary skin ability: 15% chance to start with a free shield if no shield is active
+    if (skin === 'legendary' && engine.shieldCharges === 0) {
+      if (Math.random() < 0.15) {
+        engine.shieldCharges = 1;
+      }
+    }
+
     if (inv.magnet > 0 || magnetLvl > 0) {
       if (inv.magnet > 0) consumeShopItem('magnet');
       // Upgrade increases starting magnet duration (8s base + 3s per level)
-      // Mandarin skin adds +25% magnet duration
-      const mandarinBonus = skin === 'emerald' ? 1.25 : 1.0;
-      engine.magnetUntil = engine.timeMs + (8000 + (magnetLvl * 3000)) * mandarinBonus;
+      engine.magnetUntil = engine.timeMs + 8000 + (magnetLvl * 3000);
     }
     if (inv.gemBoost > 0 || gemLvl > 0) {
       if (inv.gemBoost > 0) consumeShopItem('gemBoost');
@@ -210,9 +213,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 const bonusCoins = multLevel;
                 let finalAmount = amount + bonusCoins;
 
-                // Goldfish (golden) grants a +10% coin bonus
+                // Goldfish skin ability: +10% Bonus Coins
                 if (skin === 'golden') {
-                  finalAmount = Math.round(finalAmount * 1.10);
+                  finalAmount = Math.ceil(finalAmount * 1.1);
                 }
 
                 roundCoinsRef.current += finalAmount;
