@@ -221,6 +221,10 @@ export default function SettingsScreen({ onBack }: Props) {
 
               <span>{skin.name}</span>
 
+              <div style={{ fontSize: '11px', color: '#ffd54f', margin: '4px 0', fontWeight: '500', lineHeight: '1.2' }}>
+                {skin.ability}
+              </div>
+
               {!isUnlocked && <span className="skin-lock-req">{progressText}</span>}
 
               {isUnlocked && !isSelected && (

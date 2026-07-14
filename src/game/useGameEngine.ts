@@ -98,6 +98,14 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       engine.shieldCharges = 1 + shieldLvl;
       incrementMissionProgress('m_shield', 1);
     }
+
+    // Moorish Idol legendary skin ability: 15% chance to start with a free shield if no shield is active
+    if (skin === 'legendary' && engine.shieldCharges === 0) {
+      if (Math.random() < 0.15) {
+        engine.shieldCharges = 1;
+      }
+    }
+
     if (inv.magnet > 0 || magnetLvl > 0) {
       if (inv.magnet > 0) consumeShopItem('magnet');
       // Upgrade increases starting magnet duration (8s base + 3s per level)
@@ -203,7 +211,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 // Apply Coin Multiplier Upgrade level directly to coin earnings (+1 coin per level)
                 const multLevel = getUpgradeLevel('coinMultiplier');
                 const bonusCoins = multLevel;
-                const finalAmount = amount + bonusCoins;
+                let finalAmount = amount + bonusCoins;
+
+                // Goldfish skin ability: +10% Bonus Coins
+                if (skin === 'golden') {
+                  finalAmount = Math.ceil(finalAmount * 1.1);
+                }
 
                 roundCoinsRef.current += finalAmount;
                 setRoundCoins(roundCoinsRef.current);

@@ -173,6 +173,14 @@ const GEM_SPAWN_CHANCE = 0.09;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
 
+const getInvincibilityDuration = (state: EngineState) => {
+  const base = HIT_INVINCIBILITY_MS;
+  if (state.skin === 'ruby') {
+    return Math.round(base * 1.30); // Betta skin: +30% duration
+  }
+  return base;
+};
+
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({
     x: Math.random() * width,
@@ -267,8 +275,11 @@ function spawnObstacle(state: EngineState, score: number) {
       collected: false, bonus: score >= 60 && Math.random() < 0.22,
     });
   }
-  // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive)
-  const gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
+  // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive, or Discus skin ability)
+  let gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
+  if (state.skin === 'diamond') {
+    gemChance *= 1.30; // Discus skin: +30% Extra Life drop chance
+  }
   if (Math.random() < gemChance) {
     state.gems.push({
       x: state.width + BASE.obstacleWidth + 88, y: gapY + (Math.random() - 0.5) * (gap * 0.28),
@@ -399,7 +410,7 @@ function clearDangerousReviveArea(state: EngineState) {
 function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   if (state.lives <= 0) return false;
   state.lives -= 1;
-  state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+  state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
   state.fishY = state.height / 2;
   state.fishVY = 0;
   state.fishRotation = 0;
@@ -554,7 +565,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (!safe) {
           if (state.shieldCharges > 0) {
             state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-            state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+            state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
             callbacks.onShake(3); // Screen shake is very light & minor
             triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
             addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
@@ -586,7 +597,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       if (withinX && withinY) {
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           callbacks.onShake(3); // Light non-distracting screen shake
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
           addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
@@ -618,7 +629,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
         } else {
           killOrUseLife(state, callbacks);
@@ -648,7 +659,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          state.invincibleUntil = state.timeMs + HIT_INVINCIBILITY_MS;
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
         } else {
           killOrUseLife(state, callbacks);
@@ -771,7 +782,9 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           triggerFloatingText(state, 'Shield!', pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
         } else if (pu.type === 'magnet') {
-          state.magnetUntil = state.timeMs + 8000;
+          const baseDuration = 8000;
+          const duration = state.skin === 'emerald' ? baseDuration * 1.25 : baseDuration;
+          state.magnetUntil = state.timeMs + duration;
           triggerFloatingText(state, 'Magnet!', pu.x, pu.y - 15, '#ffa726', true);
           addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
         } else if (pu.type === 'fever') {
@@ -1416,40 +1429,70 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
 
 function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   if (gem.collected) return;
-  const angle = (timeMs * 0.002) % (Math.PI * 2);
-  const scaleX = Math.abs(Math.cos(angle));
-  const bobY = Math.sin(timeMs * 0.002 + gem.x) * 1.6;
+
+  // Gentle heartbeat pulse effect
+  const pulse = 1.0 + 0.12 * Math.sin(timeMs * 0.008 + gem.x * 0.05);
+  const bobY = Math.sin(timeMs * 0.0025 + gem.x) * 2.0;
 
   ctx.save();
   ctx.translate(gem.x, gem.y + bobY);
-  ctx.scale(scaleX, 1);
-  ctx.shadowColor = '#ff4d6d';
-  ctx.shadowBlur = 16;
+  ctx.scale(pulse, pulse);
 
-  const size = 11;
+  // Soft heart glow
+  ctx.shadowColor = '#ff1744';
+  ctx.shadowBlur = 12;
+
+  const size = 15; // Beautiful larger radius
+
   ctx.beginPath();
+  // Standard high-quality heart path starting from the center cleft going down and back around
   ctx.moveTo(0, size * 0.35);
   ctx.bezierCurveTo(-size * 0.45, -size * 0.65, -size * 1.25, -size * 0.35, 0, size * 0.95);
   ctx.bezierCurveTo(size * 1.25, -size * 0.35, size * 0.45, -size * 0.65, 0, size * 0.35);
   ctx.closePath();
 
-  // Custom 3D radial glossy gradient
+  // Solid glossy 3D-style radial gradient (matching HUD heart)
   const heartGrad = ctx.createRadialGradient(-size * 0.25, -size * 0.25, 1, 0, 0, size * 1.2);
-  heartGrad.addColorStop(0, '#ffccd5');
-  heartGrad.addColorStop(0.3, '#ff4d6d');
-  heartGrad.addColorStop(1, '#800f2f');
+  heartGrad.addColorStop(0, '#ffccd5'); // bright center highlight
+  heartGrad.addColorStop(0.35, '#ff4d6d'); // rich red
+  heartGrad.addColorStop(0.85, '#ff0033'); // base red
+  heartGrad.addColorStop(1, '#800f2f'); // deep shaded shadow edge
   ctx.fillStyle = heartGrad;
   ctx.fill();
 
-  ctx.strokeStyle = '#ffffff';
+  // Fine white stroke for high visibility on dark water
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
   ctx.lineWidth = 1.2;
   ctx.stroke();
 
-  // Glossy reflection highlight on the left lobe
+  // Shimmer / white reflection highlight on the left lobe
   ctx.beginPath();
-  ctx.ellipse(-size * 0.35, -size * 0.2, size * 0.25, size * 0.12, -Math.PI / 6, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.ellipse(-size * 0.35, -size * 0.25, size * 0.28, size * 0.14, -Math.PI / 6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
   ctx.fill();
+
+  // Animate a subtle diagonal silver/white shimmer band across the heart periodically
+  const shimmerPos = ((timeMs * 0.0015) % 3) - 1.5; // moves from -1.5 to 1.5
+  if (shimmerPos > -1.0 && shimmerPos < 1.0) {
+    ctx.save();
+    // Clip to heart path so shimmer stays inside
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.35);
+    ctx.bezierCurveTo(-size * 0.45, -size * 0.65, -size * 1.25, -size * 0.35, 0, size * 0.95);
+    ctx.bezierCurveTo(size * 1.25, -size * 0.35, size * 0.45, -size * 0.65, 0, size * 0.35);
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.rotate(Math.PI / 4);
+    const shimmerX = shimmerPos * size * 1.5;
+    const shimGrad = ctx.createLinearGradient(shimmerX - 3, -size * 2, shimmerX + 3, size * 2);
+    shimGrad.addColorStop(0, 'rgba(255,255,255,0)');
+    shimGrad.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+    shimGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shimGrad;
+    ctx.fillRect(shimmerX - 5, -size * 2, 10, size * 4);
+    ctx.restore();
+  }
 
   ctx.restore();
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getCoins, addCoins, getShopInventory } from '../storage';
+import { getCoins, addCoins, getShopInventory, getSelectedSkin } from '../storage';
 import { dateKey } from '../constants';
 import { audioManager } from '../managers/AudioManager';
 
@@ -16,22 +16,36 @@ interface Prize {
 }
 
 const PRIZES: Prize[] = [
-  { name: '+15 Coins', type: 'coins', amount: 15, color: '#ffb703' },
-  { name: 'Shield Charge', type: 'item', itemId: 'shield', amount: 1, color: '#2196f3' },
-  { name: '+5 Coins', type: 'coins', amount: 5, color: '#fb8500' },
-  { name: 'Coin Magnet', type: 'item', itemId: 'magnet', amount: 1, color: '#e91e63' },
-  { name: '+50 Coins', type: 'coins', amount: 50, color: '#ffeb3b' },
-  { name: 'Gem Boost', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },
-  { name: '+10 Coins', type: 'coins', amount: 10, color: '#ff9800' },
-  { name: 'Continue Token', type: 'item', itemId: 'continueToken', amount: 1, color: '#4caf50' },
+  { name: '+50 Coins', type: 'coins', amount: 50, color: '#ffb703' },            // index 0: 25%
+  { name: 'Shield Charge', type: 'item', itemId: 'shield', amount: 1, color: '#2196f3' }, // index 1: 12%
+  { name: '+100 Coins', type: 'coins', amount: 100, color: '#fb8500' },          // index 2: 20%
+  { name: 'Coin Magnet', type: 'item', itemId: 'magnet', amount: 1, color: '#e91e63' },   // index 3: 10%
+  { name: '+150 Coins', type: 'coins', amount: 150, color: '#ffeb3b' },          // index 4: 15%
+  { name: 'Gem Boost', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },   // index 5: 8%
+  { name: '+300 Coins', type: 'coins', amount: 300, color: '#ff5722' },          // index 6: 5%
+  { name: 'Continue Token', type: 'item', itemId: 'continueToken', amount: 1, color: '#4caf50' }, // index 7: 5%
 ];
+
+const WEIGHTS = [25, 12, 20, 10, 15, 8, 5, 5];
+
+function rollWeightedPrizeIndex(): number {
+  const r = Math.random() * 100;
+  let cumulative = 0;
+  for (let i = 0; i < WEIGHTS.length; i++) {
+    cumulative += WEIGHTS[i];
+    if (r < cumulative) {
+      return i;
+    }
+  }
+  return 0; // fallback
+}
 
 export default function LuckySpinScreen({ onBack }: Props) {
   const [coins, setCoins] = useState(getCoins());
   const [isSpinning, setIsSubSpinning] = useState(false);
   const [hasFreeSpin, setHasFreeSpin] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
-  const [cost, setCost] = useState(25);
+  const [cost, setCost] = useState(150);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentAngleRef = useRef(0);
@@ -44,6 +58,14 @@ export default function LuckySpinScreen({ onBack }: Props) {
     const today = dateKey();
     setHasFreeSpin(lastSpin !== today);
     setCoins(getCoins());
+
+    // Apply 20% legendary Moorish Idol skin discount on mount
+    const activeSkin = getSelectedSkin();
+    if (activeSkin === 'legendary') {
+      setCost(120);
+    } else {
+      setCost(150);
+    }
   }, []);
 
   // Render the static/dynamic wheel canvas
@@ -152,10 +174,26 @@ export default function LuckySpinScreen({ onBack }: Props) {
     setResultMessage(null);
     audioManager.playSound('jump', true);
 
-    // Set dynamic target parameters
-    const randomLaps = 5 + Math.random() * 5;
-    velocityRef.current = 0.25 + Math.random() * 0.15; // Starting spin speed
+    // Roll weighted prize index beforehand
+    const targetIdx = rollWeightedPrizeIndex();
+    const arcSize = (Math.PI * 2) / PRIZES.length;
+
+    // Calculate final exact target angle to align pointer exactly with targetIdx
+    const targetNormalizedAngle = (targetIdx + 0.5) * arcSize;
+    const finalAngleMod = (Math.PI * 3.5 - targetNormalizedAngle + Math.PI * 4) % (Math.PI * 2);
+
+    const initialAngleMod = currentAngleRef.current % (Math.PI * 2);
+    const laps = 6 + Math.floor(Math.random() * 4); // 6 to 9 full laps
+    let deltaAngle = laps * Math.PI * 2 + finalAngleMod - initialAngleMod;
+    if (deltaAngle < Math.PI * 4) {
+      deltaAngle += Math.PI * 2;
+    }
+
+    const targetFinalAngle = currentAngleRef.current + deltaAngle;
+
+    // Set starting velocity so friction stops exactly at targetFinalAngle
     const friction = 0.982; // Friction factor
+    velocityRef.current = deltaAngle * (1 - friction);
 
     let lastTickAngle = 0;
 
@@ -164,7 +202,6 @@ export default function LuckySpinScreen({ onBack }: Props) {
       velocityRef.current *= friction;
 
       // Play light ticking sound as slices rotate past pointer
-      const arcSize = (Math.PI * 2) / PRIZES.length;
       const currentTickIdx = Math.floor(currentAngleRef.current / arcSize);
       if (currentTickIdx !== lastTickAngle) {
         lastTickAngle = currentTickIdx;
@@ -178,10 +215,11 @@ export default function LuckySpinScreen({ onBack }: Props) {
         setIsSubSpinning(false);
         cancelAnimationFrame(animationRef.current!);
 
-        // Determine slice under pointer (At the top of the wheel, i.e., 270 degrees / 1.5 * PI)
-        const normalizedAngle = (Math.PI * 3.5 - (currentAngleRef.current % (Math.PI * 2))) % (Math.PI * 2);
-        const idx = Math.floor(normalizedAngle / arcSize);
-        const prize = PRIZES[idx];
+        // Force exact targeted final angle to resolve any float truncation
+        currentAngleRef.current = targetFinalAngle;
+        drawWheel(currentAngleRef.current);
+
+        const prize = PRIZES[targetIdx];
 
         // Reward player
         if (prize.type === 'coins') {

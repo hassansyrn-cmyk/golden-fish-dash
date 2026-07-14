@@ -385,7 +385,7 @@ export default function GoldenFishRush() {
 
         {screen === 'leaderboard' && <LeaderboardScreen onBack={handleGoToMenu} />}
 
-        {screen === 'shop' && <ShopScreen onBack={handleShopBack} />}
+        {screen === 'shop' && <ShopScreen onBack={handleShopBack} onNewUnlocks={handleNewUnlocks} />}
 
         {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleDailyBack} />}
 

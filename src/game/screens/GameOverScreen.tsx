@@ -217,6 +217,10 @@ export default function GameOverScreen({
 
                   <span>{skin.name}</span>
 
+                  <div style={{ fontSize: '11px', color: '#ffd54f', margin: '4px 0', fontWeight: '500', lineHeight: '1.2' }}>
+                    {skin.ability}
+                  </div>
+
                   <span className="skin-lock-req">
                     {isEquipped ? 'Equipped' : 'Equip Now'}
                   </span>
