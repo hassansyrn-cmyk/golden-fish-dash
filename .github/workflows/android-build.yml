@@ -10,10 +10,34 @@ jobs:
   build:
     name: Build Android APK and AAB
     runs-on: ubuntu-latest
+    env:
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate Signing Secrets
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "Error: RELEASE_KEYSTORE_BASE64 secret is missing!"
+            exit 1
+          fi
+          if [ -z "$RELEASE_STORE_PASSWORD" ]; then
+            echo "Error: RELEASE_STORE_PASSWORD secret is missing!"
+            exit 1
+          fi
+          if [ -z "$RELEASE_KEY_ALIAS" ]; then
+            echo "Error: RELEASE_KEY_ALIAS secret is missing!"
+            exit 1
+          fi
+          if [ -z "$RELEASE_KEY_PASSWORD" ]; then
+            echo "Error: RELEASE_KEY_PASSWORD secret is missing!"
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -53,25 +77,18 @@ jobs:
           ./gradlew assembleDebug
 
       - name: Decode Keystore
-        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
           echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
 
       - name: Build Android App Bundle AAB
         env:
           RELEASE_STORE_FILE: "release.keystore"
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
           ./gradlew bundleRelease
 
       - name: Verify Signed AAB
-        if: ${{ hashFiles('android/app/release.keystore') != '' }}
         run: |
           jarsigner -verify android/app/build/outputs/bundle/release/app-release.aab
 
