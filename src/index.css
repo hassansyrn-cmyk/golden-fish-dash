@@ -1086,3 +1086,75 @@ html, body, #root {
     inset: -1px;
   }
 }
+
+/* Premium pre-run countdown */
+.ready-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(26, 188, 220, 0.28), transparent 36%),
+    linear-gradient(180deg, rgba(1, 13, 28, 0.46), rgba(1, 13, 28, 0.76));
+  animation: gfr-fade-in 0.22s ease-out;
+}
+
+.ready-card {
+  width: min(82%, 340px);
+  padding: 28px 22px 24px;
+  border: 1px solid rgba(170, 244, 255, 0.28);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(4, 31, 54, 0.82), rgba(1, 12, 29, 0.88));
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  text-align: center;
+}
+
+.ready-kicker {
+  color: #9beeff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.19em;
+}
+
+.ready-count {
+  margin: 4px 0 8px;
+  color: #ffe066;
+  font-size: clamp(4.4rem, 20vw, 6.8rem);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 0 30px rgba(255, 214, 10, 0.52), 0 5px 0 rgba(141, 86, 0, 0.45);
+  animation: ready-count-pulse 0.72s cubic-bezier(0.18, 0.8, 0.24, 1) both;
+}
+
+.ready-count-go {
+  color: #8ef8ff;
+  text-shadow: 0 0 34px rgba(65, 230, 255, 0.78), 0 5px 0 rgba(0, 83, 116, 0.55);
+}
+
+.ready-instruction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.ready-instruction strong { color: #ffe066; }
+.ready-tap-icon { color: #7cf4ff; font-size: 1.2rem; animation: ready-spark 1.1s ease-in-out infinite; }
+.ready-tip { margin: 12px 0 0; color: #b6d7e7; font-size: 0.77rem; line-height: 1.45; }
+
+@keyframes ready-count-pulse {
+  0% { opacity: 0; transform: scale(0.5) rotate(-7deg); }
+  65% { opacity: 1; transform: scale(1.08) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes ready-spark {
+  0%, 100% { transform: scale(0.82) rotate(0deg); opacity: 0.65; }
+  50% { transform: scale(1.15) rotate(18deg); opacity: 1; }
+}

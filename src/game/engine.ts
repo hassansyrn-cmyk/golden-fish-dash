@@ -67,6 +67,7 @@ export interface PredatorShark {
   id: string;
   x: number;
   y: number;
+  baseY: number;
   width: number;
   height: number;
   bobPhase: number;
@@ -103,6 +104,7 @@ export interface Jellyfish {
   id: string;
   x: number;
   y: number;
+  baseY: number;
   radius: number;
   bobPhase: number;
   bobSpeed: number;
@@ -172,6 +174,36 @@ const MAX_EXTRA_LIVES = 2;
 const GEM_SPAWN_CHANCE = 0.09;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
+
+let waterTexture: HTMLImageElement | null = null;
+
+function getWaterTexture() {
+  if (typeof Image === 'undefined') return null;
+  if (!waterTexture) {
+    waterTexture = new Image();
+    waterTexture.src = '/assets/cc0-stylized-water.jpg';
+  }
+  return waterTexture;
+}
+
+function drawWaterTexture(ctx: CanvasRenderingContext2D, state: EngineState) {
+  const texture = getWaterTexture();
+  if (!texture?.complete || !texture.naturalWidth) return;
+
+  const tile = Math.max(state.width, state.height) * 0.78;
+  const driftX = (state.timeMs * 0.009) % tile;
+  const driftY = (state.timeMs * 0.004) % tile;
+
+  ctx.save();
+  ctx.globalAlpha = 0.09;
+  ctx.globalCompositeOperation = 'soft-light';
+  for (let x = -tile - driftX; x < state.width + tile; x += tile) {
+    for (let y = -tile - driftY; y < state.height + tile; y += tile) {
+      ctx.drawImage(texture, x, y, tile, tile);
+    }
+  }
+  ctx.restore();
+}
 
 const getInvincibilityDuration = (state: EngineState) => {
   const base = HIT_INVINCIBILITY_MS;
@@ -252,6 +284,20 @@ function clampGapY(state: EngineState, gapY: number, gapSize: number) {
   return Math.max(safeMargin, Math.min(state.height - safeMargin, gapY));
 }
 
+/**
+ * Place one hazard close to an edge of a pipe gap, while reserving a generous
+ * lane on the opposite side. This prevents a hazard from sealing the only
+ * route through a gate, especially on narrow high-score gaps.
+ */
+function safeHazardLane(gapY: number, gapSize: number, hazardHalfHeight: number) {
+  const gapTop = gapY - gapSize / 2;
+  const gapBottom = gapY + gapSize / 2;
+  const edgePadding = hazardHalfHeight + 16;
+  const upperLane = gapTop + edgePadding;
+  const lowerLane = gapBottom - edgePadding;
+  return Math.random() < 0.5 ? upperLane : lowerLane;
+}
+
 function spawnObstacle(state: EngineState, score: number) {
   const { gap, diffMultiplier } = difficultyForScore(score, state.timeMs);
   const margin = Math.max(95, gap * 0.48);
@@ -303,50 +349,54 @@ function spawnObstacle(state: EngineState, score: number) {
     });
   }
 
-  // Shark enemy spawn after score >= 20
-  if (score >= 20) {
-    const sharkChance = 0.15 * diffMultiplier;
-    if (state.sharks.length < 2 && Math.random() < sharkChance) {
-      const sharkY = 60 + Math.random() * (state.height - 120);
+  // Only one additional hazard can accompany a pipe gate. Its center is
+  // anchored inside the gap and the opposite half remains deliberately clear.
+  const hasActiveHazard = state.sharks.length + state.seaMines.length + state.jellyfish.length > 0;
+  if (!hasActiveHazard) {
+    const hazardRoll = Math.random();
+
+    // Shark enemy after score >= 20. It uses a short vertical bob, so the
+    // reserved lane remains usable throughout the encounter.
+    if (score >= 20 && hazardRoll < 0.10 * diffMultiplier) {
+      const sharkY = safeHazardLane(gapY, gap, 19);
       state.sharks.push({
         id: 'shark_' + Math.random(),
         x: state.width + 150,
         y: sharkY,
+        baseY: sharkY,
         width: 85,
         height: 38,
         bobPhase: Math.random() * Math.PI * 2,
-        bobSpeed: 0.005 + Math.random() * 0.004,
-        bobAmount: 18 + Math.random() * 12,
+        bobSpeed: 0.003 + Math.random() * 0.002,
+        bobAmount: 8 + Math.random() * 5,
         passed: false,
       });
+    // Sea mine after score >= 10. Keep it away from the centerline so it
+    // challenges route choice without blocking both paths.
+    } else if (score >= 10 && hazardRoll < 0.19 * diffMultiplier) {
+      state.seaMines.push({
+        id: 'mine_' + Math.random(),
+        x: state.width + 86,
+        y: safeHazardLane(gapY, gap, 14),
+        radius: 14,
+        pulsePhase: Math.random() * Math.PI * 2,
+        exploded: false,
+      });
+    // Jellyfish after score >= 15. Vertical movement is intentionally subtle
+    // to keep the protected half of the pipe gap navigable.
+    } else if (score >= 15 && hazardRoll < 0.27 * diffMultiplier) {
+      const jellyY = safeHazardLane(gapY, gap, 12);
+      state.jellyfish.push({
+        id: 'jelly_' + Math.random(),
+        x: state.width + 72,
+        y: jellyY,
+        baseY: jellyY,
+        radius: 12,
+        bobPhase: Math.random() * Math.PI * 2,
+        bobSpeed: 0.002 + Math.random() * 0.0015,
+        bobAmount: 8 + Math.random() * 5,
+      });
     }
-  }
-
-  // Spawn Sea Mine (ألغام بحرية) - drifts left and pulsates red (after score >= 10)
-  if (score >= 10 && Math.random() < 0.24 * diffMultiplier) {
-    const mineY = 60 + Math.random() * (state.height - 120);
-    state.seaMines.push({
-      id: 'mine_' + Math.random(),
-      x: state.width + 80,
-      y: mineY,
-      radius: 14,
-      pulsePhase: Math.random() * Math.PI * 2,
-      exploded: false,
-    });
-  }
-
-  // Spawn Jellyfish (قنديل البحر) - waves vertically with tentacles (after score >= 15)
-  if (score >= 15 && Math.random() < 0.20 * diffMultiplier) {
-    const jellyY = 80 + Math.random() * (state.height - 160);
-    state.jellyfish.push({
-      id: 'jelly_' + Math.random(),
-      x: state.width + 60,
-      y: jellyY,
-      radius: 12,
-      bobPhase: Math.random() * Math.PI * 2,
-      bobSpeed: 0.0035 + Math.random() * 0.002,
-      bobAmount: 25 + Math.random() * 15,
-    });
   }
 
   // Bubble Boost Ring spawn (very rare)
@@ -477,12 +527,16 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   const { speed: baseSpeed, spawnInterval } = difficultyForScore(state.score, state.timeMs);
   const isHourglassActive = state.hourglassUntil > state.timeMs;
   const speed = isHourglassActive ? baseSpeed * 0.6 : baseSpeed;
+  const fishX = state.width * FISH_X_RATIO;
+
   state.elapsedSinceSpawn += dtMs;
-  if (state.elapsedSinceSpawn >= spawnInterval) {
+  // Keep enough horizontal breathing room between pipe gates. The timer stays
+  // armed until the previous gate moves on, rather than forcing an overlap.
+  const gateSpacingClear = state.obstacles.every((obstacle) => obstacle.x < state.width * 0.62);
+  if (state.elapsedSinceSpawn >= spawnInterval && gateSpacingClear) {
     spawnObstacle(state, state.score);
     state.elapsedSinceSpawn = 0;
   }
-  const fishX = state.width * FISH_X_RATIO;
 
   // === FEVER MODE STREAM SPANNING ===
   const isFeverActive = state.feverUntil > state.timeMs;
@@ -584,7 +638,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     const sharkSpeed = (speed + 0.8) * dt;
     shark.x -= sharkSpeed;
     shark.bobPhase += shark.bobSpeed * dtMs;
-    shark.y += Math.sin(shark.bobPhase) * 1.5 * dt;
+    shark.y = shark.baseY + Math.sin(shark.bobPhase) * shark.bobAmount;
 
     if (!shark.passed && shark.x + shark.width / 2 < fishX) {
       shark.passed = true;
@@ -644,7 +698,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   for (const jelly of state.jellyfish) {
     jelly.x -= (speed - 0.5) * dt;
     jelly.bobPhase += jelly.bobSpeed * dtMs;
-    jelly.y += Math.sin(jelly.bobPhase) * 1.6 * dt;
+    jelly.y = jelly.baseY + Math.sin(jelly.bobPhase) * jelly.bobAmount;
 
     if (!invincible && !isFeverActive) {
       const dx = jelly.x - fishX;
@@ -862,7 +916,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   const tier = getDifficultyTier(state.score);
 
   // Custom beautiful, radiant sea-blue background gradients
-  const [c1, c2] = tier.bg;
+  const [c1] = tier.bg;
   const grad = ctx.createLinearGradient(0, 0, 0, height);
 
   // Check if Fever Mode is active to shift background into shifting rainbow color space
@@ -879,6 +933,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
+  drawWaterTexture(ctx, state);
 
   if (state.score >= 100 && !isFever) {
     const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;

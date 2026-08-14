@@ -47,6 +47,7 @@ export type ScreenName =
   | 'loading'
   | 'menu'
   | 'howto'
+  | 'ready'
   | 'playing'
   | 'paused'
   | 'continueAd'

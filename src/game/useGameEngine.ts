@@ -24,7 +24,6 @@ import {
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
 import { audioManager } from './managers/AudioManager';
-import type { SoundName } from './managers/AudioManager';
 
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -44,6 +43,15 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
   } catch {
     // Ignore unsupported vibration errors.
   }
+}
+
+function sizeCanvasForDisplay(canvas: HTMLCanvasElement, width: number, height: number) {
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+
+  const context = canvas.getContext('2d');
+  context?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 }
 
 export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
@@ -75,8 +83,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const width = parent?.clientWidth ?? window.innerWidth;
     const height = parent?.clientHeight ?? window.innerHeight;
 
-    canvas.width = width;
-    canvas.height = height;
+    sizeCanvasForDisplay(canvas, width, height);
 
     const engine = createEngine(width, height, skin);
 
@@ -373,8 +380,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       const width = parent?.clientWidth ?? window.innerWidth;
       const height = parent?.clientHeight ?? window.innerHeight;
 
-      canvas.width = width;
-      canvas.height = height;
+      sizeCanvasForDisplay(canvas, width, height);
 
       state.width = width;
       state.height = height;

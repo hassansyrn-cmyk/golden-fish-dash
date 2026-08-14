@@ -22,7 +22,6 @@ import type {
   ShopItemId,
   SkinId,
 } from './types';
-import { submitLeaderboardScore as submitToFirebase, fetchGlobalLeaderboard as fetchFromFirebase } from './firebaseLeaderboard';
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -247,7 +246,8 @@ export async function submitScoreToServer(playerName: string, score: number): Pr
   const safeScore = Math.floor(Math.max(0, score || 0));
 
   try {
-    await submitToFirebase(trimmed, safeScore);
+    const { submitLeaderboardScore } = await import('./firebaseLeaderboard');
+    await submitLeaderboardScore(trimmed, safeScore);
     return { rank: estimateGlobalRank(safeScore) };
   } catch (firebaseError) {
     console.warn('[Storage] Firebase submit failed, falling back to local.', firebaseError);
@@ -258,6 +258,7 @@ export async function submitScoreToServer(playerName: string, score: number): Pr
 
 export async function fetchGlobalLeaderboard(): Promise<LeaderboardEntry[]> {
   try {
+    const { fetchGlobalLeaderboard: fetchFromFirebase } = await import('./firebaseLeaderboard');
     const remote = await fetchFromFirebase(10);
     if (remote && remote.length > 0) {
       return remote;
@@ -360,14 +361,17 @@ export function claimDailyReward(): { success: boolean; day: number; label: stri
   const yesterday = dateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
 
   const state = getDailyRewardState();
-  let newStreak = 1;
+
+  // Determine the reward being claimed before persisting the next state.
+  // The previous implementation used the stale stored day, which repeated
+  // day one on a consecutive second claim and delayed every later reward.
+  let claimDay = 1;
   if (state.lastClaimDate === yesterday) {
-    newStreak = state.streakDay + 1;
-    if (newStreak > 7) newStreak = 1;
+    claimDay = state.streakDay + 1;
+    if (claimDay > 7) claimDay = 1;
   }
 
-  const day = ((state.streakDay - 1) % 7) + 1; // reward for current streak position
-  const rewardDef = DAILY_REWARDS.find((r) => r.day === day) || DAILY_REWARDS[0];
+  const rewardDef = DAILY_REWARDS.find((r) => r.day === claimDay) || DAILY_REWARDS[0];
 
   let message = '';
 
@@ -383,13 +387,13 @@ export function claimDailyReward(): { success: boolean; day: number; label: stri
 
   const newState: DailyRewardState = {
     lastClaimDate: today,
-    streakDay: newStreak,
+    streakDay: claimDay,
   };
   writeJSON(STORAGE_KEYS.dailyReward, newState);
 
   return {
     success: true,
-    day,
+    day: claimDay,
     label: rewardDef.label,
     message,
   };

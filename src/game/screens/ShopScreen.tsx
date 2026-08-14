@@ -9,7 +9,6 @@ import {
   getMissions,
   claimMissionReward,
   addCoins,
-  addXP,
   getUnlockedSkins,
 } from '../storage';
 import type { ShopItemId, MissionDef, SkinId } from '../types';
@@ -122,14 +121,12 @@ interface Props {
 
 export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
   const [coins, setCoins] = useState(getCoins());
-  const [inventory, setInventory] = useState(getShopInventory());
   const [missions, setMissions] = useState<MissionDef[]>([]);
   const [activeTab, setActiveTab] = useState<'powerups' | 'upgrades' | 'chests' | 'missions'>('powerups');
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setCoins(getCoins());
-    setInventory(getShopInventory());
     setMissions(getMissions());
   }, []);
 
@@ -141,8 +138,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
     if (success) {
       const newCoins = getCoins();
       setCoins(newCoins);
-      setInventory(getShopInventory());
-      setMessage(`Purchased ${item.name}!`);
+        setMessage(`Purchased ${item.name}!`);
       setTimeout(() => setMessage(null), 2000);
     } else {
       setMessage(needed > 0 ? `Need ${needed} more coins` : 'Not enough coins');
@@ -323,7 +319,6 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
     }
 
     setCoins(getCoins());
-    setInventory(getShopInventory());
     setMessage(`Chest Opened! ${rewardText}`);
   };
 

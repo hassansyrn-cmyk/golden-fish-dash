@@ -104,9 +104,9 @@ export default function MainMenu({
     <div className="screen menu-screen">
       <MenuFish />
       <h1 className="game-title">
-        Golden <span className="game-title-accent">Fish Rush</span>
+        Golden <span className="game-title-accent">Fish Dash</span>
       </h1>
-      <p className="menu-tagline">Tap. Dodge. Rise.</p>
+      <p className="menu-tagline">Dive deep. Dodge smart. Rise legendary.</p>
 
       {/* Player Progression Level & XP Bar */}
       <div className="menu-level-container" style={{ width: '100%', maxWidth: '280px', margin: '-10px auto 14px auto', padding: '0 12px' }}>

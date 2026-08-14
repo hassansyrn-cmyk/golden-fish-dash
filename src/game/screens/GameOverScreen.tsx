@@ -49,6 +49,7 @@ function getSkinById(id: SkinId) {
 
 import { addCoins, addXP } from '../storage';
 import { audioManager } from '../managers/AudioManager';
+import { adManager } from '../managers/AdManager';
 
 export default function GameOverScreen({
   finalScore,
@@ -75,6 +76,7 @@ export default function GameOverScreen({
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
   const [rewardsDoubled, setRewardsDoubled] = useState(false);
+  const [requestingDoubleReward, setRequestingDoubleReward] = useState(false);
   const [doubleMsg, setDoubleMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,20 +84,31 @@ export default function GameOverScreen({
     setXp(getXP());
   }, []);
 
-  const handleDoubleRewards = () => {
-    if (rewardsDoubled) return;
+  const handleDoubleRewards = async () => {
+    if (rewardsDoubled || requestingDoubleReward) return;
 
-    // Double coins earned and double XP earned from this run!
+    setRequestingDoubleReward(true);
+    setDoubleMsg('Loading a reward ad…');
+    const earnedReward = await adManager.showRewarded();
+    setRequestingDoubleReward(false);
+
+    if (!earnedReward) {
+      setDoubleMsg(
+        adManager.isNative()
+          ? 'No reward ad is ready yet. Please try again in a moment.'
+          : 'Rewarded ads are available in the Android app during testing.',
+      );
+      return;
+    }
+
+    // Grant the second payout only after the rewarded-ad SDK confirms success.
     const extraXP = Math.floor(finalScore * 2.5 + roundCoins * 1.5);
-
     addCoins(roundCoins);
-    const prog = addXP(extraXP);
+    addXP(extraXP);
 
     audioManager.playSound('reward', true);
     setRewardsDoubled(true);
     setDoubleMsg(`Double Rewards Activated! +🪙${roundCoins} Coins & +⚡${extraXP} XP Added!`);
-
-    // Refresh level and XP bars with the new values
     setLevel(getLevel());
     setXp(getXP());
   };
@@ -267,14 +280,15 @@ export default function GameOverScreen({
           </button>
         )}
 
-        {/* Double Rewards Ad Simulator Button */}
+        {/* Rewarded ad: second payout is granted only after an earned reward. */}
         {!rewardsDoubled && (roundCoins > 0 || finalScore > 0) && (
           <button
             className="btn btn-ad"
             onClick={handleDoubleRewards}
+            disabled={requestingDoubleReward}
             style={{ background: 'linear-gradient(135deg, #fb8500, #ffb703)', border: 'none', color: '#000814' }}
           >
-            📺 Double Coins & XP (Ad)
+            {requestingDoubleReward ? 'Loading Reward…' : '📺 Double Coins & XP (Ad)'}
           </button>
         )}
 

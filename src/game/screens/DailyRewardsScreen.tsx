@@ -3,9 +3,7 @@ import {
   canClaimDailyReward,
   claimDailyReward,
   getCurrentDailyReward,
-  getDailyRewardState,
 } from '../storage';
-import type { DailyRewardState } from '../types';
 
 interface Props {
   onBack: () => void;
@@ -23,16 +21,13 @@ const REWARD_CARDS = [
 ];
 
 export default function DailyRewardsScreen({ onBack }: Props) {
-  const [state, setState] = useState<DailyRewardState>(getDailyRewardState());
   const [canClaim, setCanClaim] = useState(canClaimDailyReward());
   const [currentReward, setCurrentReward] = useState(getCurrentDailyReward());
   const [message, setMessage] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
 
   useEffect(() => {
-    // Refresh on mount
-    const freshState = getDailyRewardState();
-    setState(freshState);
+    // Refresh on mount so the card state stays aligned with persistence.
     setCanClaim(canClaimDailyReward());
     setCurrentReward(getCurrentDailyReward());
   }, []);
@@ -44,9 +39,7 @@ export default function DailyRewardsScreen({ onBack }: Props) {
     const result = claimDailyReward();
 
     if (result.success) {
-      // Refresh all state after claim
-      const newState = getDailyRewardState();
-      setState(newState);
+      // Refresh visible reward state after claim.
       setCanClaim(false);
       setCurrentReward(getCurrentDailyReward());
       setMessage(result.message);

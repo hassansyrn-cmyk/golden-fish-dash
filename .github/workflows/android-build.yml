@@ -50,7 +50,10 @@ jobs:
           version: 10.30.3
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check game source
+        run: pnpm typecheck
 
       - name: Set up Java JDK 21
         uses: actions/setup-java@v4

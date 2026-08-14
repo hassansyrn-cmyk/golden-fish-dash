@@ -29,6 +29,7 @@
 // -----------------------------------------------------------------------
 
 import { useEffect } from 'react';
+import { adManager } from './managers/AdManager';
 
 /**
  * 3. BANNER AD INTEGRATION
@@ -57,9 +58,18 @@ import { useEffect } from 'react';
  * }, []);
  */
 export function BannerAd() {
+  useEffect(() => {
+    void adManager.showBanner();
+    return () => {
+      void adManager.removeBanner();
+    };
+  }, []);
+
+  if (adManager.isNative()) return null;
+
   return (
-    <div className="banner-ad-slot" role="complementary" aria-label="Advertisement placeholder">
-      <span>Ad space — Banner (320x50)</span>
+    <div className="banner-ad-slot" role="complementary" aria-label="Advertisement preview">
+      <span>Ad placement preview — Native AdMob banner on Android</span>
     </div>
   );
 }

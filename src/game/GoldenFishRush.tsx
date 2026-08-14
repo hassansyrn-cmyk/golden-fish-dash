@@ -7,6 +7,7 @@ import GameOverScreen from './screens/GameOverScreen';
 import ContinueAdScreen from './screens/ContinueAdScreen';
 import PauseScreen from './screens/PauseScreen';
 import LoadingScreen from './screens/LoadingScreen';
+import ReadyScreen from './screens/ReadyScreen';
 import AchievementsModal from './screens/AchievementsModal';
 import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
@@ -20,13 +21,11 @@ import {
   incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
-  getShopItemCount,
-  consumeShopItem,
-  getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { adManager } from './managers/AdManager';
 
 // Custom 3D/Glossy Heart Icon component for the HUD
 const HeartIcon = ({ full }: { full: boolean }) => {
@@ -98,8 +97,6 @@ const HeartIcon = ({ full }: { full: boolean }) => {
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
-const MAGNET_SHOP_DURATION = 8000;
-
 export default function GoldenFishRush() {
   const [screen, setScreen] = useState<ScreenName>('loading');
   const [finalScore, setFinalScore] = useState(0);
@@ -116,6 +113,12 @@ export default function GoldenFishRush() {
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
     return () => clearTimeout(timer);
+  }, []);
+
+  // Initialize and preload native inventory early so a rewarded continuation
+  // is ready when the player chooses it instead of delaying the revive flow.
+  useEffect(() => {
+    void adManager.initializeAndPreload();
   }, []);
 
   // Android hardware back button handling (Capacitor)
@@ -173,6 +176,7 @@ export default function GoldenFishRush() {
   );
 
   const keepEngineAlive =
+    screen === 'ready' ||
     screen === 'playing' ||
     screen === 'paused' ||
     screen === 'continueAd' ||
@@ -180,13 +184,12 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, roundCoins, lives, doJump, reviveAt, engineStateRef } = useGameEngine({
+  const { score, roundCoins, lives, doJump, reviveAt } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
     onGameOver: handleGameOver,
-    hide2DFish: false,
   });
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
@@ -197,7 +200,7 @@ export default function GoldenFishRush() {
     setShowInterstitial(false);
     setNewUnlocks(null);
 
-    setScreen('playing');
+    setScreen('ready');
   }, []);
 
   const handleWatchAd = useCallback(() => {
@@ -238,6 +241,19 @@ export default function GoldenFishRush() {
       setShowInterstitial(true);
     }
   }, [screen]);
+
+  useEffect(() => {
+    if (!showInterstitial || !adManager.isNative()) return;
+    let active = true;
+
+    void adManager.showInterstitial().finally(() => {
+      if (active) setShowInterstitial(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [showInterstitial]);
 
   useEffect(() => {
     if (screen !== 'playing') return;
@@ -366,6 +382,8 @@ export default function GoldenFishRush() {
         )}
 
         {screen === 'loading' && <LoadingScreen />}
+
+        {screen === 'ready' && <ReadyScreen onComplete={() => setScreen('playing')} />}
 
         {screen === 'menu' && (
           <MainMenu
