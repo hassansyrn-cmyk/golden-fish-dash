@@ -1090,12 +1090,15 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   const id = skin.id;
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
   const { body, belly, fin, glow } = skin.colors;
+  const swimBob = Math.sin(state.timeMs * 0.007) * 0.75;
+  const accent = id === 'ruby' ? '#ffcc80' : id === 'diamond' ? '#b2ebf2' : id === 'legendary' ? '#ffe066' : '#2fe3e8';
 
-  // Real fish dynamic tail wagging based on game time (wagging much faster in Fever mode!)
-  const wag = Math.sin(state.timeMs * (isFever ? 0.024 : 0.012)) * 0.12;
+  // A stronger tail wave, small body bob, and independent front-fin flap make
+  // the player read as a living fish even at high game speed.
+  const wag = Math.sin(state.timeMs * (isFever ? 0.027 : 0.014)) * 0.16;
 
   ctx.save();
-  ctx.translate(fishX, state.fishY);
+  ctx.translate(fishX, state.fishY + swimBob);
   ctx.rotate(state.fishRotation);
 
   {
@@ -1117,6 +1120,20 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.save();
     ctx.shadowColor = isFever ? '#e040fb' : glow;
     ctx.shadowBlur = isFever ? 32 : id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
+
+    // Tiny bubble and sparkle wake: visual only, kept behind the fish so it
+    // never obscures obstacles or changes collision behaviour.
+    ctx.save();
+    ctx.globalAlpha = 0.24 + pulse * 0.16;
+    for (let i = 0; i < 3; i++) {
+      const bubbleX = -r * (1.45 + i * 0.42);
+      const bubbleY = Math.sin(state.timeMs * 0.012 + i * 2.1) * (3 + i * 1.4);
+      ctx.beginPath();
+      ctx.arc(bubbleX, bubbleY, 1.6 + i * 0.75, 0, Math.PI * 2);
+      ctx.fillStyle = i === 2 && isFever ? '#fff176' : '#b8f7ff';
+      ctx.fill();
+    }
+    ctx.restore();
 
     // Dynamic Tail with Wag
     ctx.save();
@@ -1151,6 +1168,15 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       ctx.fillStyle = fin;
       ctx.fill();
     }
+    // Delicate tail rays make the tail read as a fin instead of a flat shape.
+    ctx.strokeStyle = 'rgba(255,255,255,0.34)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.18, 0);
+    ctx.lineTo(-r * 0.9, -r * 0.25);
+    ctx.moveTo(-r * 0.18, 0);
+    ctx.lineTo(-r * 0.9, r * 0.25);
+    ctx.stroke();
     ctx.restore();
 
     // Body
@@ -1177,6 +1203,22 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     }
     ctx.fillStyle = bodyGrad;
     ctx.fill();
+
+    // Turquoise scale-stripes are a stable visual signature for the player
+    // and preserve a readable silhouette on all unlocked skins.
+    ctx.save();
+    ctx.globalAlpha = isFever ? 0.72 : 0.62;
+    ctx.strokeStyle = isFever ? '#fff176' : accent;
+    ctx.lineWidth = Math.max(1.6, r * 0.105);
+    ctx.lineCap = 'round';
+    for (let stripe = 0; stripe < 3; stripe++) {
+      const stripeX = -r * 0.22 + stripe * r * 0.29;
+      ctx.beginPath();
+      ctx.moveTo(stripeX, -r * 0.58);
+      ctx.quadraticCurveTo(stripeX - r * 0.10, 0, stripeX, r * 0.57);
+      ctx.stroke();
+    }
+    ctx.restore();
 
     // Highlight Gloss
     const glossGrad = ctx.createLinearGradient(0, -r, 0, r);
@@ -1218,15 +1260,36 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.fill();
     ctx.restore();
 
-    // Eye
+    // Expressive glossy eye, cheek and gill line give the fish a characterful
+    // face without making it visually noisy at mobile scale.
     ctx.beginPath();
-    ctx.arc(r * 0.55, -r * 0.15, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#1a1200';
+    ctx.arc(r * 0.56, -r * 0.16, 5.3, 0, Math.PI * 2);
+    ctx.fillStyle = '#fffdf3';
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(r * 0.55 + 1.2, -r * 0.15 - 1.2, 1.4, 0, Math.PI * 2);
+    ctx.arc(r * 0.72, -r * 0.14, 3.35, 0, Math.PI * 2);
+    ctx.fillStyle = isFever ? '#7c4dff' : '#125d82';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.86, -r * 0.12, 1.75, 0, Math.PI * 2);
+    ctx.fillStyle = '#081923';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.11 + r * 0.60, -r * 0.16 - 2.0, 1.35, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
+    ctx.globalAlpha = 0.34;
+    ctx.fillStyle = '#ff8a80';
+    ctx.beginPath();
+    ctx.ellipse(r * 0.39, r * 0.19, r * 0.19, r * 0.10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = '#7a4d24';
+    ctx.lineWidth = 1.15;
+    ctx.beginPath();
+    ctx.arc(r * 0.18, -r * 0.02, r * 0.22, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
 
     ctx.restore();
   }
@@ -1268,8 +1331,10 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
 function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: number) {
   ctx.save();
   ctx.translate(shark.x, shark.y);
+  ctx.rotate(Math.sin(timeMs * 0.004 + shark.bobPhase) * 0.045);
 
   const pulse = (Math.sin(timeMs * 0.005) + 1) / 2;
+  const tailSway = Math.sin(timeMs * 0.014 + shark.bobPhase) * 0.17;
   ctx.shadowColor = '#d32f2f';
   ctx.shadowBlur = 15 + pulse * 6;
 
@@ -1314,15 +1379,35 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.closePath();
   ctx.fill();
 
-  // Tail Fin
+  // Tail fin moves independently to sell the swimming motion.
+  ctx.save();
+  ctx.translate(shark.width / 2, 0);
+  ctx.rotate(tailSway);
   ctx.fillStyle = '#37474f';
   ctx.beginPath();
-  ctx.moveTo(shark.width / 2, 0);
-  ctx.quadraticCurveTo(shark.width / 2 + 10, -shark.height / 2 - 10, shark.width / 2 + 20, -shark.height / 2 - 12);
-  ctx.quadraticCurveTo(shark.width / 2 + 12, 0, shark.width / 2 + 20, shark.height / 2 + 12);
-  ctx.quadraticCurveTo(shark.width / 2 + 10, shark.height / 2 + 10, shark.width / 2, 0);
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(10, -shark.height / 2 - 10, 20, -shark.height / 2 - 12);
+  ctx.quadraticCurveTo(12, 0, 20, shark.height / 2 + 12);
+  ctx.quadraticCurveTo(10, shark.height / 2 + 10, 0, 0);
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = 'rgba(207, 238, 245, 0.28)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(2, 0);
+  ctx.lineTo(15, -shark.height / 2 + 1);
+  ctx.moveTo(2, 0);
+  ctx.lineTo(15, shark.height / 2 - 1);
+  ctx.stroke();
+  ctx.restore();
+
+  // Cool-water side stripe separates the shark silhouette from dark reefs.
+  ctx.strokeStyle = 'rgba(139, 232, 255, 0.30)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-shark.width * 0.16, -shark.height * 0.20);
+  ctx.quadraticCurveTo(shark.width * 0.12, -shark.height * 0.32, shark.width * 0.32, -shark.height * 0.10);
+  ctx.stroke();
 
   // Gills
   ctx.strokeStyle = '#212121';
@@ -1334,16 +1419,27 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
     ctx.stroke();
   }
 
-  // Evil Red Eye
+  // A compact warning eye reads clearly but remains decorative only.
+  ctx.save();
+  ctx.globalAlpha = 0.26 + pulse * 0.22;
   ctx.fillStyle = '#ff1744';
   ctx.beginPath();
-  ctx.arc(-shark.width / 2 + 16, -5, 3, 0, Math.PI * 2);
+  ctx.arc(-shark.width / 2 + 16, -5, 7 + pulse * 2, 0, Math.PI * 2);
   ctx.fill();
-
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#ff5252';
+  ctx.beginPath();
+  ctx.arc(-shark.width / 2 + 16, -5, 3.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#32050b';
+  ctx.beginPath();
+  ctx.arc(-shark.width / 2 + 16.8, -5, 1.7, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(-shark.width / 2 + 15, -6, 0.8, 0, Math.PI * 2);
+  ctx.arc(-shark.width / 2 + 15.2, -6.25, 0.9, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
 
   // Sharp Teeth
   ctx.fillStyle = '#ffffff';
@@ -1365,8 +1461,19 @@ function drawSeaMine(ctx: CanvasRenderingContext2D, mine: SeaMine, timeMs: numbe
   ctx.translate(mine.x, mine.y);
 
   const glowAmount = (Math.sin(mine.pulsePhase + timeMs * 0.01) + 1) / 2;
-  ctx.shadowColor = '#ff1744';
+  ctx.rotate(Math.sin(timeMs * 0.0018 + mine.pulsePhase) * 0.08);
+  ctx.shadowColor = '#ff8f00';
   ctx.shadowBlur = 10 + glowAmount * 12;
+
+  // Compact amber sonar ring communicates danger without expanding the hitbox.
+  ctx.save();
+  ctx.globalAlpha = 0.12 + glowAmount * 0.16;
+  ctx.strokeStyle = '#ffb300';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(0, 0, mine.radius + 8 + glowAmount * 4, -Math.PI * 0.22, Math.PI * 1.1);
+  ctx.stroke();
+  ctx.restore();
 
   // Draw core sphere of the naval mine
   const mineGrad = ctx.createRadialGradient(-3, -3, 2, 0, 0, mine.radius);
@@ -1402,11 +1509,19 @@ function drawSeaMine(ctx: CanvasRenderingContext2D, mine: SeaMine, timeMs: numbe
     ctx.fill();
   }
 
-  // Blinking red indicator light in the center
-  ctx.fillStyle = `rgba(255, 23, 68, ${0.4 + glowAmount * 0.6})`;
+  // Blinking amber indicator light and tiny rising bubbles give the mine a
+  // mechanical but underwater feel.
+  ctx.fillStyle = `rgba(255, 152, 0, ${0.45 + glowAmount * 0.55})`;
   ctx.beginPath();
-  ctx.arc(0, 0, 4, 0, Math.PI * 2);
+  ctx.arc(0, 0, 4.4, 0, Math.PI * 2);
   ctx.fill();
+  ctx.fillStyle = 'rgba(215, 250, 255, 0.34)';
+  for (let bubble = 0; bubble < 2; bubble++) {
+    const phase = timeMs * 0.003 + bubble * 2.3;
+    ctx.beginPath();
+    ctx.arc(4 + bubble * 3 + Math.sin(phase) * 2, -mine.radius - 5 - (phase % 5), 1.2 + bubble * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.restore();
 }
@@ -1416,17 +1531,46 @@ function drawJellyfish(ctx: CanvasRenderingContext2D, jelly: Jellyfish, timeMs: 
   ctx.translate(jelly.x, jelly.y);
 
   const pulse = (Math.sin(timeMs * 0.004) + 1) / 2;
+  const bellSquash = 0.92 + pulse * 0.11;
+  ctx.rotate(Math.sin(timeMs * 0.0027 + jelly.bobPhase) * 0.055);
   ctx.shadowColor = '#e040fb';
-  ctx.shadowBlur = 12 + pulse * 8;
+  ctx.shadowBlur = 12 + pulse * 11;
+
+  // Soft outer aura makes a jellyfish visible against dense water without
+  // widening its collision area.
+  ctx.save();
+  ctx.globalAlpha = 0.13 + pulse * 0.12;
+  ctx.fillStyle = '#c44dff';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, jelly.radius * 1.45, jelly.radius * 1.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 
   // Jellyfish semi-translucent dome body (umbrella)
-  ctx.fillStyle = 'rgba(224, 64, 251, 0.72)';
+  ctx.save();
+  ctx.scale(1, bellSquash);
+  ctx.fillStyle = 'rgba(224, 64, 251, 0.76)';
   ctx.beginPath();
   ctx.arc(0, 0, jelly.radius, Math.PI, 0, false);
   ctx.quadraticCurveTo(jelly.radius * 0.5, 3, 0, 0);
   ctx.quadraticCurveTo(-jelly.radius * 0.5, 3, -jelly.radius, 0);
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
+
+  // Cyan core and rim add depth to the translucent bell.
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = '#64ffda';
+  ctx.beginPath();
+  ctx.arc(0, -jelly.radius * 0.18, jelly.radius * (0.18 + pulse * 0.06), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.75;
+  ctx.strokeStyle = '#ea80fc';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.arc(0, 0, jelly.radius, Math.PI * 1.05, Math.PI * 1.95);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 
   // Highlight on the dome
   ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
@@ -1435,9 +1579,9 @@ function drawJellyfish(ctx: CanvasRenderingContext2D, jelly: Jellyfish, timeMs: 
   ctx.fill();
 
   // Animated glowing trailing tentacles
-  ctx.strokeStyle = 'rgba(0, 229, 255, 0.8)';
-  ctx.lineWidth = 1.6;
-  const tentacleCount = 3;
+  ctx.strokeStyle = 'rgba(109, 255, 233, 0.86)';
+  ctx.lineWidth = 1.7;
+  const tentacleCount = 5;
   for (let i = 0; i < tentacleCount; i++) {
     const tx = -jelly.radius * 0.6 + (i * jelly.radius * 1.2) / (tentacleCount - 1);
     const waveOffset = i * Math.PI * 0.5 + timeMs * 0.009;
