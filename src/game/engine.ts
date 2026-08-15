@@ -6,8 +6,26 @@
 // Visual feedback: Shield bubble + Magnet glow added
 // -----------------------------------------------------------------------
 
-import { BASE, SKINS, getDifficultyTier } from './constants';
+import { BASE, SKINS } from './constants';
 import type { SkinId, FloatingText } from './types';
+
+type EnvironmentId = 'lagoon' | 'coral' | 'kelp' | 'ruins' | 'volcanic' | 'temple';
+
+interface EnvironmentTheme {
+  id: EnvironmentId;
+  minScore: number;
+  label: string;
+  top: string;
+  mid: string;
+  bottom: string;
+  ray: string;
+  pillarDark: string;
+  pillarMid: string;
+  pillarLight: string;
+  cap: string;
+  accent: string;
+  speck: string;
+}
 
 export interface Obstacle {
   x: number;
@@ -19,6 +37,7 @@ export interface Obstacle {
   bobAmount: number;
   glowing: boolean;
   isDouble: boolean;
+  environment: EnvironmentId;
   nearMissChecked?: boolean;
 }
 
@@ -174,6 +193,25 @@ const MAX_EXTRA_LIVES = 2;
 const GEM_SPAWN_CHANCE = 0.09;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
+// The artwork intentionally extends beyond the gameplay body. A smaller,
+// circular contact zone makes collisions match what players can see.
+const FAIR_FISH_HITBOX_RADIUS = BASE.fishRadius * 0.82;
+
+const ENVIRONMENTS: EnvironmentTheme[] = [
+  { id: 'lagoon', minScore: 0, label: 'Sunlit Lagoon', top: '#35bce8', mid: '#087fb9', bottom: '#001b38', ray: '#d8fbff', pillarDark: '#0d716d', pillarMid: '#42d2ba', pillarLight: '#a4f5db', cap: '#62dccc', accent: '#d6fff7', speck: '#d8fbff' },
+  { id: 'coral', minScore: 12, label: 'Coral Bloom', top: '#29a9d2', mid: '#146d9b', bottom: '#102b56', ray: '#b6f5ff', pillarDark: '#a84d65', pillarMid: '#ff8f7b', pillarLight: '#ffd0a6', cap: '#ffb37c', accent: '#ffd5b8', speck: '#ffd39a' },
+  { id: 'kelp', minScore: 30, label: 'Kelp Canopy', top: '#287c78', mid: '#124f5b', bottom: '#06293b', ray: '#beffd0', pillarDark: '#236044', pillarMid: '#5ba853', pillarLight: '#b9df70', cap: '#8fcf68', accent: '#e6ff9a', speck: '#c6ffba' },
+  { id: 'ruins', minScore: 55, label: 'Twilight Ruins', top: '#33468a', mid: '#172a68', bottom: '#080e30', ray: '#aeb6ff', pillarDark: '#252b69', pillarMid: '#5a56b0', pillarLight: '#8e9cff', cap: '#737ce8', accent: '#85f0ff', speck: '#c6d2ff' },
+  { id: 'volcanic', minScore: 85, label: 'Ember Vents', top: '#4c3c72', mid: '#382346', bottom: '#180b22', ray: '#ffc0a1', pillarDark: '#3a2430', pillarMid: '#924550', pillarLight: '#ff845d', cap: '#e6634d', accent: '#ffcb76', speck: '#ffb25e' },
+  { id: 'temple', minScore: 120, label: 'Bioluminescent Temple', top: '#163c77', mid: '#102452', bottom: '#05091d', ray: '#8cf6ff', pillarDark: '#18285b', pillarMid: '#265a82', pillarLight: '#4cf0e1', cap: '#4bd9dd', accent: '#7bfbff', speck: '#a6ffff' },
+];
+
+function environmentForScore(score: number): EnvironmentTheme {
+  for (let index = ENVIRONMENTS.length - 1; index >= 0; index -= 1) {
+    if (score >= ENVIRONMENTS[index].minScore) return ENVIRONMENTS[index];
+  }
+  return ENVIRONMENTS[0];
+}
 
 let waterTexture: HTMLImageElement | null = null;
 
@@ -252,15 +290,16 @@ export function difficultyForScore(score: number, timeMs: number = 0) {
 
   const speedSteps = Math.floor(score / 12);
 
-  // Reduce gap size based on score and run time for progressive pressure, but keep it very fair.
-  const baseGapVal = BASE.baseGap + 24 - speedSteps * 3 - Math.floor(timeMs / 30000) * 4;
-  const gap = Math.max(130, baseGapVal);
+  // The minimum opening remains deliberately generous even in late runs.
+  // Difficulty comes from visual variety and route choice, not tiny corridors.
+  const baseGapVal = BASE.baseGap + 30 - speedSteps * 2 - Math.floor(timeMs / 45000) * 3;
+  const gap = Math.max(146, baseGapVal);
 
   const baseSpawnInterval = Math.max(1200, BASE.spawnInterval + 180 - speedSteps * 25);
   // Spawn interval is fairly balanced
   const spawnInterval = Math.max(900, baseSpawnInterval);
 
-  const tier = getDifficultyTier(score);
+  const tier = environmentForScore(score);
   return { speed, gap, spawnInterval, tier, diffMultiplier: 1.0 };
 }
 
@@ -290,12 +329,11 @@ function clampGapY(state: EngineState, gapY: number, gapSize: number) {
  * route through a gate, especially on narrow high-score gaps.
  */
 function safeHazardLane(gapY: number, gapSize: number, hazardHalfHeight: number) {
-  const gapTop = gapY - gapSize / 2;
-  const gapBottom = gapY + gapSize / 2;
-  const edgePadding = hazardHalfHeight + 16;
-  const upperLane = gapTop + edgePadding;
-  const lowerLane = gapBottom - edgePadding;
-  return Math.random() < 0.5 ? upperLane : lowerLane;
+  // Never place a live enemy inside the navigable gate opening. It sits just
+  // beyond the top or bottom lip, so a player always has a full-width route
+  // through every generated pipe pair regardless of movement animation.
+  const offset = gapSize / 2 + hazardHalfHeight + 18;
+  return gapY + (Math.random() < 0.5 ? -offset : offset);
 }
 
 function spawnObstacle(state: EngineState, score: number) {
@@ -303,14 +341,15 @@ function spawnObstacle(state: EngineState, score: number) {
   const margin = Math.max(95, gap * 0.48);
   const rawGapY = margin + Math.random() * Math.max(1, state.height - margin * 2);
   const gapY = clampGapY(state, rawGapY, gap);
-  const hardMode = score >= 35;
-  const expertMode = score >= 70;
+  const environment = environmentForScore(score);
   const legendaryMode = score >= 120;
-  const isDouble = expertMode && Math.random() < 0.1;
+  // Moving and split gates created surprise deaths in late runs. Gates remain
+  // stable, single-opening obstacles; later environments carry the variety.
+  const isDouble = false;
   state.obstacles.push({
     x: state.width + BASE.obstacleWidth, gapY, gapSize: gap, passed: false,
-    bobbing: hardMode && Math.random() < 0.22, bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 12 + Math.random() * 10, glowing: legendaryMode, isDouble,
+    bobbing: false, bobPhase: Math.random() * Math.PI * 2,
+    bobAmount: 0, glowing: legendaryMode, isDouble, environment: environment.id,
   });
 
   // Regular coin spawn if Fever mode is not active
@@ -494,6 +533,14 @@ function triggerFloatingText(state: EngineState, text: string, x: number, y: num
   });
 }
 
+function announceEnvironmentTransition(state: EngineState, callbacks: EngineCallbacks) {
+  const theme = environmentForScore(state.score);
+  if (theme.minScore === 0 || state.score !== theme.minScore) return;
+  triggerFloatingText(state, `✦ ${theme.label}`, state.width * 0.5, state.height * 0.30, theme.accent, true);
+  addBurst(state, state.width * 0.5, state.height * 0.36, theme.speck, 16, 1.8);
+  callbacks.onFloatingText?.(`Entered ${theme.label}`, state.width * 0.5, state.height * 0.30, theme.accent, true);
+}
+
 export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCallbacks, settings: { vibration: boolean }) {
   if (!state.running) return;
   const dt = Math.min(2.2, dtMs / 16.67);
@@ -532,7 +579,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   state.elapsedSinceSpawn += dtMs;
   // Keep enough horizontal breathing room between pipe gates. The timer stays
   // armed until the previous gate moves on, rather than forcing an overlap.
-  const gateSpacingClear = state.obstacles.every((obstacle) => obstacle.x < state.width * 0.62);
+  const gateSpacingClear = state.obstacles.every((obstacle) => obstacle.x < state.width * 0.52);
   if (state.elapsedSinceSpawn >= spawnInterval && gateSpacingClear) {
     spawnObstacle(state, state.score);
     state.elapsedSinceSpawn = 0;
@@ -576,6 +623,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       obs.passed = true;
       state.score += 1;
       callbacks.onScore(state.score);
+      announceEnvironmentTransition(state, callbacks);
     }
 
     // Near Miss system
@@ -602,7 +650,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     }
 
     if (!invincible && !isFeverActive) {
-      const withinX = fishX + BASE.fishRadius > obs.x - BASE.obstacleWidth / 2 && fishX - BASE.fishRadius < obs.x + BASE.obstacleWidth / 2;
+      const withinX = fishX + FAIR_FISH_HITBOX_RADIUS > obs.x - BASE.obstacleWidth / 2 && fishX - FAIR_FISH_HITBOX_RADIUS < obs.x + BASE.obstacleWidth / 2;
       if (withinX) {
         const topGapEdge = obs.gapY - obs.gapSize / 2;
         const bottomGapEdge = obs.gapY + obs.gapSize / 2;
@@ -610,11 +658,11 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (obs.isDouble) {
           const secondTop = bottomGapEdge + 58;
           const secondBottom = secondTop + 52;
-          const inGap1 = state.fishY - BASE.fishRadius >= topGapEdge && state.fishY + BASE.fishRadius <= bottomGapEdge;
-          const inGap2 = state.fishY - BASE.fishRadius >= secondTop && state.fishY + BASE.fishRadius <= secondBottom;
+          const inGap1 = state.fishY - FAIR_FISH_HITBOX_RADIUS >= topGapEdge && state.fishY + FAIR_FISH_HITBOX_RADIUS <= bottomGapEdge;
+          const inGap2 = state.fishY - FAIR_FISH_HITBOX_RADIUS >= secondTop && state.fishY + FAIR_FISH_HITBOX_RADIUS <= secondBottom;
           safe = inGap1 || inGap2;
         } else {
-          safe = !(state.fishY - BASE.fishRadius < topGapEdge || state.fishY + BASE.fishRadius > bottomGapEdge);
+          safe = !(state.fishY - FAIR_FISH_HITBOX_RADIUS < topGapEdge || state.fishY + FAIR_FISH_HITBOX_RADIUS > bottomGapEdge);
         }
         if (!safe) {
           if (state.shieldCharges > 0) {
@@ -646,8 +694,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
     // Collision with Shark
     if (!invincible && !isFeverActive) {
-      const withinX = fishX + BASE.fishRadius > shark.x - shark.width / 2 && fishX - BASE.fishRadius < shark.x + shark.width / 2;
-      const withinY = state.fishY + BASE.fishRadius > shark.y - shark.height / 2 && state.fishY - BASE.fishRadius < shark.y + shark.height / 2;
+      const withinX = fishX + FAIR_FISH_HITBOX_RADIUS > shark.x - shark.width * 0.42 && fishX - FAIR_FISH_HITBOX_RADIUS < shark.x + shark.width * 0.42;
+      const withinY = state.fishY + FAIR_FISH_HITBOX_RADIUS > shark.y - shark.height * 0.40 && state.fishY - FAIR_FISH_HITBOX_RADIUS < shark.y + shark.height * 0.40;
       if (withinX && withinY) {
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
@@ -673,7 +721,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dx = mine.x - fishX;
       const dy = mine.y - state.fishY;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < BASE.fishRadius + mine.radius) {
+      if (distance < FAIR_FISH_HITBOX_RADIUS + mine.radius * 0.78) {
         mine.exploded = true;
         // Explode!
         callbacks.onShake(12);
@@ -704,7 +752,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dx = jelly.x - fishX;
       const dy = jelly.y - state.fishY;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < BASE.fishRadius + jelly.radius) {
+      if (distance < FAIR_FISH_HITBOX_RADIUS + jelly.radius * 0.76) {
         // Shock!
         callbacks.onShake(6);
         callbacks.onRedFlash?.();
@@ -911,12 +959,81 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   void settings;
 }
 
+function drawEnvironmentDecor(ctx: CanvasRenderingContext2D, state: EngineState, theme: EnvironmentTheme) {
+  const { width, height } = state;
+  const drift = state.timeMs * 0.00035;
+  ctx.save();
+
+  if (theme.id === 'coral') {
+    ctx.globalAlpha = 0.45;
+    for (let i = 0; i < 9; i++) {
+      const x = (i * 71 + 24) % (width + 60) - 30;
+      const y = height - 24 - ((i * 37) % 85);
+      ctx.fillStyle = i % 2 ? '#ff856f' : '#ffbf80';
+      ctx.beginPath();
+      ctx.arc(x, y, 8 + (i % 3) * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x + 8, y + 9, 5 + (i % 2) * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (theme.id === 'kelp') {
+    ctx.globalAlpha = 0.42;
+    ctx.strokeStyle = '#77bd55';
+    ctx.lineWidth = 6;
+    for (let i = 0; i < 7; i++) {
+      const x = (width / 6) * i - 10;
+      const h = 95 + (i % 3) * 42;
+      ctx.beginPath();
+      ctx.moveTo(x, height);
+      ctx.bezierCurveTo(x - 18, height - h * 0.35, x + 23, height - h * 0.70, x + Math.sin(drift + i) * 16, height - h);
+      ctx.stroke();
+    }
+  } else if (theme.id === 'ruins' || theme.id === 'temple') {
+    ctx.globalAlpha = theme.id === 'temple' ? 0.34 : 0.24;
+    ctx.fillStyle = theme.id === 'temple' ? '#1d6080' : '#303d8b';
+    for (let i = 0; i < 4; i++) {
+      const x = 30 + i * (width / 3.2);
+      const h = 72 + (i % 2) * 45;
+      ctx.fillRect(x, height - h, 16, h);
+      ctx.fillRect(x - 8, height - h - 9, 32, 10);
+      if (theme.id === 'temple') {
+        ctx.fillStyle = '#63eee2';
+        ctx.fillRect(x + 6, height - h + 13, 3, h * 0.48);
+        ctx.fillStyle = '#1d6080';
+      }
+    }
+  } else if (theme.id === 'volcanic') {
+    ctx.globalAlpha = 0.40;
+    ctx.fillStyle = '#602938';
+    for (let i = 0; i < 6; i++) {
+      const x = i * (width / 5) - 20;
+      ctx.beginPath();
+      ctx.moveTo(x, height);
+      ctx.lineTo(x + 24, height - 58 - (i % 2) * 22);
+      ctx.lineTo(x + 53, height);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ff9e57';
+    for (let i = 0; i < 12; i++) {
+      const x = (i * 73 + 31) % width;
+      const y = height - 40 - ((i * 61 + state.timeMs * 0.012) % (height * 0.62));
+      ctx.beginPath();
+      ctx.arc(x, y, 1.2 + (i % 3) * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   const { width, height } = state;
-  const tier = getDifficultyTier(state.score);
+  const theme = environmentForScore(state.score);
 
-  // Custom beautiful, radiant sea-blue background gradients
-  const [c1] = tier.bg;
+  // Each score band changes the water palette and physical environment.
+  const c1 = theme.mid;
   const grad = ctx.createLinearGradient(0, 0, 0, height);
 
   // Check if Fever Mode is active to shift background into shifting rainbow color space
@@ -927,17 +1044,17 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
     grad.addColorStop(0.5, `hsl(${(feverHue + 120) % 360}, 75%, 20%)`);
     grad.addColorStop(1, '#000814');
   } else {
-    grad.addColorStop(0, '#0277bd'); // Beautiful lighter marine blue at top
-    grad.addColorStop(0.4, c1);
-    grad.addColorStop(1, '#001021'); // Deep sea dark blue
+    grad.addColorStop(0, theme.top);
+    grad.addColorStop(0.46, c1);
+    grad.addColorStop(1, theme.bottom);
   }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
   drawWaterTexture(ctx, state);
 
-  if (state.score >= 100 && !isFever) {
+  if (!isFever && theme.id === 'temple') {
     const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
-    ctx.fillStyle = `rgba(255, 214, 10, ${0.05 + pulse * 0.06})`;
+    ctx.fillStyle = `rgba(76, 240, 225, ${0.035 + pulse * 0.045})`;
     ctx.fillRect(0, 0, width, height);
   }
 
@@ -957,7 +1074,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
       rayGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
       rayGrad.addColorStop(1, 'transparent');
     } else {
-      rayGrad.addColorStop(0, '#e0f7fa');
+      rayGrad.addColorStop(0, theme.ray);
       rayGrad.addColorStop(1, 'transparent');
     }
     ctx.fillStyle = rayGrad;
@@ -965,10 +1082,12 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   }
   ctx.restore();
 
+  drawEnvironmentDecor(ctx, state, theme);
+
   // 2. Far fish shadows (floating silhouettes with parallax)
   ctx.save();
   ctx.globalAlpha = 0.18;
-  ctx.fillStyle = '#011124';
+  ctx.fillStyle = theme.pillarDark;
   for (let i = 0; i < 4; i++) {
     const fx = ((state.timeMs * 0.018 * (1 + i * 0.1) + i * 250) % (width + 300)) - 150;
     const fy = 80 + ((i * 123) % (height - 200)) + Math.sin(state.timeMs * 0.001 + i) * 15;
@@ -989,9 +1108,11 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   for (const b of state.bubbles) {
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = theme.speck;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.globalAlpha = 0.34;
+    ctx.strokeStyle = theme.speck;
     ctx.lineWidth = 1;
     ctx.stroke();
   }
@@ -1000,7 +1121,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   // 4. Seaweeds & beautiful coral decor at the bottom
   ctx.save();
   ctx.globalAlpha = 0.42;
-  ctx.fillStyle = tier.name === 'Easy' ? '#004d40' : '#002d3f';
+  ctx.fillStyle = theme.id === 'coral' ? '#5a254f' : theme.id === 'kelp' ? '#164d36' : theme.pillarDark;
   for (let i = 0; i < 10; i++) {
     const cx = (width / 9) * i + Math.sin(state.timeMs * 0.0006 + i) * 10;
     const h = 40 + ((i * 47) % 65);
@@ -1022,34 +1143,72 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.fillRect(0, 0, width, 8);
 }
 
+function drawColumnDetail(ctx: CanvasRenderingContext2D, x: number, yStart: number, yEnd: number, w: number, theme: EnvironmentTheme) {
+  if (yEnd - yStart < 26) return;
+  ctx.save();
+  ctx.globalAlpha = 0.32;
+  ctx.strokeStyle = theme.accent;
+  ctx.fillStyle = theme.accent;
+  ctx.lineWidth = 1.4;
+
+  for (let y = yStart + 22; y < yEnd - 12; y += 34) {
+    if (theme.id === 'coral') {
+      ctx.beginPath();
+      ctx.arc(x + w * 0.30, y, 4, 0, Math.PI * 2);
+      ctx.arc(x + w * 0.58, y + 7, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (theme.id === 'kelp') {
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.28, y + 9);
+      ctx.quadraticCurveTo(x + w * 0.52, y - 10, x + w * 0.70, y + 8);
+      ctx.stroke();
+    } else if (theme.id === 'ruins' || theme.id === 'temple') {
+      ctx.strokeRect(x + w * 0.34, y - 5, w * 0.28, 10);
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.40, y);
+      ctx.lineTo(x + w * 0.56, y);
+      ctx.stroke();
+    } else if (theme.id === 'volcanic') {
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.32, y - 8);
+      ctx.lineTo(x + w * 0.58, y);
+      ctx.lineTo(x + w * 0.42, y + 11);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.28, y);
+      ctx.quadraticCurveTo(x + w * 0.50, y - 10, x + w * 0.72, y);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: number) {
   const topGapEdge = obs.gapY - obs.gapSize / 2;
   const bottomGapEdge = obs.gapY + obs.gapSize / 2;
   const w = BASE.obstacleWidth;
   const x = obs.x - w / 2;
+  const theme = ENVIRONMENTS.find((item) => item.id === obs.environment) ?? ENVIRONMENTS[0];
 
-  // High quality gradient for the pillars
+  // Material and palette now belong to the environment, not only a late-game
+  // gold variant. The opening itself remains simple and high contrast.
   const grad = ctx.createLinearGradient(x, 0, x + w, 0);
-  if (obs.glowing) {
-    grad.addColorStop(0, '#ffd60a');
-    grad.addColorStop(0.5, '#fff066');
-    grad.addColorStop(1, '#ff9500');
-  } else {
-    grad.addColorStop(0, '#1d7870');
-    grad.addColorStop(0.5, '#40c4b4');
-    grad.addColorStop(1, '#0e4d46');
-  }
+  grad.addColorStop(0, theme.pillarDark);
+  grad.addColorStop(0.5, theme.pillarMid);
+  grad.addColorStop(1, theme.pillarDark);
 
   ctx.fillStyle = grad;
-  if (obs.glowing) {
+  if (theme.id === 'temple') {
     ctx.save();
-    ctx.shadowColor = '#ffe066';
-    ctx.shadowBlur = 22;
+    ctx.shadowColor = theme.accent;
+    ctx.shadowBlur = 12;
   }
 
   // Draw TOP Pillar with nice rounded cap
   ctx.fillRect(x, 0, w, topGapEdge - 15);
-  ctx.fillStyle = obs.glowing ? '#ffd60a' : '#5cd6c6';
+  ctx.fillStyle = theme.cap;
   ctx.fillRect(x - 5, topGapEdge - 18, w + 10, 18);
 
   // Draw BOTTOM Pillar with nice rounded cap
@@ -1061,24 +1220,27 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
     ctx.fillStyle = grad;
     ctx.fillRect(x, bottomGapEdge + 15, w, secondTop - (bottomGapEdge + 15));
     // Caps for the middle segment
-    ctx.fillStyle = obs.glowing ? '#ffd60a' : '#5cd6c6';
+    ctx.fillStyle = theme.cap;
     ctx.fillRect(x - 5, bottomGapEdge, w + 10, 15);
     ctx.fillRect(x - 5, secondTop - 15, w + 10, 15);
 
     // Draw the bottommost segment pillar
     ctx.fillStyle = grad;
     ctx.fillRect(x, secondBottom + 15, w, height - (secondBottom + 15));
-    ctx.fillStyle = '#e63946'; // Red visual warning indicator
+    ctx.fillStyle = theme.cap;
     ctx.fillRect(x - 5, secondBottom, w + 10, 15);
   } else {
     // Normal single bottom pillar
     ctx.fillStyle = grad;
     ctx.fillRect(x, bottomGapEdge + 15, w, height - bottomGapEdge - 15);
-    ctx.fillStyle = obs.glowing ? '#ffd60a' : '#5cd6c6';
+    ctx.fillStyle = theme.cap;
     ctx.fillRect(x - 5, bottomGapEdge, w + 10, 18);
   }
 
-  if (obs.glowing) ctx.restore();
+  drawColumnDetail(ctx, x, 0, topGapEdge - 18, w, theme);
+  if (!obs.isDouble) drawColumnDetail(ctx, x, bottomGapEdge + 18, height, w, theme);
+
+  if (theme.id === 'temple') ctx.restore();
 }
 
 function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: number, invincible: boolean) {
@@ -1102,17 +1264,19 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.rotate(state.fishRotation);
 
   {
-    if (id === 'legendary' || isFever) {
+    // The hero skin keeps its clean silhouette; the circular aura is reserved
+    // for the temporary Fever power-up so it always communicates a state.
+    if (isFever) {
       ctx.save();
       ctx.globalAlpha = 0.28 + pulse * 0.2;
       ctx.beginPath();
       ctx.ellipse(0, 0, r * 1.9, r * 1.35, 0, 0, Math.PI * 2);
-      ctx.fillStyle = isFever ? `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)` : glow;
+      ctx.fillStyle = `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)`;
       ctx.fill();
       ctx.globalAlpha = 0.5 + pulse * 0.25;
       ctx.beginPath();
       ctx.ellipse(0, 0, r * 1.6, r * 1.12, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = isFever ? `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)` : glow;
+      ctx.strokeStyle = `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)`;
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.restore();
@@ -1601,12 +1765,13 @@ function drawJellyfish(ctx: CanvasRenderingContext2D, jelly: Jellyfish, timeMs: 
 
 function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   if (coin.collected) return;
-  const angle = (timeMs * 0.0035) % (Math.PI * 2);
-  const scaleX = Math.abs(Math.cos(angle));
+  // Coins float gently rather than flipping edge-on, which could look like a
+  // visual stutter on a fast phone display.
+  const scaleX = 0.96 + Math.sin(timeMs * 0.002 + coin.x) * 0.035;
 
   ctx.save();
-  ctx.translate(coin.x, coin.y + Math.sin(timeMs * 0.0018 + coin.x) * 1.5);
-  ctx.scale(scaleX, 1);
+  ctx.translate(coin.x, coin.y + Math.sin(timeMs * 0.00115 + coin.x) * 0.85);
+  ctx.scale(scaleX, scaleX);
 
   ctx.beginPath();
   ctx.arc(0, 0, coin.bonus ? 12 : 9, 0, Math.PI * 2);
@@ -1629,9 +1794,9 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
 function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   if (gem.collected) return;
 
-  // Gentle heartbeat pulse effect
-  const pulse = 1.0 + 0.12 * Math.sin(timeMs * 0.008 + gem.x * 0.05);
-  const bobY = Math.sin(timeMs * 0.0025 + gem.x) * 2.0;
+  // Slow buoyant motion keeps life drops readable and calm.
+  const pulse = 1.0 + 0.045 * Math.sin(timeMs * 0.003 + gem.x * 0.05);
+  const bobY = Math.sin(timeMs * 0.0012 + gem.x) * 0.9;
 
   ctx.save();
   ctx.translate(gem.x, gem.y + bobY);
@@ -1698,7 +1863,7 @@ function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
 
 function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number) {
   if (pu.collected) return;
-  const bob = Math.sin(timeMs * 0.0018 + pu.x) * 1.5;
+  const bob = Math.sin(timeMs * 0.0011 + pu.x) * 0.75;
   ctx.save();
   ctx.translate(pu.x, pu.y + bob);
 
@@ -1760,7 +1925,7 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
     ctx.rotate(Math.PI * 0.15); // slightly tilted for dynamic cartoon feel
 
     // Draw background pulsating magnetic waves
-    const wavePulse = (Math.sin(timeMs * 0.015) + 1) / 2;
+    const wavePulse = (Math.sin(timeMs * 0.006) + 1) / 2;
     ctx.strokeStyle = `rgba(0, 229, 255, ${0.3 + wavePulse * 0.4})`;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -2003,11 +2168,11 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
 
 function drawBubbleBoostRing(ctx: CanvasRenderingContext2D, ring: BubbleBoostRing, timeMs: number) {
   if (ring.collected) return;
-  const bob = Math.sin(timeMs * 0.0018 + ring.x) * 1.5;
+  const bob = Math.sin(timeMs * 0.001 + ring.x) * 0.65;
   ctx.save();
   ctx.translate(ring.x, ring.y + bob);
 
-  const pulse = (Math.sin(timeMs * 0.008) + 1) / 2;
+  const pulse = (Math.sin(timeMs * 0.0035) + 1) / 2;
   ctx.shadowColor = '#00e5ff';
   ctx.shadowBlur = 16 + pulse * 8;
 
@@ -2029,11 +2194,11 @@ function drawBubbleBoostRing(ctx: CanvasRenderingContext2D, ring: BubbleBoostRin
 
 function drawTreasureChest(ctx: CanvasRenderingContext2D, chest: TreasureChest, timeMs: number) {
   if (chest.collected) return;
-  const wobble = Math.sin(timeMs * 0.0015 + chest.x) * 1.1;
+  const wobble = Math.sin(timeMs * 0.0009 + chest.x) * 0.5;
   ctx.save();
   ctx.translate(chest.x + chest.width / 2, chest.y + chest.height / 2 + wobble);
 
-  const pulse = (Math.sin(timeMs * 0.006) + 1) / 2;
+  const pulse = (Math.sin(timeMs * 0.0028) + 1) / 2;
   ctx.shadowColor = '#ffb300';
   ctx.shadowBlur = 12 + pulse * 6;
 
@@ -2095,8 +2260,10 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   ctx.clearRect(0, 0, width, height);
   ctx.save();
   if (state.shakeIntensity > 0.2) {
-    const dx = (Math.random() - 0.5) * state.shakeIntensity;
-    const dy = (Math.random() - 0.5) * state.shakeIntensity;
+    // A deterministic, easing sway avoids the harsh frame-to-frame jitter of
+    // random camera offsets while preserving clear hit feedback.
+    const dx = Math.sin(state.timeMs * 0.045) * state.shakeIntensity * 0.28;
+    const dy = Math.cos(state.timeMs * 0.052) * state.shakeIntensity * 0.20;
     ctx.translate(dx, dy);
   }
   drawBackground(ctx, state);

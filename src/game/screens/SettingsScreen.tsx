@@ -119,8 +119,6 @@ function SkinPreview({ skinId }: { skinId: SkinId }) {
 
   return wrap(
     <svg viewBox="0 0 80 52" width="62" height="44" style={{ overflow: 'visible' }}>
-      <ellipse cx="42" cy="26" rx="32" ry="22" fill={glow} opacity="0.22" />
-      <ellipse cx="42" cy="26" rx="28" ry="19" fill="none" stroke={glow} strokeWidth="2.5" opacity="0.55" />
       <path d="M12 26 C2 10 0 8 14 12 C6 18 6 26 6 26 C6 26 6 34 14 40 C0 44 2 42 12 26 Z" fill="#1a1a1a" />
       <path d="M14 26 C8 16 10 14 18 16 C12 20 12 26 12 26 C12 26 12 32 18 36 C10 38 8 36 14 26 Z" fill="#fffbe6" opacity="0.7" />
       <path d="M16 26 C16 12 26 4 42 5 C56 6 66 14 68 26 C66 38 56 46 42 47 C26 48 16 40 16 26 Z" fill="#1a1a1a" />

@@ -23,3 +23,11 @@ The upgraded game uses a **premium cartoon ocean-arcade** style: an expressive g
 ## Generation note
 
 A visual reference was requested through the built-in image generator for this phase, but the free daily image-generation quota was exhausted. The character overhaul therefore uses original Canvas vector illustration and the existing CC0 water texture; no unverified third-party character sprites will be imported.
+
+## Environment progression reference
+
+**Visual target:** `/home/ubuntu/golden-fish-dash-reviews/environment-progression-visual-target.png`
+
+**Direction:** A clear player route through hand-painted underwater environments that evolve from bright lagoon water to coral reef, kelp forest, twilight ruins, volcanic vents, and bioluminescent temple waters. Gate silhouettes stay simple and readable; the environment carries the color and material variation through coral, stone, vines, runes, and subtle light specks.
+
+**Generation prompt:** Premium portrait 2D underwater arcade scene with a golden-and-turquoise player fish, cyan rune stone pillars, violet coral, deep cobalt water, distant ruins, and a visibly safe center corridor. Generated on 2026-08-15 for this branch.

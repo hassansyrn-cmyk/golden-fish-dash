@@ -62,8 +62,6 @@ function FishIcon({ skinId }: { skinId: SkinId }) {
 
   return (
     <svg viewBox="0 0 80 52" width="120" height="78" style={{ overflow: 'visible', filter: `drop-shadow(0 0 18px ${glow})` }}>
-      <ellipse cx="42" cy="26" rx="32" ry="22" fill={glow} opacity="0.25" />
-      <ellipse cx="42" cy="26" rx="28" ry="19" fill="none" stroke={glow} strokeWidth="2.5" opacity="0.55" />
       <path d="M12 26 C2 10 0 8 14 12 C6 18 6 26 6 26 C6 26 6 34 14 40 C0 44 2 42 12 26 Z" fill="#1a1a1a" />
       <path d="M16 26 C16 12 26 4 42 5 C56 6 66 14 68 26 C66 38 56 46 42 47 C26 48 16 40 16 26 Z" fill="#1a1a1a" />
       <path d="M30 8 C32 26 32 26 30 44 C42 44 44 26 42 8 Z" fill="#ffd60a" />
