@@ -7,22 +7,22 @@ import GameOverScreen from './screens/GameOverScreen';
 import ContinueAdScreen from './screens/ContinueAdScreen';
 import PauseScreen from './screens/PauseScreen';
 import LoadingScreen from './screens/LoadingScreen';
+import ReadyScreen from './screens/ReadyScreen';
 import AchievementsModal from './screens/AchievementsModal';
 import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
 import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import LuckySpinScreen from './screens/LuckySpinScreen';
-import { BannerAd, InterstitialAd } from './AdPlaceholders';
+import { BannerAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
+import { audioManager } from './managers/AudioManager';
+import { useI18n } from './i18n';
 import {
   getSelectedSkin,
-  incrementGameOverCount,
+  getSettings,
   markUsedSecondChanceEver,
   unlockAchievement,
-  getShopItemCount,
-  consumeShopItem,
-  getShopInventory,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
@@ -96,22 +96,46 @@ const HeartIcon = ({ full }: { full: boolean }) => {
   );
 };
 
+const ShieldIcon = ({ full }: { full: boolean }) => (
+  <svg width="25" height="25" viewBox="0 0 24 24" aria-hidden="true">
+    <defs>
+      <linearGradient id="shield-grad-full" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#e4fbff" />
+        <stop offset="44%" stopColor="#4fc3f7" />
+        <stop offset="100%" stopColor="#1565c0" />
+      </linearGradient>
+      <linearGradient id="shield-grad-empty" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="rgba(220, 245, 255, 0.30)" />
+        <stop offset="100%" stopColor="rgba(50, 85, 130, 0.16)" />
+      </linearGradient>
+    </defs>
+    <path
+      d="M12 2.4 20 5.6v5.8c0 5.05-3.28 8.6-8 10.22C7.28 20 4 16.45 4 11.4V5.6L12 2.4Z"
+      fill={full ? 'url(#shield-grad-full)' : 'url(#shield-grad-empty)'}
+      stroke={full ? '#b3ecff' : 'rgba(255,255,255,0.42)'}
+      strokeWidth="1.25"
+    />
+    {full && <path d="m8.2 11.9 2.25 2.15 5.2-5.25" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />}
+  </svg>
+);
+
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
-const MAGNET_SHOP_DURATION = 8000;
-
+const MAX_VISIBLE_SHIELDS = 2;
 export default function GoldenFishRush() {
+  const { t } = useI18n();
   const [screen, setScreen] = useState<ScreenName>('loading');
   const [finalScore, setFinalScore] = useState(0);
   const [usedSecondChanceThisRun, setUsedSecondChanceThisRun] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
-  const [showInterstitial, setShowInterstitial] = useState(false);
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
   const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
+  const [showExitHint, setShowExitHint] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
   const backListenerRef = useRef<any>(null);
+  const exitConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
@@ -147,7 +171,19 @@ export default function GoldenFishRush() {
         } else if (screen === 'continueAd') {
           setScreen('gameover');
         } else if (screen === 'menu') {
-          // Allow default exit behavior on main menu
+          if (exitConfirmTimerRef.current) {
+            clearTimeout(exitConfirmTimerRef.current);
+            exitConfirmTimerRef.current = null;
+            setShowExitHint(false);
+            void App.exitApp();
+          } else {
+            audioManager.playSound('back', getSettings().sound);
+            setShowExitHint(true);
+            exitConfirmTimerRef.current = setTimeout(() => {
+              exitConfirmTimerRef.current = null;
+              setShowExitHint(false);
+            }, 2000);
+          }
         } else {
           setScreen('menu');
         }
@@ -161,6 +197,11 @@ export default function GoldenFishRush() {
         backListenerRef.current.remove();
         backListenerRef.current = null;
       }
+      if (exitConfirmTimerRef.current) {
+        clearTimeout(exitConfirmTimerRef.current);
+        exitConfirmTimerRef.current = null;
+      }
+      setShowExitHint(false);
     };
   }, [screen]);
 
@@ -173,6 +214,7 @@ export default function GoldenFishRush() {
   );
 
   const keepEngineAlive =
+    screen === 'ready' ||
     screen === 'playing' ||
     screen === 'paused' ||
     screen === 'continueAd' ||
@@ -180,13 +222,24 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, roundCoins, lives, doJump, reviveAt, engineStateRef } = useGameEngine({
+  const {
+    score,
+    roundCoins,
+    lives,
+    shieldCharges,
+    magnetRemainingMs,
+    feverRemainingMs,
+    hourglassRemainingMs,
+    dropRushRemainingMs,
+    miniChallenge,
+    doJump,
+    reviveAt,
+  } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
     onGameOver: handleGameOver,
-    hide2DFish: false,
   });
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
@@ -194,10 +247,9 @@ export default function GoldenFishRush() {
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
-    setShowInterstitial(false);
     setNewUnlocks(null);
 
-    setScreen('playing');
+    setScreen('ready');
   }, []);
 
   const handleWatchAd = useCallback(() => {
@@ -232,14 +284,6 @@ export default function GoldenFishRush() {
   }, [reviveCountdown]);
 
   useEffect(() => {
-    if (screen !== 'gameover') return;
-    const count = incrementGameOverCount();
-    if (count % 3 === 0) {
-      setShowInterstitial(true);
-    }
-  }, [screen]);
-
-  useEffect(() => {
     if (screen !== 'playing') return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
@@ -269,7 +313,13 @@ export default function GoldenFishRush() {
   }, []);
 
   const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
-
+  const visibleShields = Math.max(0, Math.min(shieldCharges, MAX_VISIBLE_SHIELDS));
+  const activePowerUps = [
+    { id: 'magnet', icon: '🧲', label: t('hud.magnet'), remainingMs: magnetRemainingMs, color: '#ffb74d' },
+    { id: 'fever', icon: '✦', label: t('hud.fever'), remainingMs: feverRemainingMs, color: '#f48fb1' },
+    { id: 'slow', icon: '⌛', label: t('hud.slow'), remainingMs: hourglassRemainingMs, color: '#80deea' },
+    { id: 'drop-rush', icon: '✦', label: t('hud.dropRush'), remainingMs: dropRushRemainingMs, color: '#fff176' },
+  ].filter((powerUp) => powerUp.remainingMs > 0);
   const handleOpenShop = useCallback(() => {
     setScreen('shop');
   }, []);
@@ -327,22 +377,69 @@ export default function GoldenFishRush() {
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
-            <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`} style={{ display: 'flex', alignItems: 'center' }}>
-              {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => {
-                const isFull = index < visibleLives;
-                return (
-                  <span
-                    key={index}
-                    className={isFull ? 'hud-heart-wrapper hud-heart-full' : 'hud-heart-wrapper hud-heart-empty'}
-                    style={{ display: 'inline-flex', alignItems: 'center' }}
-                  >
-                    <HeartIcon full={isFull} />
-                  </span>
-                );
-              })}
+            <div className="hud-resource-stack">
+              <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`}>
+                {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => {
+                  const isFull = index < visibleLives;
+                  return (
+                    <span
+                      key={index}
+                      className={isFull ? 'hud-heart-wrapper hud-heart-full' : 'hud-heart-wrapper hud-heart-empty'}
+                    >
+                      <HeartIcon full={isFull} />
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div className="hud-shields" aria-label={`Shield charges: ${visibleShields} of ${MAX_VISIBLE_SHIELDS}`}>
+                {Array.from({ length: MAX_VISIBLE_SHIELDS }).map((_, index) => {
+                  const isFull = index < visibleShields;
+                  return (
+                    <span key={index} className={isFull ? 'hud-shield-wrapper hud-shield-full' : 'hud-shield-wrapper hud-shield-empty'}>
+                      <ShieldIcon full={isFull} />
+                    </span>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="hud-score">{score}</div>
+
+            {(activePowerUps.length > 0 || miniChallenge) && (
+              <div className="hud-status-stack">
+                {activePowerUps.length > 0 && (
+                    <div className="hud-powerups" aria-label={t('hud.activePowerUps')}>
+                    {activePowerUps.map((powerUp) => (
+                      <div
+                        key={powerUp.id}
+                        className="hud-powerup-chip"
+                        style={{ borderColor: powerUp.color, boxShadow: `0 0 12px ${powerUp.color}55` }}
+                      >
+                        <span className="hud-powerup-icon">{powerUp.icon}</span>
+                        <span>{powerUp.label} {Math.max(1, Math.ceil(powerUp.remainingMs / 1000))}s</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {miniChallenge && (
+                  <div className={`hud-challenge hud-challenge-${miniChallenge.status}`} aria-live="polite">
+                    <div className="hud-challenge-heading">
+                      <span>{miniChallenge.status === 'complete' ? t('challenge.complete') : miniChallenge.status === 'failed' ? t('challenge.tryAgain') : miniChallenge.id === 'coin-sprint' ? t('challenge.coinSprint') : t('challenge.comboRush')}</span>
+                      {miniChallenge.status === 'active' && <strong>{Math.max(1, Math.ceil(miniChallenge.remainingMs / 1000))}s</strong>}
+                    </div>
+                    <div className="hud-challenge-objective">
+                      {miniChallenge.status === 'complete'
+                        ? t('challenge.rewardEarned', { coins: miniChallenge.rewardCoins })
+                        : miniChallenge.status === 'failed'
+                          ? t('challenge.expired')
+                          : `${miniChallenge.id === 'coin-sprint' ? t('challenge.collectCoins') : t('challenge.buildCombo')}: ${miniChallenge.progress}/${miniChallenge.target}`}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {screen === 'playing' && (
               <button
@@ -365,7 +462,16 @@ export default function GoldenFishRush() {
           </div>
         )}
 
+        {showExitHint && screen === 'menu' && (
+          <div className="exit-confirm-toast" role="status" aria-live="polite">
+            <span className="exit-confirm-icon">↩</span>
+            <span>{t('exit.question')}<br /><strong>{t('exit.confirm')}</strong></span>
+          </div>
+        )}
+
         {screen === 'loading' && <LoadingScreen />}
+
+        {screen === 'ready' && <ReadyScreen onComplete={() => setScreen('playing')} />}
 
         {screen === 'menu' && (
           <MainMenu
@@ -425,7 +531,6 @@ export default function GoldenFishRush() {
 
         {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
 
-        {showInterstitial && <InterstitialAd onClose={() => setShowInterstitial(false)} />}
       </div>
 
       {screen === 'menu' && (

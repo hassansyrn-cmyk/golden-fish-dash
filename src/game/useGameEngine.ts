@@ -24,7 +24,6 @@ import {
 import type { EngineState } from './engine';
 import type { SkinId } from './types';
 import { audioManager } from './managers/AudioManager';
-import type { SoundName } from './managers/AudioManager';
 
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -32,6 +31,58 @@ interface UseGameEngineOptions {
   paused: boolean;
   skin: SkinId;
   onGameOver: (finalScore: number) => void;
+}
+
+interface HudState {
+  shieldCharges: number;
+  magnetRemainingMs: number;
+  feverRemainingMs: number;
+  hourglassRemainingMs: number;
+  dropRushRemainingMs: number;
+}
+
+type MiniChallengeKind = 'coins' | 'combo';
+type MiniChallengeStatus = 'active' | 'complete' | 'failed';
+
+interface MiniChallengeTemplate {
+  id: string;
+  label: string;
+  objective: string;
+  kind: MiniChallengeKind;
+  target: number;
+  durationMs: number;
+  rewardCoins: number;
+}
+
+export interface MiniChallengeState extends MiniChallengeTemplate {
+  progress: number;
+  remainingMs: number;
+  startedAt: number;
+  status: MiniChallengeStatus;
+  resolvedAt?: number;
+}
+
+const MINI_CHALLENGE_TEMPLATES: MiniChallengeTemplate[] = [
+  { id: 'coin-sprint', label: 'COIN SPRINT', objective: 'Collect coins', kind: 'coins', target: 8, durationMs: 15_000, rewardCoins: 25 },
+  { id: 'combo-rush', label: 'COMBO RUSH', objective: 'Build a combo', kind: 'combo', target: 8, durationMs: 16_000, rewardCoins: 30 },
+];
+
+const EMPTY_HUD_STATE: HudState = {
+  shieldCharges: 0,
+  magnetRemainingMs: 0,
+  feverRemainingMs: 0,
+  hourglassRemainingMs: 0,
+  dropRushRemainingMs: 0,
+};
+
+function readHudState(engine: EngineState): HudState {
+  return {
+    shieldCharges: Math.max(0, Math.min(2, engine.shieldCharges)),
+    magnetRemainingMs: Math.max(0, engine.magnetUntil - engine.timeMs),
+    feverRemainingMs: Math.max(0, engine.feverUntil - engine.timeMs),
+    hourglassRemainingMs: Math.max(0, engine.hourglassUntil - engine.timeMs),
+    dropRushRemainingMs: Math.max(0, engine.boostUntil - engine.timeMs),
+  };
 }
 
 function safeVibrate(pattern: number | number[], enabled: boolean) {
@@ -46,17 +97,30 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
   }
 }
 
+function sizeCanvasForDisplay(canvas: HTMLCanvasElement, width: number, height: number) {
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+
+  const context = canvas.getContext('2d');
+  context?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+}
+
 export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
   const [lives, setLives] = useState(0);
+  const [hudState, setHudState] = useState<HudState>(EMPTY_HUD_STATE);
+  const [miniChallenge, setMiniChallenge] = useState<MiniChallengeState | null>(null);
 
   const stateRef = useRef<EngineState | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
   const roundCoinsRef = useRef(0);
   const lastMilestoneRef = useRef(0);
+  const lastHudRefreshRef = useRef(0);
+  const miniChallengeRef = useRef<MiniChallengeState | null>(null);
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
@@ -75,8 +139,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     const width = parent?.clientWidth ?? window.innerWidth;
     const height = parent?.clientHeight ?? window.innerHeight;
 
-    canvas.width = width;
-    canvas.height = height;
+    sizeCanvasForDisplay(canvas, width, height);
 
     const engine = createEngine(width, height, skin);
 
@@ -94,8 +157,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     if (inv.shield > 0 || shieldLvl > 0) {
       if (inv.shield > 0) consumeShopItem('shield');
-      // Upgrade increases starting shield charges
-      engine.shieldCharges = 1 + shieldLvl;
+      // Shield capacity is intentionally capped at two visible HUD slots.
+      engine.shieldCharges = Math.min(2, 1 + shieldLvl);
       incrementMissionProgress('m_shield', 1);
     }
 
@@ -108,8 +171,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     if (inv.magnet > 0 || magnetLvl > 0) {
       if (inv.magnet > 0) consumeShopItem('magnet');
-      // Upgrade increases starting magnet duration (8s base + 3s per level)
-      engine.magnetUntil = engine.timeMs + 8000 + (magnetLvl * 3000);
+      // Upgrade increases starting magnet duration (12s base + 3s per level).
+      engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
     }
     if (inv.gemBoost > 0 || gemLvl > 0) {
       if (inv.gemBoost > 0) consumeShopItem('gemBoost');
@@ -124,6 +187,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setRoundCoins(0);
     setCoins(getCoins());
     setLives(engine.lives ?? 0);
+    setHudState(readHudState(engine));
+    setMiniChallenge(null);
+    miniChallengeRef.current = null;
+    lastHudRefreshRef.current = 0;
   }, [canvasRef, skin]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
@@ -198,6 +265,21 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
               onScore: (newScore) => {
                 setScore(newScore);
 
+                if (!miniChallengeRef.current && newScore >= 8) {
+                  const template = MINI_CHALLENGE_TEMPLATES[Math.floor(Math.random() * MINI_CHALLENGE_TEMPLATES.length)];
+                  const challenge: MiniChallengeState = {
+                    ...template,
+                    progress: 0,
+                    remainingMs: template.durationMs,
+                    startedAt: state.timeMs,
+                    status: 'active',
+                  };
+                  miniChallengeRef.current = challenge;
+                  setMiniChallenge(challenge);
+                  audioManager.playSound('milestone', settings.sound);
+                  safeVibrate([16, 22], settings.vibration);
+                }
+
                 const milestone = Math.floor(newScore / 25);
 
                 if (milestone > lastMilestoneRef.current && newScore > 0) {
@@ -208,6 +290,29 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
               },
 
               onCoinCollect: (amount) => {
+                const challenge = miniChallengeRef.current;
+                if (challenge?.status === 'active') {
+                  const progress = challenge.kind === 'coins'
+                    ? Math.min(challenge.target, challenge.progress + amount)
+                    : Math.min(challenge.target, Math.max(challenge.progress, state.coinStreakCount));
+                  const updatedChallenge: MiniChallengeState = { ...challenge, progress };
+
+                  if (progress >= challenge.target) {
+                    updatedChallenge.status = 'complete';
+                    updatedChallenge.remainingMs = 0;
+                    updatedChallenge.resolvedAt = state.timeMs;
+                    const rewardTotal = addCoins(challenge.rewardCoins);
+                    roundCoinsRef.current += challenge.rewardCoins;
+                    setRoundCoins(roundCoinsRef.current);
+                    setCoins(rewardTotal);
+                    audioManager.playSound('achievement', settings.sound);
+                    safeVibrate([25, 18, 35], settings.vibration);
+                  }
+
+                  miniChallengeRef.current = updatedChallenge;
+                  setMiniChallenge(updatedChallenge);
+                }
+
                 // Apply Coin Multiplier Upgrade level directly to coin earnings (+1 coin per level)
                 const multLevel = getUpgradeLevel('coinMultiplier');
                 const bonusCoins = multLevel;
@@ -346,9 +451,41 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 setTimeout(() => audioManager.playSound('achievement', settings.sound), 150);
                 safeVibrate([30, 20, 50], settings.vibration);
               },
+
+              onPowerUpCollect: (type) => {
+                if (type === 'shield') {
+                  audioManager.playSound('shield', settings.sound);
+                  safeVibrate([18, 20, 28], settings.vibration);
+                } else if (type !== 'fever') {
+                  audioManager.playSound('powerup', settings.sound);
+                  safeVibrate(20, settings.vibration);
+                }
+              },
             },
             { vibration: settings.vibration },
           );
+
+          if (now - lastHudRefreshRef.current >= 100) {
+            lastHudRefreshRef.current = now;
+            setHudState(readHudState(state));
+
+            const challenge = miniChallengeRef.current;
+            if (challenge?.status === 'active') {
+              const remainingMs = Math.max(0, challenge.durationMs - (state.timeMs - challenge.startedAt));
+              if (remainingMs <= 0) {
+                const failedChallenge: MiniChallengeState = { ...challenge, remainingMs: 0, status: 'failed', resolvedAt: state.timeMs };
+                miniChallengeRef.current = failedChallenge;
+                setMiniChallenge(failedChallenge);
+              } else {
+                const tickingChallenge: MiniChallengeState = { ...challenge, remainingMs };
+                miniChallengeRef.current = tickingChallenge;
+                setMiniChallenge(tickingChallenge);
+              }
+            } else if (challenge?.resolvedAt && state.timeMs - challenge.resolvedAt > 2500) {
+              miniChallengeRef.current = null;
+              setMiniChallenge(null);
+            }
+          }
         }
 
         const ctx = canvas.getContext('2d');
@@ -373,8 +510,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       const width = parent?.clientWidth ?? window.innerWidth;
       const height = parent?.clientHeight ?? window.innerHeight;
 
-      canvas.width = width;
-      canvas.height = height;
+      sizeCanvasForDisplay(canvas, width, height);
 
       state.width = width;
       state.height = height;
@@ -410,8 +546,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     coins,
     roundCoins,
     lives,
-    shieldCharges: stateRef.current?.shieldCharges ?? 0,
-    magnetRemainingMs: Math.max(0, (stateRef.current?.magnetUntil ?? 0) - (stateRef.current?.timeMs ?? 0)),
+    shieldCharges: hudState.shieldCharges,
+    magnetRemainingMs: hudState.magnetRemainingMs,
+    feverRemainingMs: hudState.feverRemainingMs,
+    hourglassRemainingMs: hudState.hourglassRemainingMs,
+    dropRushRemainingMs: hudState.dropRushRemainingMs,
+    miniChallenge,
     doJump,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,

@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { getCoins, addCoins, getShopInventory, getSelectedSkin } from '../storage';
 import { dateKey } from '../constants';
 import { audioManager } from '../managers/AudioManager';
+import { useI18n } from '../i18n';
 
 interface Props {
   onBack: () => void;
 }
 
 interface Prize {
-  name: string;
+  nameKey: string;
   type: 'coins' | 'item';
   itemId?: 'shield' | 'magnet' | 'gemBoost' | 'continueToken';
   amount: number;
@@ -16,14 +17,14 @@ interface Prize {
 }
 
 const PRIZES: Prize[] = [
-  { name: '+50 Coins', type: 'coins', amount: 50, color: '#ffb703' },            // index 0: 25%
-  { name: 'Shield Charge', type: 'item', itemId: 'shield', amount: 1, color: '#2196f3' }, // index 1: 12%
-  { name: '+100 Coins', type: 'coins', amount: 100, color: '#fb8500' },          // index 2: 20%
-  { name: 'Coin Magnet', type: 'item', itemId: 'magnet', amount: 1, color: '#e91e63' },   // index 3: 10%
-  { name: '+150 Coins', type: 'coins', amount: 150, color: '#ffeb3b' },          // index 4: 15%
-  { name: 'Gem Boost', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },   // index 5: 8%
-  { name: '+300 Coins', type: 'coins', amount: 300, color: '#ff5722' },          // index 6: 5%
-  { name: 'Continue Token', type: 'item', itemId: 'continueToken', amount: 1, color: '#4caf50' }, // index 7: 5%
+  { nameKey: 'spin.prize.coin50', type: 'coins', amount: 50, color: '#ffb703' },
+  { nameKey: 'spin.prize.shield', type: 'item', itemId: 'shield', amount: 1, color: '#2196f3' },
+  { nameKey: 'spin.prize.coin100', type: 'coins', amount: 100, color: '#fb8500' },
+  { nameKey: 'spin.prize.magnet', type: 'item', itemId: 'magnet', amount: 1, color: '#e91e63' },
+  { nameKey: 'spin.prize.coin150', type: 'coins', amount: 150, color: '#ffeb3b' },
+  { nameKey: 'spin.prize.heart', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },
+  { nameKey: 'spin.prize.coin300', type: 'coins', amount: 300, color: '#ff5722' },
+  { nameKey: 'spin.prize.token', type: 'item', itemId: 'continueToken', amount: 1, color: '#4caf50' },
 ];
 
 const WEIGHTS = [25, 12, 20, 10, 15, 8, 5, 5];
@@ -41,6 +42,7 @@ function rollWeightedPrizeIndex(): number {
 }
 
 export default function LuckySpinScreen({ onBack }: Props) {
+  const { t } = useI18n();
   const [coins, setCoins] = useState(getCoins());
   const [isSpinning, setIsSubSpinning] = useState(false);
   const [hasFreeSpin, setHasFreeSpin] = useState(false);
@@ -111,7 +113,7 @@ export default function LuckySpinScreen({ onBack }: Props) {
       ctx.font = 'bold 11px sans-serif';
       ctx.shadowColor = 'rgba(0,0,0,0.6)';
       ctx.shadowBlur = 3;
-      ctx.fillText(prize.name, radius - 15, 0);
+      ctx.fillText(t(prize.nameKey), radius - 15, 0);
       ctx.restore();
     });
 
@@ -131,7 +133,7 @@ export default function LuckySpinScreen({ onBack }: Props) {
     ctx.font = 'bold 9px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('WIN', center, center);
+    ctx.fillText(t('spin.win'), center, center);
 
     // Draw pointer arrow (At the top of the wheel)
     ctx.fillStyle = '#ff1744';
@@ -148,7 +150,7 @@ export default function LuckySpinScreen({ onBack }: Props) {
 
   useEffect(() => {
     drawWheel(0);
-  }, []);
+  }, [t]);
 
   const spin = () => {
     if (isSpinning) return;
@@ -157,7 +159,7 @@ export default function LuckySpinScreen({ onBack }: Props) {
     const today = dateKey();
     if (!hasFreeSpin) {
       if (coins < cost) {
-        setResultMessage('Not enough coins!');
+        setResultMessage(t('spin.notEnough'));
         setTimeout(() => setResultMessage(null), 2000);
         return;
       }
@@ -225,12 +227,12 @@ export default function LuckySpinScreen({ onBack }: Props) {
         if (prize.type === 'coins') {
           const newTotal = addCoins(prize.amount);
           setCoins(newTotal);
-          setResultMessage(`Congratulations! You won ${prize.name}! 🪙`);
+          setResultMessage(t('spin.congratulations', { prize: t(prize.nameKey), icon: '🪙' }));
         } else if (prize.itemId) {
           const inv = getShopInventory();
           inv[prize.itemId] = (inv[prize.itemId] ?? 0) + prize.amount;
           localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-          setResultMessage(`Congratulations! You won ${prize.name}! 🎁`);
+          setResultMessage(t('spin.congratulations', { prize: t(prize.nameKey), icon: '🎁' }));
         }
 
         audioManager.playSound('reward', true);
@@ -246,13 +248,13 @@ export default function LuckySpinScreen({ onBack }: Props) {
     <div className="screen lucky-spin-screen" style={{ paddingTop: 'max(50px, env(safe-area-inset-top) + 20px)' }}>
       <div className="shop-header">
         <button className="btn btn-secondary" onClick={onBack}>
-          ← Back
+          ← {t('common.back')}
         </button>
-        <h2 className="screen-title">Lucky Spin</h2>
+        <h2 className="screen-title">{t('spin.title')}</h2>
       </div>
 
       <div className="shop-coins-balance" style={{ marginBottom: '14px' }}>
-        <span className="coin-label-large">Coins</span>
+        <span className="coin-label-large">{t('common.coins')}</span>
         <span className="coin-value-large">{coins}</span>
       </div>
 
@@ -272,7 +274,7 @@ export default function LuckySpinScreen({ onBack }: Props) {
           </div>
         ) : (
           <p style={{ fontSize: '13px', color: '#b0bec5', margin: '14px 0', textAlign: 'center', padding: '0 16px' }}>
-            {hasFreeSpin ? 'Your free daily spin is ready! Spin the wheel to claim a reward.' : `Cost: 🪙${cost} Coins per spin.`}
+            {hasFreeSpin ? t('spin.freeReady') : t('spin.cost', { cost })}
           </p>
         )}
 
@@ -282,12 +284,12 @@ export default function LuckySpinScreen({ onBack }: Props) {
           onClick={spin}
           disabled={isSpinning}
         >
-          {isSpinning ? 'Spinning...' : hasFreeSpin ? 'Free Daily Spin' : 'Spin Wheel'}
+          {isSpinning ? t('spin.spinning') : hasFreeSpin ? t('spin.freeDaily') : t('spin.spinWheel')}
         </button>
       </div>
 
       <div className="shop-footer">
-        <p className="shop-note">Lucky Spin rewards are added immediately to your coin balance or inventory.</p>
+        <p className="shop-note">{t('spin.note')}</p>
       </div>
     </div>
   );

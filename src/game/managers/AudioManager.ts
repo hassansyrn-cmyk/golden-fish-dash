@@ -12,12 +12,23 @@ export type SoundName =
   | 'achievement'
   | 'hit'
   | 'gameover'
-  | 'milestone';
+  | 'milestone'
+  | 'shield'
+  | 'powerup'
+  | 'back';
 
 class AudioManager {
   private static instance: AudioManager;
   private audioContext: AudioContext | null = null;
-  private sfxVolume: number = 0.045; // default comfortable level
+  private sfxVolume: number = 0.05;
+  private readonly lastPlayedAt = new Map<SoundName, number>();
+  private readonly cooldownMs: Partial<Record<SoundName, number>> = {
+    jump: 45,
+    coin: 58,
+    gem: 110,
+    hit: 170,
+    back: 140,
+  };
 
   private constructor() {}
 
@@ -84,52 +95,84 @@ class AudioManager {
     }
   }
 
+  private canPlay(name: SoundName): boolean {
+    const cooldown = this.cooldownMs[name] ?? 0;
+    if (cooldown <= 0) return true;
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const lastPlayed = this.lastPlayedAt.get(name) ?? -Infinity;
+    if (now - lastPlayed < cooldown) return false;
+
+    this.lastPlayedAt.set(name, now);
+    return true;
+  }
+
   /**
-   * Main sound play method with pre-built custom synthesized game sound effects.
+   * Main sound play method with handcrafted synthesized game sound effects.
+   * Fast repeatable sounds are lightly throttled to keep long runs comfortable.
    */
   public playSound(name: SoundName, enabled: boolean) {
-    if (!enabled) return;
+    if (!enabled || !this.canPlay(name)) return;
 
     switch (name) {
       case 'jump':
-        this.playTone(520, 70, 'sine', 0.77);
+        this.playTone(470, 48, 'sine', 0.62);
+        setTimeout(() => this.playTone(660, 58, 'sine', 0.48), 34);
         break;
 
       case 'coin':
-        this.playTone(880, 75, 'triangle', 1.0);
-        setTimeout(() => this.playTone(1180, 65, 'triangle', 0.77), 55);
+        this.playTone(880, 48, 'triangle', 0.62);
+        setTimeout(() => this.playTone(1240, 52, 'sine', 0.46), 34);
         break;
 
       case 'gem':
-        this.playTone(960, 90, 'triangle', 1.0);
-        setTimeout(() => this.playTone(1280, 100, 'sine', 0.88), 80);
-        setTimeout(() => this.playTone(1600, 130, 'triangle', 0.77), 170);
+        this.playTone(780, 62, 'sine', 0.62);
+        setTimeout(() => this.playTone(1040, 72, 'triangle', 0.56), 52);
+        setTimeout(() => this.playTone(1420, 95, 'sine', 0.46), 112);
         break;
 
       case 'reward':
-        this.playTone(740, 80, 'triangle', 1.0);
-        setTimeout(() => this.playTone(980, 80, 'triangle', 0.88), 70);
-        setTimeout(() => this.playTone(1320, 110, 'triangle', 0.77), 140);
+        this.playTone(660, 65, 'triangle', 0.72);
+        setTimeout(() => this.playTone(880, 75, 'triangle', 0.62), 58);
+        setTimeout(() => this.playTone(1180, 100, 'sine', 0.54), 122);
         break;
 
       case 'achievement':
-        this.playTone(660, 80, 'sine', 1.0);
-        setTimeout(() => this.playTone(880, 90, 'sine', 0.88), 80);
-        setTimeout(() => this.playTone(1100, 120, 'sine', 0.77), 165);
+        this.playTone(620, 72, 'sine', 0.72);
+        setTimeout(() => this.playTone(830, 82, 'sine', 0.64), 68);
+        setTimeout(() => this.playTone(1120, 112, 'sine', 0.56), 142);
         break;
 
       case 'hit':
-        this.playTone(180, 120, 'sawtooth', 0.88);
+        this.playTone(165, 95, 'triangle', 0.72);
+        setTimeout(() => this.playTone(120, 70, 'sine', 0.42), 55);
         break;
 
       case 'gameover':
-        this.playTone(260, 130, 'sawtooth', 0.88);
-        setTimeout(() => this.playTone(170, 180, 'sawtooth', 0.77), 130);
+        this.playTone(250, 105, 'triangle', 0.66);
+        setTimeout(() => this.playTone(185, 145, 'triangle', 0.54), 100);
         break;
 
       case 'milestone':
-        this.playTone(600, 75, 'square', 0.77);
-        setTimeout(() => this.playTone(900, 90, 'square', 0.66), 80);
+        this.playTone(680, 62, 'sine', 0.58);
+        setTimeout(() => this.playTone(920, 82, 'sine', 0.50), 56);
+        break;
+
+      case 'shield':
+        this.playTone(360, 72, 'sine', 0.60);
+        setTimeout(() => this.playTone(540, 78, 'sine', 0.52), 48);
+        setTimeout(() => this.playTone(760, 96, 'triangle', 0.42), 104);
+        break;
+
+      case 'powerup':
+        this.playTone(520, 55, 'triangle', 0.58);
+        setTimeout(() => this.playTone(740, 65, 'sine', 0.50), 46);
+        setTimeout(() => this.playTone(980, 86, 'sine', 0.42), 98);
+        break;
+
+      case 'back':
+        this.playTone(390, 44, 'triangle', 0.46);
+        setTimeout(() => this.playTone(310, 58, 'sine', 0.38), 38);
         break;
 
       default:

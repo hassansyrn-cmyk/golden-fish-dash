@@ -9,84 +9,84 @@ import {
   getMissions,
   claimMissionReward,
   addCoins,
-  addXP,
   getUnlockedSkins,
 } from '../storage';
 import type { ShopItemId, MissionDef, SkinId } from '../types';
 import { audioManager } from '../managers/AudioManager';
+import { translateMission, useI18n } from '../i18n';
 
 interface ShopItem {
   id: ShopItemId;
-  name: string;
-  description: string;
+  nameKey: string;
+  descriptionKey: string;
   cost: number;
 }
 
 const SHOP_ITEMS: ShopItem[] = [
   {
     id: 'shield',
-    name: '🛡️ Shield Charge',
-    description: 'Start next run with +1 shield charge. Absorbs one hit.',
+    nameKey: 'shop.item.shield.name',
+    descriptionKey: 'shop.item.shield.description',
     cost: 150,
   },
   {
     id: 'magnet',
-    name: '🧲 Coin Magnet',
-    description: 'Start next run with magnet active for ~8s. Pulls nearby coins.',
+    nameKey: 'shop.item.magnet.name',
+    descriptionKey: 'shop.item.magnet.description',
     cost: 200,
   },
   {
     id: 'gemBoost',
-    name: '💎 Gem Boost',
-    description: 'Increase gem/heart spawn chance for the next run.',
+    nameKey: 'shop.item.gemBoost.name',
+    descriptionKey: 'shop.item.gemBoost.description',
     cost: 250,
   },
   {
     id: 'continueToken',
-    name: '🔄 Continue Token',
-    description: 'Use on Game Over to revive instantly without watching an ad.',
+    nameKey: 'shop.item.continueToken.name',
+    descriptionKey: 'shop.item.continueToken.description',
     cost: 350,
   },
 ];
 
 interface UpgradeItem {
   id: string;
-  name: string;
-  description: string;
+  nameKey: string;
+  descriptionKey: string;
   baseCost: number;
 }
 
 const UPGRADE_ITEMS: UpgradeItem[] = [
   {
     id: 'shield',
-    name: '🛡️ Shield Capacity',
-    description: 'Permanently increases starting shield charge capacity (+1 charge/level).',
+    nameKey: 'shop.upgradeItem.shield.name',
+    descriptionKey: 'shop.upgradeItem.shield.description',
     baseCost: 250,
   },
   {
     id: 'magnet',
-    name: '🧲 Magnet Duration',
-    description: 'Start runs with active magnet. Adds +3 seconds of duration per level.',
+    nameKey: 'shop.upgradeItem.magnet.name',
+    descriptionKey: 'shop.upgradeItem.magnet.description',
     baseCost: 250,
   },
   {
     id: 'gemBoost',
-    name: '💎 Gem Spawn rate',
-    description: 'Permanently increases the spawn probability of hearts and gems.',
+    nameKey: 'shop.upgradeItem.gemBoost.name',
+    descriptionKey: 'shop.upgradeItem.gemBoost.description',
     baseCost: 300,
   },
   {
     id: 'coinMultiplier',
-    name: '🪙 Coin Multiplier',
-    description: 'Boosts all coin values! Awards +1 extra coin per coin collected.',
+    nameKey: 'shop.upgradeItem.coinMultiplier.name',
+    descriptionKey: 'shop.upgradeItem.coinMultiplier.description',
     baseCost: 400,
   },
 ];
 
 interface ChestItem {
   tier: 'bronze' | 'silver' | 'gold';
-  name: string;
-  description: string;
+  nameKey: string;
+  descriptionKey: string;
   cost: number;
   color: string;
 }
@@ -94,22 +94,22 @@ interface ChestItem {
 const CHEST_ITEMS: ChestItem[] = [
   {
     tier: 'bronze',
-    name: '📦 Bronze Chest',
-    description: 'Contains simple rewards (1 to 2 shields, magnets, gem boosts, low coins, rare continue token).',
+    nameKey: 'shop.chest.bronze.name',
+    descriptionKey: 'shop.chest.bronze.description',
     cost: 400,
     color: '#cd7f32',
   },
   {
     tier: 'silver',
-    name: '🥈 Silver Chest',
-    description: 'Contains mid-tier rewards (2 to 5 helper items, 60-150 coins, rare continue tokens).',
+    nameKey: 'shop.chest.silver.name',
+    descriptionKey: 'shop.chest.silver.description',
     cost: 800,
     color: '#c0c0c0',
   },
   {
     tier: 'gold',
-    name: '👑 Legendary Gold Chest',
-    description: 'Contains high rewards (5-10 items), massive coins, or a 3% rare chance to directly unlock Moorish Idol skin!',
+    nameKey: 'shop.chest.gold.name',
+    descriptionKey: 'shop.chest.gold.description',
     cost: 1500,
     color: '#ffd700',
   },
@@ -121,15 +121,14 @@ interface Props {
 }
 
 export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
+  const { language, t } = useI18n();
   const [coins, setCoins] = useState(getCoins());
-  const [inventory, setInventory] = useState(getShopInventory());
   const [missions, setMissions] = useState<MissionDef[]>([]);
   const [activeTab, setActiveTab] = useState<'powerups' | 'upgrades' | 'chests' | 'missions'>('powerups');
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setCoins(getCoins());
-    setInventory(getShopInventory());
     setMissions(getMissions());
   }, []);
 
@@ -141,11 +140,10 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
     if (success) {
       const newCoins = getCoins();
       setCoins(newCoins);
-      setInventory(getShopInventory());
-      setMessage(`Purchased ${item.name}!`);
+        setMessage(t('shop.purchased', { item: t(item.nameKey) }));
       setTimeout(() => setMessage(null), 2000);
     } else {
-      setMessage(needed > 0 ? `Need ${needed} more coins` : 'Not enough coins');
+      setMessage(needed > 0 ? t('shop.needMore', { count: needed }) : t('shop.notEnough'));
       setTimeout(() => setMessage(null), 2500);
     }
   };
@@ -153,8 +151,9 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
   const handleBuyUpgrade = (item: UpgradeItem) => {
     setMessage(null);
     const currentLevel = getUpgradeLevel(item.id);
-    if (currentLevel >= 5) {
-      setMessage('Upgrade already fully maxed out!');
+    const maxLevel = item.id === 'shield' ? 1 : 5;
+    if (currentLevel >= maxLevel) {
+      setMessage(t('shop.maxed'));
       setTimeout(() => setMessage(null), 2000);
       return;
     }
@@ -167,10 +166,10 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
     if (success) {
       const newCoins = getCoins();
       setCoins(newCoins);
-      setMessage(`Upgraded ${item.name} to Level ${currentLevel + 1}!`);
+      setMessage(t('shop.upgraded', { item: t(item.nameKey), level: currentLevel + 1 }));
       setTimeout(() => setMessage(null), 2000);
     } else {
-      setMessage(needed > 0 ? `Need ${needed} more coins` : 'Not enough coins');
+      setMessage(needed > 0 ? t('shop.needMore', { count: needed }) : t('shop.notEnough'));
       setTimeout(() => setMessage(null), 2500);
     }
   };
@@ -208,61 +207,61 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
       if (roll < 0.3) {
         const rewardCoins = 40 + Math.floor(Math.random() * 61); // 40 to 100 coins
         addCoins(rewardCoins);
-        rewardText = `Won +🪙${rewardCoins} Coins!`;
+        rewardText = t('shop.wonCoins', { coins: rewardCoins });
       } else if (roll < 0.6) {
         const amt = Math.random() < 0.5 ? 1 : 2;
         const inv = getShopInventory();
         inv.shield = (inv.shield ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Shield Charge! 🛡️`;
+        rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.shield.name') });
       } else if (roll < 0.8) {
         const amt = Math.random() < 0.5 ? 1 : 2;
         const inv = getShopInventory();
         inv.magnet = (inv.magnet ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Coin Magnet! 🧲`;
+        rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.magnet.name') });
       } else if (roll < 0.95) {
         const amt = Math.random() < 0.5 ? 1 : 2;
         const inv = getShopInventory();
         inv.gemBoost = (inv.gemBoost ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Gem Boost! 💎`;
+        rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.gemBoost.name') });
       } else {
         const inv = getShopInventory();
         inv.continueToken = (inv.continueToken ?? 0) + 1;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won 1x Continue Token! 🔄`;
+        rewardText = t('shop.wonItem', { count: 1, item: t('shop.item.continueToken.name') });
       }
     } else if (tier === 'silver') {
       const roll = Math.random();
       if (roll < 0.3) {
         const rewardCoins = 100 + Math.floor(Math.random() * 151); // 100 to 250 coins
         addCoins(rewardCoins);
-        rewardText = `Won +🪙${rewardCoins} Coins!`;
+        rewardText = t('shop.wonCoins', { coins: rewardCoins });
       } else if (roll < 0.55) {
         const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
         const inv = getShopInventory();
         inv.shield = (inv.shield ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Shield Charges! 🛡️`;
+        rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.shield.name') });
       } else if (roll < 0.75) {
         const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
         const inv = getShopInventory();
         inv.magnet = (inv.magnet ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Coin Magnets! 🧲`;
+        rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.magnet.name') });
       } else if (roll < 0.9) {
         const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
         const inv = getShopInventory();
         inv.gemBoost = (inv.gemBoost ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Gem Boost charges! 💎`;
+        rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.gemBoost.name') });
       } else {
         const amt = 1 + Math.floor(Math.random() * 3); // 1 to 3
         const inv = getShopInventory();
         inv.continueToken = (inv.continueToken ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Continue Tokens! 🔄`;
+        rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.continueToken.name') });
       }
     } else {
       // Gold chest
@@ -277,12 +276,12 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
           inv.shield = (inv.shield ?? 0) + 2;
           inv.continueToken = (inv.continueToken ?? 0) + 1;
           localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-          rewardText = "Won Legendary Duplicate Compensation: +🪙600 Coins, +2🛡️ Shields, +1🔄 Continue Token!";
+          rewardText = t('shop.duplicateLegendary');
         } else {
           // Unlock skin
           const updated = [...unlockedSkins, 'legendary' as SkinId];
           localStorage.setItem('gfr_unlocked_skins', JSON.stringify(updated));
-          rewardText = "LEGENDARY UNLOCK! You won the Moorish Idol skin directly from the Golden Chest! 👑";
+          rewardText = t('shop.legendaryUnlock');
           if (onNewUnlocks) {
             onNewUnlocks(['legendary']);
           }
@@ -293,38 +292,37 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         if (roll < 0.25) {
           const rewardCoins = 300 + Math.floor(Math.random() * 451); // 300 to 750 coins
           addCoins(rewardCoins);
-          rewardText = `Won +🪙${rewardCoins} Coins!`;
+          rewardText = t('shop.wonCoins', { coins: rewardCoins });
         } else if (roll < 0.5) {
           const amt = 5 + Math.floor(Math.random() * 6); // 5 to 10
           const inv = getShopInventory();
           inv.shield = (inv.shield ?? 0) + amt;
           localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-          rewardText = `Won ${amt}x Shield Charges! 🛡️`;
+          rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.shield.name') });
         } else if (roll < 0.7) {
           const amt = 3 + Math.floor(Math.random() * 6); // 3 to 8
           const inv = getShopInventory();
           inv.magnet = (inv.magnet ?? 0) + amt;
           localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-          rewardText = `Won ${amt}x Coin Magnets! 🧲`;
+          rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.magnet.name') });
         } else if (roll < 0.88) {
           const amt = 3 + Math.floor(Math.random() * 6); // 3 to 8
           const inv = getShopInventory();
           inv.gemBoost = (inv.gemBoost ?? 0) + amt;
           localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-          rewardText = `Won ${amt}x Gem Boost charges! 💎`;
+          rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.gemBoost.name') });
         } else {
           const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
           const inv = getShopInventory();
           inv.continueToken = (inv.continueToken ?? 0) + amt;
           localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-          rewardText = `Won ${amt}x Continue Tokens! 🔄`;
+          rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.continueToken.name') });
         }
       }
     }
 
     setCoins(getCoins());
-    setInventory(getShopInventory());
-    setMessage(`Chest Opened! ${rewardText}`);
+    setMessage(t('shop.chestOpened', { reward: rewardText }));
   };
 
   const getOwned = (id: ShopItemId) => getShopItemCount(id);
@@ -333,14 +331,14 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
     <div className="screen shop-screen" style={{ paddingTop: 'max(50px, env(safe-area-inset-top) + 20px)' }}>
       <div className="shop-header">
         <button className="btn btn-secondary" onClick={onBack}>
-          ← Back
+          ← {t('common.back')}
         </button>
-        <h2 className="screen-title">Locker & Shop</h2>
+        <h2 className="screen-title">{t('shop.lockerTitle')}</h2>
       </div>
 
       {/* Large visual coin balance */}
       <div className="shop-coins-balance">
-        <span className="coin-label-large">Coins</span>
+        <span className="coin-label-large">{t('common.coins')}</span>
         <span className="coin-value-large">{coins}</span>
       </div>
 
@@ -351,28 +349,28 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
           style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
           onClick={() => setActiveTab('powerups')}
         >
-          Consumables
+          {t('shop.consumables')}
         </button>
         <button
           className={`btn ${activeTab === 'upgrades' ? 'btn-primary' : 'btn-secondary'}`}
           style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
           onClick={() => setActiveTab('upgrades')}
         >
-          Upgrades
+          {t('shop.upgrades')}
         </button>
         <button
           className={`btn ${activeTab === 'chests' ? 'btn-primary' : 'btn-secondary'}`}
           style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
           onClick={() => setActiveTab('chests')}
         >
-          Chests
+          {t('shop.chests')}
         </button>
         <button
           className={`btn ${activeTab === 'missions' ? 'btn-primary' : 'btn-secondary'}`}
           style={{ flex: 1, padding: '10px 2px', fontSize: '11px' }}
           onClick={() => setActiveTab('missions')}
         >
-          Missions
+          {t('shop.missions')}
         </button>
       </div>
 
@@ -387,18 +385,18 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
             const needed = item.cost - currentCoins;
             return (
               <div key={item.id} className="shop-item-card">
-                <div className="shop-item-title">{item.name}</div>
-                <div className="shop-item-desc">{item.description}</div>
+                <div className="shop-item-title">{t(item.nameKey)}</div>
+                <div className="shop-item-desc">{t(item.descriptionKey)}</div>
                 <div className="shop-item-meta">
                   <div className="shop-price">🪙 {item.cost}</div>
-                  <div className="shop-owned">Owned: {owned}</div>
+                  <div className="shop-owned">{t('shop.owned', { count: owned })}</div>
                 </div>
                 <button
                   className="shop-buy-btn"
                   onClick={() => handleBuyPowerup(item)}
                   disabled={!canBuy}
                 >
-                  {canBuy ? 'Buy' : needed > 0 ? `Need ${needed} more` : 'Not enough'}
+                  {canBuy ? t('shop.buy') : needed > 0 ? t('shop.needMore', { count: needed }) : t('shop.notEnough')}
                 </button>
               </div>
             );
@@ -407,21 +405,22 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         {activeTab === 'upgrades' &&
           UPGRADE_ITEMS.map((item) => {
             const currentLvl = getUpgradeLevel(item.id);
+            const maxLevel = item.id === 'shield' ? 1 : 5;
             const cost = (currentLvl + 1) * item.baseCost;
-            const canBuy = coins >= cost && currentLvl < 5;
-            const isMax = currentLvl >= 5;
+            const canBuy = coins >= cost && currentLvl < maxLevel;
+            const isMax = currentLvl >= maxLevel;
             const needed = cost - coins;
 
             return (
               <div key={item.id} className="shop-item-card">
                 <div className="shop-item-title">
-                  {item.name} <span style={{ color: '#ffd54f', fontSize: '12px' }}>(Lvl {currentLvl}/5)</span>
+                  {t(item.nameKey)} <span style={{ color: '#ffd54f', fontSize: '12px' }}>({t('shop.level', { level: Math.min(currentLvl, maxLevel), max: maxLevel })})</span>
                 </div>
-                <div className="shop-item-desc">{item.description}</div>
+                <div className="shop-item-desc">{t(item.descriptionKey)}</div>
 
                 {/* Level indicator ticks */}
                 <div style={{ display: 'flex', gap: '4px', margin: '8px 0' }}>
-                  {Array.from({ length: 5 }).map((_, idx) => (
+                  {Array.from({ length: maxLevel }).map((_, idx) => (
                     <div
                       key={idx}
                       style={{
@@ -435,14 +434,14 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
                 </div>
 
                 <div className="shop-item-meta">
-                  <div className="shop-price">{isMax ? 'MAXED' : `🪙 ${cost}`}</div>
+                  <div className="shop-price">{isMax ? t('shop.maxedLabel') : `🪙 ${cost}`}</div>
                 </div>
                 <button
                   className="shop-buy-btn"
                   onClick={() => handleBuyUpgrade(item)}
                   disabled={!canBuy || isMax}
                 >
-                  {isMax ? 'Fully Upgraded' : canBuy ? 'Upgrade' : needed > 0 ? `Need ${needed} more` : 'Not enough'}
+                  {isMax ? t('shop.fullyUpgraded') : canBuy ? t('shop.upgrade') : needed > 0 ? t('shop.needMore', { count: needed }) : t('shop.notEnough')}
                 </button>
               </div>
             );
@@ -455,8 +454,8 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
 
             return (
               <div key={item.tier} className="shop-item-card">
-                <div className="shop-item-title" style={{ color: item.color }}>{item.name}</div>
-                <div className="shop-item-desc">{item.description}</div>
+                <div className="shop-item-title" style={{ color: item.color }}>{t(item.nameKey)}</div>
+                <div className="shop-item-desc">{t(item.descriptionKey)}</div>
                 <div className="shop-item-meta">
                   <div className="shop-price">🪙 {item.cost}</div>
                 </div>
@@ -466,7 +465,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
                   onClick={() => handleOpenChest(item.tier, item.cost)}
                   disabled={!canBuy}
                 >
-                  {canBuy ? 'Open Chest' : needed > 0 ? `Need ${needed} more` : 'Not enough'}
+                  {canBuy ? t('shop.openChest') : needed > 0 ? t('shop.needMore', { count: needed }) : t('shop.notEnough')}
                 </button>
               </div>
             );
@@ -477,7 +476,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
             const pct = Math.min(100, Math.floor((m.progress / m.target) * 100));
             return (
               <div key={m.id} className="shop-item-card" style={{ padding: '14px' }}>
-                <div className="shop-item-title" style={{ fontSize: '14px' }}>{m.description}</div>
+                <div className="shop-item-title" style={{ fontSize: '14px' }}>{translateMission(m.id, language)}</div>
 
                 {/* Progress bar */}
                 <div style={{ margin: '10px 0 6px 0' }}>
@@ -492,7 +491,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
                   <div style={{ fontSize: '12px', color: '#ffe082' }}>
-                    Reward: 🪙{m.rewardCoins} & ⚡{m.rewardXP} XP
+                    {t('shop.reward', { coins: m.rewardCoins, xp: m.rewardXP })}
                   </div>
 
                   <button
@@ -501,7 +500,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
                     onClick={() => handleClaimReward(m.id)}
                     disabled={!m.completed || m.claimed}
                   >
-                    {m.claimed ? 'Claimed' : m.completed ? 'Claim' : 'In Progress'}
+                    {m.claimed ? t('rewards.claimed') : m.completed ? t('common.claim') : t('shop.inProgress')}
                   </button>
                 </div>
               </div>
@@ -512,12 +511,12 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
       <div className="shop-footer">
         <p className="shop-note">
           {activeTab === 'upgrades'
-            ? 'Upgrades permanently improve starting parameters.'
+            ? t('shop.footerUpgrades')
             : activeTab === 'chests'
-            ? 'Open chests to obtain large coin drops, power-ups, or level XP!'
+            ? t('shop.footerChests')
             : activeTab === 'missions'
-            ? 'Claim rewards to acquire extra Coins and level XP!'
-            : 'Consumables are automatically deployed at the start of your next run.'}
+            ? t('shop.footerMissions')
+            : t('shop.footerPowerups')}
         </p>
       </div>
     </div>

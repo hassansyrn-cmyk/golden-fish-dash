@@ -1,35 +1,39 @@
+import { useI18n } from '../i18n';
+
 interface Props {
   onBack: () => void;
 }
 
 export default function HowToPlay({ onBack }: Props) {
+  const { t } = useI18n();
+
   return (
     <div className="screen howto-screen">
-      <h2 className="screen-title">How to Play</h2>
+      <h2 className="screen-title">{t('howto.title')}</h2>
       <ul className="howto-list">
         <li>
           <span className="howto-icon">👆</span>
-          Tap anywhere (or press Space / click) to make your fish jump upward.
+          {t('howto.tap')}
         </li>
         <li>
           <span className="howto-icon">🌊</span>
-          Gravity pulls the fish down — time your taps to glide between obstacles.
+          {t('howto.gravity')}
         </li>
         <li>
           <span className="howto-icon">🏆</span>
-          Pass through a gap to score a point. The ocean gets tougher as your score grows.
+          {t('howto.score')}
         </li>
         <li>
           <span className="howto-icon">📺</span>
-          You get one rewarded-ad continue per run if you crash — don't waste it!
+          {t('howto.continue')}
         </li>
         <li>
           <span className="howto-icon">🥇</span>
-          Chase the global leaderboard and unlock new fish skins as you improve.
+          {t('howto.unlock')}
         </li>
       </ul>
       <button className="btn btn-primary" onClick={onBack}>
-        Got It
+        {t('howto.gotIt')}
       </button>
     </div>
   );

@@ -37,16 +37,20 @@ export interface DailyChallengeState {
   completed: boolean;
 }
 
+export type AppLanguage = 'en' | 'ar';
+
 export interface Settings {
   sound: boolean;
   music: boolean;
   vibration: boolean;
+  language: AppLanguage;
 }
 
 export type ScreenName =
   | 'loading'
   | 'menu'
   | 'howto'
+  | 'ready'
   | 'playing'
   | 'paused'
   | 'continueAd'

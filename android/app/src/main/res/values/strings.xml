@@ -4,4 +4,6 @@
     <string name="title_activity_main">Golden Fish Dash</string>
     <string name="package_name">com.husseinbostan.goldenfishdash</string>
     <string name="custom_url_scheme">com.husseinbostan.goldenfishdash</string>
+    <!-- Google sample app ID for closed testing. Replace with your real AdMob app ID before production release. -->
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
 </resources>

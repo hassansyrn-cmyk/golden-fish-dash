@@ -1,4 +1,8 @@
+import { useI18n } from '../i18n';
+
 export default function LoadingScreen() {
+  const { t } = useI18n();
+
   return (
     <div className="screen loading-screen">
       <div className="loading-fish" aria-hidden="true">
@@ -34,7 +38,7 @@ export default function LoadingScreen() {
           />
         </svg>
       </div>
-      <p>Diving in…</p>
+      <p>{t('loading.subtitle')}</p>
     </div>
   );
 }

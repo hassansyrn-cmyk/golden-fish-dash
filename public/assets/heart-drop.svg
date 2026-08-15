@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 116" role="img" aria-label="Heart life collectible">
+  <defs>
+    <radialGradient id="heartFill" cx="32%" cy="20%" r="88%">
+      <stop offset="0%" stop-color="#ffd6de"/>
+      <stop offset="20%" stop-color="#ff5b73"/>
+      <stop offset="56%" stop-color="#ef173b"/>
+      <stop offset="100%" stop-color="#8f0b25"/>
+    </radialGradient>
+    <linearGradient id="heartEdge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff5f7"/>
+      <stop offset="42%" stop-color="#ff6f82"/>
+      <stop offset="100%" stop-color="#71071e"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 108C54 96 15 74 8 43C2 15 24 2 42 11C53 16 60 26 64 34C68 26 75 16 86 11C104 2 126 15 120 43C113 74 74 96 64 108Z" fill="url(#heartFill)" stroke="url(#heartEdge)" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M26 27C35 16 52 21 57 35C49 29 40 27 31 34C27 37 23 33 26 27Z" fill="#fff" opacity=".86"/>
+  <ellipse cx="36" cy="43" rx="6" ry="3.5" fill="#fff" opacity=".64" transform="rotate(-28 36 43)"/>
+</svg>
