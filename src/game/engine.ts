@@ -231,8 +231,8 @@ const DROP_RUSH_DURATION_MS = 20_000;
 const MAGNET_DURATION_MS = 12_000;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
-const ABYSSAL_OCTOPUS_BOSS_SCORE = 50;
-const BOSS_WARNING_MS = 1_650;
+const ABYSSAL_OCTOPUS_BOSS_SCORE = 100;
+const BOSS_WARNING_MS = 2_500;
 const BOSS_BATTLE_DURATION_MS = 24_000;
 const BOSS_WAVE_WARNING_MS = 900;
 const BOSS_WAVE_INTERVAL_MS = 2_450;
@@ -1910,6 +1910,28 @@ function drawAbyssalOctopusBoss(ctx: CanvasRenderingContext2D, state: EngineStat
   const isWarning = state.timeMs < boss.battleStartedAt;
   const remaining = Math.max(0, boss.battleStartedAt + BOSS_BATTLE_DURATION_MS - state.timeMs);
   const pulse = 0.62 + (Math.sin(state.timeMs * 0.007) + 1) * 0.19;
+
+  if (isWarning) {
+    const remainingSeconds = Math.max(1, Math.ceil((boss.battleStartedAt - state.timeMs) / 1000));
+    ctx.save();
+    ctx.fillStyle = 'rgba(19, 0, 36, 0.62)';
+    ctx.fillRect(0, 0, state.width, state.height);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#d77aff';
+    ctx.shadowBlur = 14;
+    ctx.font = '900 34px system-ui, sans-serif';
+    ctx.fillStyle = '#fff2ff';
+    ctx.fillText('⚠', state.width * 0.5, state.height * 0.39);
+    ctx.font = '900 14px system-ui, sans-serif';
+    ctx.fillStyle = '#ffd5ff';
+    ctx.fillText(translate('engine.bossWarning'), state.width * 0.5, state.height * 0.47);
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.fillStyle = '#b9f8ff';
+    ctx.fillText(`${remainingSeconds}`, state.width * 0.5, state.height * 0.52);
+    ctx.restore();
+    return;
+  }
 
   ctx.save();
   const halo = ctx.createRadialGradient(boss.x, boss.y, boss.width * 0.16, boss.x, boss.y, boss.width * 0.9);
