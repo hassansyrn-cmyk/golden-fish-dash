@@ -39,9 +39,6 @@ interface HudState {
   feverRemainingMs: number;
   hourglassRemainingMs: number;
   dropRushRemainingMs: number;
-  comboStreak: number;
-  comboMultiplier: number;
-  comboRemainingMs: number;
 }
 
 type MiniChallengeKind = 'coins' | 'combo';
@@ -70,36 +67,21 @@ const MINI_CHALLENGE_TEMPLATES: MiniChallengeTemplate[] = [
   { id: 'combo-rush', label: 'COMBO RUSH', objective: 'Build a combo', kind: 'combo', target: 8, durationMs: 16_000, rewardCoins: 30 },
 ];
 
-function comboMultiplierFor(streak: number): number {
-  if (streak >= 30) return 4;
-  if (streak >= 20) return 3;
-  if (streak >= 10) return 2;
-  return 1;
-}
-
 const EMPTY_HUD_STATE: HudState = {
   shieldCharges: 0,
   magnetRemainingMs: 0,
   feverRemainingMs: 0,
   hourglassRemainingMs: 0,
   dropRushRemainingMs: 0,
-  comboStreak: 0,
-  comboMultiplier: 1,
-  comboRemainingMs: 0,
 };
 
 function readHudState(engine: EngineState): HudState {
-  const comboRemainingMs = Math.max(0, 1800 - (engine.timeMs - engine.lastCoinCollectedTime));
-  const comboStreak = comboRemainingMs > 0 ? engine.coinStreakCount : 0;
   return {
     shieldCharges: Math.max(0, Math.min(2, engine.shieldCharges)),
     magnetRemainingMs: Math.max(0, engine.magnetUntil - engine.timeMs),
     feverRemainingMs: Math.max(0, engine.feverUntil - engine.timeMs),
     hourglassRemainingMs: Math.max(0, engine.hourglassUntil - engine.timeMs),
     dropRushRemainingMs: Math.max(0, engine.boostUntil - engine.timeMs),
-    comboStreak,
-    comboMultiplier: comboMultiplierFor(comboStreak),
-    comboRemainingMs,
   };
 }
 
@@ -559,9 +541,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     feverRemainingMs: hudState.feverRemainingMs,
     hourglassRemainingMs: hudState.hourglassRemainingMs,
     dropRushRemainingMs: hudState.dropRushRemainingMs,
-    comboStreak: hudState.comboStreak,
-    comboMultiplier: hudState.comboMultiplier,
-    comboRemainingMs: hudState.comboRemainingMs,
     miniChallenge,
     doJump,
     reviveAt,

@@ -256,68 +256,17 @@ html, body, #root {
   line-height: 1;
 }
 
-.hud-combo {
-  position: absolute;
-  top: 114px;
-  left: 50%;
-  transform: translateX(-50%);
-  min-width: 102px;
-  padding: 5px 9px 6px;
-  border: 1px solid rgba(255, 213, 79, 0.92);
-  border-radius: 11px;
-  background: linear-gradient(135deg, rgba(85, 51, 8, 0.92), rgba(16, 30, 55, 0.90));
-  color: #fff7b8;
-  text-align: center;
-  box-shadow: 0 0 16px rgba(255, 193, 7, 0.42);
-  pointer-events: none;
-}
-
-.hud-combo-title {
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.65px;
-}
-
-.hud-combo-detail {
-  margin-top: 1px;
-  color: #fff;
-  font-size: 0.58rem;
-  font-weight: 700;
-}
-
-.hud-combo-track,
-.hud-challenge-track {
-  height: 3px;
-  margin-top: 5px;
-  overflow: hidden;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.hud-combo-track span,
-.hud-challenge-track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  transition: width 0.12s linear;
-}
-
-.hud-combo-track span {
-  background: linear-gradient(90deg, #ff8f00, #fff176);
-}
-
 .hud-challenge {
   position: absolute;
-  top: 166px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(220px, 70vw);
-  padding: 7px 9px;
-  border: 1px solid rgba(125, 249, 255, 0.82);
-  border-radius: 11px;
-  background: rgba(0, 32, 61, 0.84);
+  top: 70px;
+  right: max(12px, env(safe-area-inset-right));
+  width: min(152px, 42vw);
+  padding: 5px 7px;
+  border: 1px solid rgba(125, 249, 255, 0.68);
+  border-radius: 9px;
+  background: rgba(0, 32, 61, 0.72);
   color: #fff;
-  box-shadow: 0 0 15px rgba(0, 229, 255, 0.23);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.18);
   pointer-events: none;
 }
 
@@ -326,9 +275,9 @@ html, body, #root {
   justify-content: space-between;
   gap: 8px;
   color: #a5f5ff;
-  font-size: 0.66rem;
+  font-size: 0.58rem;
   font-weight: 900;
-  letter-spacing: 0.48px;
+  letter-spacing: 0.38px;
 }
 
 .hud-challenge-heading strong {
@@ -336,14 +285,10 @@ html, body, #root {
 }
 
 .hud-challenge-objective {
-  margin-top: 2px;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 0.62rem;
+  margin-top: 1px;
+  color: rgba(255, 255, 255, 0.90);
+  font-size: 0.54rem;
   font-weight: 700;
-}
-
-.hud-challenge-track span {
-  background: linear-gradient(90deg, #00c8e6, #a5f5ff);
 }
 
 .hud-challenge-complete {

@@ -208,9 +208,6 @@ export default function GoldenFishRush() {
     feverRemainingMs,
     hourglassRemainingMs,
     dropRushRemainingMs,
-    comboStreak,
-    comboMultiplier,
-    comboRemainingMs,
     miniChallenge,
     doJump,
     reviveAt,
@@ -300,12 +297,6 @@ export default function GoldenFishRush() {
     { id: 'slow', icon: '⌛', label: 'SLOW', remainingMs: hourglassRemainingMs, color: '#80deea' },
     { id: 'drop-rush', icon: '✦', label: 'DROP RUSH', remainingMs: dropRushRemainingMs, color: '#fff176' },
   ].filter((powerUp) => powerUp.remainingMs > 0);
-  const comboActive = comboStreak >= 2 && comboRemainingMs > 0;
-  const comboProgress = Math.min(100, Math.round((comboRemainingMs / 1800) * 100));
-  const challengeProgress = miniChallenge
-    ? Math.min(100, Math.round((miniChallenge.progress / miniChallenge.target) * 100))
-    : 0;
-
   const handleOpenShop = useCallback(() => {
     setScreen('shop');
   }, []);
@@ -407,14 +398,6 @@ export default function GoldenFishRush() {
               </div>
             )}
 
-            {comboActive && (
-              <div className="hud-combo" aria-label={`Combo ${comboStreak}, multiplier ${comboMultiplier}`}>
-                <div className="hud-combo-title">COMBO x{comboMultiplier}</div>
-                <div className="hud-combo-detail">{comboStreak} coins chained</div>
-                <div className="hud-combo-track"><span style={{ width: `${comboProgress}%` }} /></div>
-              </div>
-            )}
-
             {miniChallenge && (
               <div className={`hud-challenge hud-challenge-${miniChallenge.status}`} aria-live="polite">
                 <div className="hud-challenge-heading">
@@ -428,9 +411,6 @@ export default function GoldenFishRush() {
                       ? 'Challenge expired'
                       : `${miniChallenge.objective}: ${miniChallenge.progress}/${miniChallenge.target}`}
                 </div>
-                {miniChallenge.status === 'active' && (
-                  <div className="hud-challenge-track"><span style={{ width: `${challengeProgress}%` }} /></div>
-                )}
               </div>
             )}
 

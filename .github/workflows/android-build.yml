@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_release:
+        description: Build a signed AAB for this selected branch
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -70,7 +76,7 @@ jobs:
   release-aab:
     name: Build Signed Android App Bundle
     needs: debug-apk
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.build_release == true)
     runs-on: ubuntu-latest
     env:
       RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
