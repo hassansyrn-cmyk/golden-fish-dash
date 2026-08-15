@@ -191,6 +191,8 @@ export interface EngineState {
 const FISH_X_RATIO = 0.28;
 const MAX_EXTRA_LIVES = 2;
 const GEM_SPAWN_CHANCE = 0.09;
+const DROP_RUSH_DURATION_MS = 20_000;
+const MAGNET_DURATION_MS = 12_000;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
 // The artwork intentionally extends beyond the gameplay body. A smaller,
@@ -371,9 +373,14 @@ function spawnObstacle(state: EngineState, score: number) {
     bobAmount: 0, glowing: legendaryMode, isDouble, environment: environment.id,
   });
 
-  // Regular coin spawn if Fever mode is not active
+  // Drop Rush is awarded by the turquoise ring. It makes collectable drops
+  // noticeably more frequent for 20 seconds without changing obstacle danger.
   const isFever = state.feverUntil > state.timeMs;
-  if (!isFever && Math.random() < 0.68) {
+  const isDropRushActive = state.boostUntil > state.timeMs;
+  const coinChance = isDropRushActive ? 0.92 : 0.68;
+  const powerUpChance = isDropRushActive ? 0.18 : 0.09;
+  const chestChance = isDropRushActive ? 0.055 : 0.025;
+  if (!isFever && Math.random() < coinChance) {
     state.coins.push({
       x: state.width + BASE.obstacleWidth + 44, y: gapY + (Math.random() - 0.5) * (gap * 0.32),
       collected: false, bonus: score >= 60 && Math.random() < 0.22,
@@ -384,6 +391,9 @@ function spawnObstacle(state: EngineState, score: number) {
   if (state.skin === 'diamond') {
     gemChance *= 1.30; // Discus skin: +30% Extra Life drop chance
   }
+  if (isDropRushActive) {
+    gemChance = Math.min(0.42, gemChance * 2.35);
+  }
   if (Math.random() < gemChance) {
     state.gems.push({
       x: state.width + BASE.obstacleWidth + 88, y: gapY + (Math.random() - 0.5) * (gap * 0.28),
@@ -391,7 +401,7 @@ function spawnObstacle(state: EngineState, score: number) {
     });
   }
   // Power-up spawn (shield, magnet, Fever mode Star, or Hourglass!)
-  if (Math.random() < 0.09) {
+  if (Math.random() < powerUpChance) {
     const roll = Math.random();
     const type: 'shield' | 'magnet' | 'fever' | 'hourglass' =
       roll < 0.25 ? 'shield' :
@@ -469,7 +479,7 @@ function spawnObstacle(state: EngineState, score: number) {
   }
 
   // Treasure Chest spawn (rare, but always placed inside a readable gate).
-  if (Math.random() < 0.025) {
+  if (Math.random() < chestChance) {
     const chestY = gapY + (Math.random() - 0.5) * gap * 0.24;
     state.chests.push({
       x: state.width + BASE.obstacleWidth + 240,
@@ -629,6 +639,22 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       });
     }
   }
+
+  // The magnet attracts every reward object, never enemies or obstacles.
+  // Fever retains its stronger vacuum behavior while the normal magnet is more generous.
+  const hasMagnet = state.magnetUntil > state.timeMs || isFeverActive;
+  const magnetRange = isFeverActive ? 220 : hasMagnet ? 175 : 0;
+  const magnetPull = isFeverActive ? 0.35 : 0.28;
+  const pullCollectable = (collectable: { x: number; y: number; collected: boolean }) => {
+    if (!hasMagnet || collectable.collected) return;
+    const dx = collectable.x - fishX;
+    const dy = collectable.y - state.fishY;
+    const distance = Math.hypot(dx, dy);
+    if (distance > 5 && distance < magnetRange) {
+      collectable.x -= dx * magnetPull * dt;
+      collectable.y -= dy * magnetPull * dt;
+    }
+  };
 
   // Obstacle movement, collision, and Near Miss tracking
   for (const obs of state.obstacles) {
@@ -794,6 +820,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   // Coin collect streak / combo logic & coin collection
   for (const coin of state.coins) {
     coin.x -= speed * dt;
+    pullCollectable(coin);
     if (!coin.collected) {
       const dx = coin.x - fishX;
       const dy = coin.y - state.fishY;
@@ -841,31 +868,13 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     }
   }
 
-  // Magnet effect (wide-range pull when Fever is active)
-  const hasMagnet = state.magnetUntil > state.timeMs || isFeverActive;
-  if (hasMagnet) {
-    const fishXMag = state.width * FISH_X_RATIO;
-    const fishYMag = state.fishY;
-    for (const coin of state.coins) {
-      if (!coin.collected) {
-        const dx = coin.x - fishXMag;
-        const dy = coin.y - fishYMag;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const activeRange = isFeverActive ? 220 : (state.magnetUntil > state.timeMs) ? 130 : 90;
-        if (dist > 5 && dist < activeRange) {
-          const pull = (isFeverActive ? 0.35 : 0.22) * dt;
-          coin.x -= dx * pull;
-          coin.y -= dy * pull;
-        }
-      }
-    }
-  }
   state.coins = state.coins.filter((c) => c.x > -40 && !c.collected);
 
   // Gem (Heart) collection
   for (const gem of state.gems) {
     gem.x -= speed * dt;
     gem.pulse += dtMs * 0.0045;
+    pullCollectable(gem);
     if (!gem.collected) {
       const dx = gem.x - fishX;
       const dy = gem.y - state.fishY;
@@ -892,6 +901,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   for (const pu of state.powerUps) {
     pu.x -= speed * dt;
     if (pu.pulse !== undefined) pu.pulse += dtMs * 0.004;
+    pullCollectable(pu);
     if (!pu.collected) {
       const dx = pu.x - fishX;
       const dy = pu.y - state.fishY;
@@ -903,10 +913,9 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           triggerFloatingText(state, 'Shield!', pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
         } else if (pu.type === 'magnet') {
-          const baseDuration = 8000;
-          const duration = state.skin === 'emerald' ? baseDuration * 1.25 : baseDuration;
+          const duration = state.skin === 'emerald' ? MAGNET_DURATION_MS * 1.25 : MAGNET_DURATION_MS;
           state.magnetUntil = state.timeMs + duration;
-          triggerFloatingText(state, 'Magnet!', pu.x, pu.y - 15, '#ffa726', true);
+          triggerFloatingText(state, `Magnet · ${Math.round(duration / 1000)}s`, pu.x, pu.y - 15, '#ffa726', true);
           addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
         } else if (pu.type === 'fever') {
           state.feverUntil = state.timeMs + 6000;
@@ -928,15 +937,17 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   // Bubble Boost Ring collection
   for (const ring of state.boostRings) {
     ring.x -= speed * dt;
+    pullCollectable(ring);
     if (!ring.collected) {
       const dx = ring.x - fishX;
       const dy = ring.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + ring.radius) {
         ring.collected = true;
-        state.boostUntil = state.timeMs + 5000;
-        triggerFloatingText(state, 'Boost!', ring.x, ring.y - 15, '#00e5ff', true);
+        state.boostUntil = state.timeMs + DROP_RUSH_DURATION_MS;
+        triggerFloatingText(state, 'DROP RUSH · 20s', ring.x, ring.y - 15, '#ffd54f', true);
         callbacks.onShake(1); // Very minor shake
         addBurst(state, ring.x, ring.y, '#00e5ff', 18, 2);
+        addBurst(state, ring.x, ring.y, '#ffd54f', 12, 2.4);
       }
     }
   }
@@ -945,6 +956,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   // Treasure Chest collection
   for (const chest of state.chests) {
     chest.x -= speed * dt;
+    pullCollectable(chest);
     if (!chest.collected) {
       const dx = chest.x - fishX;
       const dy = chest.y - state.fishY;
@@ -1506,6 +1518,37 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.strokeStyle = isFever ? '#e040fb' : '#ff9500';
     ctx.lineWidth = isFever ? 4.0 : 2.5;
     ctx.stroke();
+    ctx.restore();
+  }
+
+  if (state.boostUntil > state.timeMs) {
+    const rushPulse = (Math.sin(state.timeMs * 0.010) + 1) / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.45 + rushPulse * 0.25;
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 14 + rushPulse * 10;
+    ctx.strokeStyle = '#fff3a6';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([3, 4]);
+    ctx.lineDashOffset = -state.timeMs * 0.018;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.85, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0, 25, 48, 0.82)';
+    ctx.beginPath();
+    ctx.roundRect(-31, -r * 2.65, 62, 14, 7);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#fff3a6';
+    ctx.font = '700 7px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const secondsLeft = Math.max(1, Math.ceil((state.boostUntil - state.timeMs) / 1000));
+    ctx.fillText(`DROP RUSH ${secondsLeft}s`, 0, -r * 2.65 + 7);
     ctx.restore();
   }
 
@@ -2201,26 +2244,64 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
 function drawBubbleBoostRing(ctx: CanvasRenderingContext2D, ring: BubbleBoostRing, timeMs: number) {
   if (ring.collected) return;
   const bob = Math.sin(timeMs * 0.001 + ring.x) * 0.65;
+  const pulse = (Math.sin(timeMs * 0.0042) + 1) / 2;
+  const orbit = timeMs * 0.003;
   ctx.save();
   ctx.translate(ring.x, ring.y + bob);
 
-  const pulse = (Math.sin(timeMs * 0.0035) + 1) / 2;
-  ctx.shadowColor = '#00e5ff';
-  ctx.shadowBlur = 16 + pulse * 8;
+  // A gold and aqua reward portal makes its purpose distinct from hazards.
+  const halo = ctx.createRadialGradient(0, 0, ring.radius * 0.22, 0, 0, ring.radius * 1.32);
+  halo.addColorStop(0, 'rgba(255, 213, 79, 0.26)');
+  halo.addColorStop(0.58, 'rgba(0, 229, 255, 0.12)');
+  halo.addColorStop(1, 'rgba(0, 229, 255, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, ring.radius * 1.34, 0, Math.PI * 2);
+  ctx.fill();
 
-  ctx.strokeStyle = '#e0f7fa';
-  ctx.lineWidth = 4 + pulse * 1.5;
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 18 + pulse * 12;
+  ctx.strokeStyle = '#7df9ff';
+  ctx.lineWidth = 4 + pulse * 1.4;
   ctx.beginPath();
   ctx.arc(0, 0, ring.radius, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.strokeStyle = '#00e5ff';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 4]);
+  ctx.shadowColor = '#ffd54f';
+  ctx.shadowBlur = 11 + pulse * 7;
+  ctx.strokeStyle = '#fff3a6';
+  ctx.lineWidth = 1.8;
+  ctx.setLineDash([5, 4]);
+  ctx.lineDashOffset = -orbit * 12;
   ctx.beginPath();
   ctx.arc(0, 0, ring.radius - 6, 0, Math.PI * 2);
   ctx.stroke();
+  ctx.setLineDash([]);
 
+  // Three orbiting reward sparks make the drop-focused effect legible at a glance.
+  for (let index = 0; index < 3; index += 1) {
+    const angle = orbit + (Math.PI * 2 * index) / 3;
+    const sparkX = Math.cos(angle) * (ring.radius + 4);
+    const sparkY = Math.sin(angle) * (ring.radius + 4);
+    ctx.fillStyle = index === 1 ? '#ff6b8b' : '#ffd54f';
+    ctx.beginPath();
+    ctx.arc(sparkX, sparkY, 2.6 + pulse * 0.9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(2, 27, 51, 0.86)';
+  ctx.beginPath();
+  ctx.arc(0, 0, ring.radius - 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff7c2';
+  ctx.font = '700 7px sans-serif';
+  ctx.fillText('DROP', 0, -4);
+  ctx.fillStyle = '#7df9ff';
+  ctx.font = '700 6px sans-serif';
+  ctx.fillText('RUSH', 0, 5);
   ctx.restore();
 }
 

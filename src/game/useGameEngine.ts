@@ -115,8 +115,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     if (inv.magnet > 0 || magnetLvl > 0) {
       if (inv.magnet > 0) consumeShopItem('magnet');
-      // Upgrade increases starting magnet duration (8s base + 3s per level)
-      engine.magnetUntil = engine.timeMs + 8000 + (magnetLvl * 3000);
+      // Upgrade increases starting magnet duration (12s base + 3s per level).
+      engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
     }
     if (inv.gemBoost > 0 || gemLvl > 0) {
       if (inv.gemBoost > 0) consumeShopItem('gemBoost');

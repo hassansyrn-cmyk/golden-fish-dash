@@ -31,7 +31,7 @@ const SHOP_ITEMS: ShopItem[] = [
   {
     id: 'magnet',
     name: '🧲 Coin Magnet',
-    description: 'Start next run with magnet active for ~8s. Pulls nearby coins.',
+    description: 'Start next run with a 12s magnet that pulls every nearby collectable drop.',
     cost: 200,
   },
   {
@@ -65,7 +65,7 @@ const UPGRADE_ITEMS: UpgradeItem[] = [
   {
     id: 'magnet',
     name: '🧲 Magnet Duration',
-    description: 'Start runs with active magnet. Adds +3 seconds of duration per level.',
+    description: 'Start runs with a 12s collectable-attracting magnet. Adds +3 seconds per level.',
     baseCost: 250,
   },
   {
