@@ -16,8 +16,10 @@ import LuckySpinScreen from './screens/LuckySpinScreen';
 import { BannerAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
+import { audioManager } from './managers/AudioManager';
 import {
   getSelectedSkin,
+  getSettings,
   markUsedSecondChanceEver,
   unlockAchievement,
 } from './storage';
@@ -126,10 +128,12 @@ export default function GoldenFishRush() {
   const [showAchievements, setShowAchievements] = useState(false);
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
   const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
+  const [showExitHint, setShowExitHint] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
   const backListenerRef = useRef<any>(null);
+  const exitConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
@@ -165,7 +169,19 @@ export default function GoldenFishRush() {
         } else if (screen === 'continueAd') {
           setScreen('gameover');
         } else if (screen === 'menu') {
-          // Allow default exit behavior on main menu
+          if (exitConfirmTimerRef.current) {
+            clearTimeout(exitConfirmTimerRef.current);
+            exitConfirmTimerRef.current = null;
+            setShowExitHint(false);
+            void App.exitApp();
+          } else {
+            audioManager.playSound('back', getSettings().sound);
+            setShowExitHint(true);
+            exitConfirmTimerRef.current = setTimeout(() => {
+              exitConfirmTimerRef.current = null;
+              setShowExitHint(false);
+            }, 2000);
+          }
         } else {
           setScreen('menu');
         }
@@ -179,6 +195,11 @@ export default function GoldenFishRush() {
         backListenerRef.current.remove();
         backListenerRef.current = null;
       }
+      if (exitConfirmTimerRef.current) {
+        clearTimeout(exitConfirmTimerRef.current);
+        exitConfirmTimerRef.current = null;
+      }
+      setShowExitHint(false);
     };
   }, [screen]);
 
@@ -436,6 +457,13 @@ export default function GoldenFishRush() {
         {reviveCountdown !== null && (
           <div className="revive-countdown-overlay">
             <span>{reviveCountdown > 0 ? reviveCountdown : 'GO!'}</span>
+          </div>
+        )}
+
+        {showExitHint && screen === 'menu' && (
+          <div className="exit-confirm-toast" role="status" aria-live="polite">
+            <span className="exit-confirm-icon">↩</span>
+            <span>هل تريد الخروج من اللعبة؟<br /><strong>اضغط زر الرجوع مرة أخرى</strong></span>
           </div>
         )}
 

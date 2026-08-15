@@ -451,6 +451,16 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 setTimeout(() => audioManager.playSound('achievement', settings.sound), 150);
                 safeVibrate([30, 20, 50], settings.vibration);
               },
+
+              onPowerUpCollect: (type) => {
+                if (type === 'shield') {
+                  audioManager.playSound('shield', settings.sound);
+                  safeVibrate([18, 20, 28], settings.vibration);
+                } else if (type !== 'fever') {
+                  audioManager.playSound('powerup', settings.sound);
+                  safeVibrate(20, settings.vibration);
+                }
+              },
             },
             { vibration: settings.vibration },
           );

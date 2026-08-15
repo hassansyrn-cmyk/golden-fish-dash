@@ -141,6 +141,7 @@ export interface EngineCallbacks {
   onRedFlash?: () => void;
   onNearMiss?: () => void;
   onFeverStart?: () => void;
+  onPowerUpCollect?: (type: PowerUp['type']) => void;
 }
 
 export interface EngineState {
@@ -907,6 +908,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = pu.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 18) {
         pu.collected = true;
+        callbacks.onPowerUpCollect?.(pu.type);
         if (pu.type === 'shield') {
           state.shieldCharges = Math.min(2, state.shieldCharges + 1);
           callbacks.onShake?.(1); // Light non-distracting shake

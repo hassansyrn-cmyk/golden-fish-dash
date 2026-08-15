@@ -321,6 +321,56 @@ html, body, #root {
   backdrop-filter: blur(4px);
 }
 
+.exit-confirm-toast {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: max-content;
+  max-width: min(88vw, 340px);
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 224, 130, 0.84);
+  border-radius: 13px;
+  background: rgba(8, 24, 43, 0.94);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: right;
+  direction: rtl;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34), 0 0 15px rgba(255, 193, 7, 0.18);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  animation: exit-toast-in 0.18s ease-out;
+}
+
+.exit-confirm-toast strong {
+  color: #fff176;
+  font-size: 0.69rem;
+}
+
+.exit-confirm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  background: rgba(255, 193, 7, 0.18);
+  color: #ffe082;
+  font-size: 1.05rem;
+}
+
+@keyframes exit-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 .revive-countdown-overlay {
   position: absolute;
   inset: 0;
