@@ -7,3 +7,4 @@ dist
 
 # Local Android test artifacts
 /*.apk
+/*.aab
