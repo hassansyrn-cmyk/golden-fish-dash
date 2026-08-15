@@ -76,7 +76,7 @@ jobs:
   release-aab:
     name: Build Signed Android App Bundle
     needs: debug-apk
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.build_release == true)
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_release == true)
     runs-on: ubuntu-latest
     env:
       RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}

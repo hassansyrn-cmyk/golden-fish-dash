@@ -222,17 +222,25 @@ html, body, #root {
 .hud-shield-full { filter: drop-shadow(0 0 6px rgba(79, 195, 247, 0.88)); }
 .hud-shield-empty { opacity: 0.54; }
 
-.hud-powerups {
+.hud-status-stack {
   position: absolute;
-  top: 78px;
+  top: 76px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(86vw, 360px);
+  pointer-events: none;
+}
+
+.hud-powerups {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 5px;
-  max-width: min(86vw, 360px);
-  pointer-events: none;
+  max-width: 100%;
 }
 
 .hud-powerup-chip {
@@ -257,10 +265,7 @@ html, body, #root {
 }
 
 .hud-challenge {
-  position: absolute;
-  top: 70px;
-  right: max(12px, env(safe-area-inset-right));
-  width: min(152px, 42vw);
+  width: min(184px, 58vw);
   padding: 5px 7px;
   border: 1px solid rgba(125, 249, 255, 0.68);
   border-radius: 9px;

@@ -383,34 +383,38 @@ export default function GoldenFishRush() {
 
             <div className="hud-score">{score}</div>
 
-            {activePowerUps.length > 0 && (
-              <div className="hud-powerups" aria-label="Active power-ups">
-                {activePowerUps.map((powerUp) => (
-                  <div
-                    key={powerUp.id}
-                    className="hud-powerup-chip"
-                    style={{ borderColor: powerUp.color, boxShadow: `0 0 12px ${powerUp.color}55` }}
-                  >
-                    <span className="hud-powerup-icon">{powerUp.icon}</span>
-                    <span>{powerUp.label} {Math.max(1, Math.ceil(powerUp.remainingMs / 1000))}s</span>
+            {(activePowerUps.length > 0 || miniChallenge) && (
+              <div className="hud-status-stack">
+                {activePowerUps.length > 0 && (
+                  <div className="hud-powerups" aria-label="Active power-ups">
+                    {activePowerUps.map((powerUp) => (
+                      <div
+                        key={powerUp.id}
+                        className="hud-powerup-chip"
+                        style={{ borderColor: powerUp.color, boxShadow: `0 0 12px ${powerUp.color}55` }}
+                      >
+                        <span className="hud-powerup-icon">{powerUp.icon}</span>
+                        <span>{powerUp.label} {Math.max(1, Math.ceil(powerUp.remainingMs / 1000))}s</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            {miniChallenge && (
-              <div className={`hud-challenge hud-challenge-${miniChallenge.status}`} aria-live="polite">
-                <div className="hud-challenge-heading">
-                  <span>{miniChallenge.status === 'complete' ? '✓ COMPLETE' : miniChallenge.status === 'failed' ? 'TRY AGAIN' : miniChallenge.label}</span>
-                  {miniChallenge.status === 'active' && <strong>{Math.max(1, Math.ceil(miniChallenge.remainingMs / 1000))}s</strong>}
-                </div>
-                <div className="hud-challenge-objective">
-                  {miniChallenge.status === 'complete'
-                    ? `+${miniChallenge.rewardCoins} coins earned!`
-                    : miniChallenge.status === 'failed'
-                      ? 'Challenge expired'
-                      : `${miniChallenge.objective}: ${miniChallenge.progress}/${miniChallenge.target}`}
-                </div>
+                {miniChallenge && (
+                  <div className={`hud-challenge hud-challenge-${miniChallenge.status}`} aria-live="polite">
+                    <div className="hud-challenge-heading">
+                      <span>{miniChallenge.status === 'complete' ? '✓ COMPLETE' : miniChallenge.status === 'failed' ? 'TRY AGAIN' : miniChallenge.label}</span>
+                      {miniChallenge.status === 'active' && <strong>{Math.max(1, Math.ceil(miniChallenge.remainingMs / 1000))}s</strong>}
+                    </div>
+                    <div className="hud-challenge-objective">
+                      {miniChallenge.status === 'complete'
+                        ? `+${miniChallenge.rewardCoins} coins earned!`
+                        : miniChallenge.status === 'failed'
+                          ? 'Challenge expired'
+                          : `${miniChallenge.objective}: ${miniChallenge.progress}/${miniChallenge.target}`}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
