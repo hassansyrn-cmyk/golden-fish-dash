@@ -93,8 +93,32 @@ const HeartIcon = ({ full }: { full: boolean }) => {
   );
 };
 
+const ShieldIcon = ({ full }: { full: boolean }) => (
+  <svg width="25" height="25" viewBox="0 0 24 24" aria-hidden="true">
+    <defs>
+      <linearGradient id="shield-grad-full" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#e4fbff" />
+        <stop offset="44%" stopColor="#4fc3f7" />
+        <stop offset="100%" stopColor="#1565c0" />
+      </linearGradient>
+      <linearGradient id="shield-grad-empty" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="rgba(220, 245, 255, 0.30)" />
+        <stop offset="100%" stopColor="rgba(50, 85, 130, 0.16)" />
+      </linearGradient>
+    </defs>
+    <path
+      d="M12 2.4 20 5.6v5.8c0 5.05-3.28 8.6-8 10.22C7.28 20 4 16.45 4 11.4V5.6L12 2.4Z"
+      fill={full ? 'url(#shield-grad-full)' : 'url(#shield-grad-empty)'}
+      stroke={full ? '#b3ecff' : 'rgba(255,255,255,0.42)'}
+      strokeWidth="1.25"
+    />
+    {full && <path d="m8.2 11.9 2.25 2.15 5.2-5.25" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />}
+  </svg>
+);
+
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
+const MAX_VISIBLE_SHIELDS = 2;
 export default function GoldenFishRush() {
   const [screen, setScreen] = useState<ScreenName>('loading');
   const [finalScore, setFinalScore] = useState(0);
@@ -175,7 +199,22 @@ export default function GoldenFishRush() {
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
-  const { score, roundCoins, lives, doJump, reviveAt } = useGameEngine({
+  const {
+    score,
+    roundCoins,
+    lives,
+    shieldCharges,
+    magnetRemainingMs,
+    feverRemainingMs,
+    hourglassRemainingMs,
+    dropRushRemainingMs,
+    comboStreak,
+    comboMultiplier,
+    comboRemainingMs,
+    miniChallenge,
+    doJump,
+    reviveAt,
+  } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
@@ -254,6 +293,18 @@ export default function GoldenFishRush() {
   }, []);
 
   const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
+  const visibleShields = Math.max(0, Math.min(shieldCharges, MAX_VISIBLE_SHIELDS));
+  const activePowerUps = [
+    { id: 'magnet', icon: '🧲', label: 'MAGNET', remainingMs: magnetRemainingMs, color: '#ffb74d' },
+    { id: 'fever', icon: '✦', label: 'FEVER', remainingMs: feverRemainingMs, color: '#f48fb1' },
+    { id: 'slow', icon: '⌛', label: 'SLOW', remainingMs: hourglassRemainingMs, color: '#80deea' },
+    { id: 'drop-rush', icon: '✦', label: 'DROP RUSH', remainingMs: dropRushRemainingMs, color: '#fff176' },
+  ].filter((powerUp) => powerUp.remainingMs > 0);
+  const comboActive = comboStreak >= 2 && comboRemainingMs > 0;
+  const comboProgress = Math.min(100, Math.round((comboRemainingMs / 1800) * 100));
+  const challengeProgress = miniChallenge
+    ? Math.min(100, Math.round((miniChallenge.progress / miniChallenge.target) * 100))
+    : 0;
 
   const handleOpenShop = useCallback(() => {
     setScreen('shop');
@@ -312,22 +363,76 @@ export default function GoldenFishRush() {
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
-            <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`} style={{ display: 'flex', alignItems: 'center' }}>
-              {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => {
-                const isFull = index < visibleLives;
-                return (
-                  <span
-                    key={index}
-                    className={isFull ? 'hud-heart-wrapper hud-heart-full' : 'hud-heart-wrapper hud-heart-empty'}
-                    style={{ display: 'inline-flex', alignItems: 'center' }}
-                  >
-                    <HeartIcon full={isFull} />
-                  </span>
-                );
-              })}
+            <div className="hud-resource-stack">
+              <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`}>
+                {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => {
+                  const isFull = index < visibleLives;
+                  return (
+                    <span
+                      key={index}
+                      className={isFull ? 'hud-heart-wrapper hud-heart-full' : 'hud-heart-wrapper hud-heart-empty'}
+                    >
+                      <HeartIcon full={isFull} />
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div className="hud-shields" aria-label={`Shield charges: ${visibleShields} of ${MAX_VISIBLE_SHIELDS}`}>
+                {Array.from({ length: MAX_VISIBLE_SHIELDS }).map((_, index) => {
+                  const isFull = index < visibleShields;
+                  return (
+                    <span key={index} className={isFull ? 'hud-shield-wrapper hud-shield-full' : 'hud-shield-wrapper hud-shield-empty'}>
+                      <ShieldIcon full={isFull} />
+                    </span>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="hud-score">{score}</div>
+
+            {activePowerUps.length > 0 && (
+              <div className="hud-powerups" aria-label="Active power-ups">
+                {activePowerUps.map((powerUp) => (
+                  <div
+                    key={powerUp.id}
+                    className="hud-powerup-chip"
+                    style={{ borderColor: powerUp.color, boxShadow: `0 0 12px ${powerUp.color}55` }}
+                  >
+                    <span className="hud-powerup-icon">{powerUp.icon}</span>
+                    <span>{powerUp.label} {Math.max(1, Math.ceil(powerUp.remainingMs / 1000))}s</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {comboActive && (
+              <div className="hud-combo" aria-label={`Combo ${comboStreak}, multiplier ${comboMultiplier}`}>
+                <div className="hud-combo-title">COMBO x{comboMultiplier}</div>
+                <div className="hud-combo-detail">{comboStreak} coins chained</div>
+                <div className="hud-combo-track"><span style={{ width: `${comboProgress}%` }} /></div>
+              </div>
+            )}
+
+            {miniChallenge && (
+              <div className={`hud-challenge hud-challenge-${miniChallenge.status}`} aria-live="polite">
+                <div className="hud-challenge-heading">
+                  <span>{miniChallenge.status === 'complete' ? '✓ COMPLETE' : miniChallenge.status === 'failed' ? 'TRY AGAIN' : miniChallenge.label}</span>
+                  {miniChallenge.status === 'active' && <strong>{Math.max(1, Math.ceil(miniChallenge.remainingMs / 1000))}s</strong>}
+                </div>
+                <div className="hud-challenge-objective">
+                  {miniChallenge.status === 'complete'
+                    ? `+${miniChallenge.rewardCoins} coins earned!`
+                    : miniChallenge.status === 'failed'
+                      ? 'Challenge expired'
+                      : `${miniChallenge.objective}: ${miniChallenge.progress}/${miniChallenge.target}`}
+                </div>
+                {miniChallenge.status === 'active' && (
+                  <div className="hud-challenge-track"><span style={{ width: `${challengeProgress}%` }} /></div>
+                )}
+              </div>
+            )}
 
             {screen === 'playing' && (
               <button

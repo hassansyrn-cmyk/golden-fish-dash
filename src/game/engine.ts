@@ -908,7 +908,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 18) {
         pu.collected = true;
         if (pu.type === 'shield') {
-          state.shieldCharges = Math.min(3, state.shieldCharges + 1);
+          state.shieldCharges = Math.min(2, state.shieldCharges + 1);
           callbacks.onShake?.(1); // Light non-distracting shake
           triggerFloatingText(state, 'Shield!', pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);

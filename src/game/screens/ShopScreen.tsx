@@ -59,7 +59,7 @@ const UPGRADE_ITEMS: UpgradeItem[] = [
   {
     id: 'shield',
     name: '🛡️ Shield Capacity',
-    description: 'Permanently increases starting shield charge capacity (+1 charge/level).',
+    description: 'Start with shield charges, up to the HUD maximum of 2 shields.',
     baseCost: 250,
   },
   {
@@ -149,7 +149,8 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
   const handleBuyUpgrade = (item: UpgradeItem) => {
     setMessage(null);
     const currentLevel = getUpgradeLevel(item.id);
-    if (currentLevel >= 5) {
+    const maxLevel = item.id === 'shield' ? 1 : 5;
+    if (currentLevel >= maxLevel) {
       setMessage('Upgrade already fully maxed out!');
       setTimeout(() => setMessage(null), 2000);
       return;
@@ -402,21 +403,22 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         {activeTab === 'upgrades' &&
           UPGRADE_ITEMS.map((item) => {
             const currentLvl = getUpgradeLevel(item.id);
+            const maxLevel = item.id === 'shield' ? 1 : 5;
             const cost = (currentLvl + 1) * item.baseCost;
-            const canBuy = coins >= cost && currentLvl < 5;
-            const isMax = currentLvl >= 5;
+            const canBuy = coins >= cost && currentLvl < maxLevel;
+            const isMax = currentLvl >= maxLevel;
             const needed = cost - coins;
 
             return (
               <div key={item.id} className="shop-item-card">
                 <div className="shop-item-title">
-                  {item.name} <span style={{ color: '#ffd54f', fontSize: '12px' }}>(Lvl {currentLvl}/5)</span>
+                  {item.name} <span style={{ color: '#ffd54f', fontSize: '12px' }}>(Lvl {Math.min(currentLvl, maxLevel)}/{maxLevel})</span>
                 </div>
                 <div className="shop-item-desc">{item.description}</div>
 
                 {/* Level indicator ticks */}
                 <div style={{ display: 'flex', gap: '4px', margin: '8px 0' }}>
-                  {Array.from({ length: 5 }).map((_, idx) => (
+                  {Array.from({ length: maxLevel }).map((_, idx) => (
                     <div
                       key={idx}
                       style={{
