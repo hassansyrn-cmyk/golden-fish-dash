@@ -8,6 +8,7 @@
 
 import { BASE, SKINS } from './constants';
 import type { SkinId, FloatingText } from './types';
+import { translate } from './i18n';
 
 type EnvironmentId = 'lagoon' | 'coral' | 'kelp' | 'ruins' | 'volcanic' | 'temple' | 'abyss' | 'crystal' | 'moonlit' | 'sunkenCity' | 'aurora' | 'crownReef' | 'eternalTemple';
 
@@ -885,7 +886,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           state.lives += 1;
           callbacks.onGemCollect?.(state.lives);
           callbacks.onLifeChange?.(state.lives);
-          triggerFloatingText(state, '+1 Life', gem.x, gem.y - 15, '#81c784', true);
+          triggerFloatingText(state, translate('engine.life'), gem.x, gem.y - 15, '#81c784', true);
         } else {
           state.score += 5;
           callbacks.onScore(state.score);
@@ -912,23 +913,23 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (pu.type === 'shield') {
           state.shieldCharges = Math.min(2, state.shieldCharges + 1);
           callbacks.onShake?.(1); // Light non-distracting shake
-          triggerFloatingText(state, 'Shield!', pu.x, pu.y - 15, '#29b6f6', true);
+          triggerFloatingText(state, translate('engine.shield'), pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
         } else if (pu.type === 'magnet') {
           const duration = state.skin === 'emerald' ? MAGNET_DURATION_MS * 1.25 : MAGNET_DURATION_MS;
           state.magnetUntil = state.timeMs + duration;
-          triggerFloatingText(state, `Magnet · ${Math.round(duration / 1000)}s`, pu.x, pu.y - 15, '#ffa726', true);
+          triggerFloatingText(state, translate('engine.magnet', undefined, { seconds: Math.round(duration / 1000) }), pu.x, pu.y - 15, '#ffa726', true);
           addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
         } else if (pu.type === 'fever') {
           state.feverUntil = state.timeMs + 6000;
           state.elapsedSinceFeverCoinSpawn = 180; // trigger immediate coin spawn
           callbacks.onFeverStart?.();
-          triggerFloatingText(state, 'Fever Mode!', pu.x, pu.y - 15, '#e040fb', true);
+          triggerFloatingText(state, translate('engine.fever'), pu.x, pu.y - 15, '#e040fb', true);
           addBurst(state, pu.x, pu.y, 'rgba(224, 64, 251, 0.95)', 26, 3);
         } else if (pu.type === 'hourglass') {
           state.hourglassUntil = state.timeMs + 5000;
           callbacks.onShake?.(1); // Light non-distracting shake
-          triggerFloatingText(state, 'Slow Mo!', pu.x, pu.y - 15, '#00e5ff', true);
+          triggerFloatingText(state, translate('engine.slowMo'), pu.x, pu.y - 15, '#00e5ff', true);
           addBurst(state, pu.x, pu.y, 'rgba(0, 229, 255, 0.95)', 20, 3);
         }
       }
@@ -946,7 +947,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + ring.radius) {
         ring.collected = true;
         state.boostUntil = state.timeMs + DROP_RUSH_DURATION_MS;
-        triggerFloatingText(state, 'DROP RUSH · 20s', ring.x, ring.y - 15, '#ffd54f', true);
+        triggerFloatingText(state, translate('engine.dropRush', undefined, { seconds: 20 }), ring.x, ring.y - 15, '#ffd54f', true);
         callbacks.onShake(1); // Very minor shake
         addBurst(state, ring.x, ring.y, '#00e5ff', 18, 2);
         addBurst(state, ring.x, ring.y, '#ffd54f', 12, 2.4);
@@ -967,7 +968,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         callbacks.onCoinCollect(25);
         state.score += 25;
         callbacks.onScore(state.score);
-        triggerFloatingText(state, 'Treasure +25 Coins · +25 Score', chest.x, chest.y - 20, '#ffd54f', true);
+        triggerFloatingText(state, translate('engine.treasure'), chest.x, chest.y - 20, '#ffd54f', true);
         callbacks.onShake(1); // Very minor shake
         addBurst(state, chest.x, chest.y, '#ffd54f', 30, 3);
       }
@@ -1550,7 +1551,7 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const secondsLeft = Math.max(1, Math.ceil((state.boostUntil - state.timeMs) / 1000));
-    ctx.fillText(`DROP RUSH ${secondsLeft}s`, 0, -r * 2.65 + 7);
+    ctx.fillText(translate('engine.dropRush', undefined, { seconds: secondsLeft }), 0, -r * 2.65 + 7);
     ctx.restore();
   }
 

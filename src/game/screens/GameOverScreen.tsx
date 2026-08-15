@@ -13,6 +13,7 @@ import {
   getXP,
 } from '../storage';
 import { SKINS } from '../constants';
+import { useI18n } from '../i18n';
 import type { SkinId } from '../types';
 
 interface Props {
@@ -27,20 +28,24 @@ interface Props {
   onShop?: () => void;
 }
 
-function encouragement(finalScore: number, best: number): string {
-  if (finalScore >= best && finalScore > 0) return 'New personal best! You are unstoppable.';
+function encouragement(
+  finalScore: number,
+  best: number,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  if (finalScore >= best && finalScore > 0) return t('gameover.encourageBest');
 
   if (best - finalScore <= 3 && best - finalScore > 0) {
-    return `You were close to your best! Only ${best - finalScore} points away.`;
+    return t('gameover.encourageClose', { points: best - finalScore });
   }
 
   const nextSkin = SKINS.find((skin) => skin.unlockScore > finalScore);
 
   if (nextSkin) {
-    return `Only ${nextSkin.unlockScore - finalScore} points away from unlocking the ${nextSkin.name}!`;
+    return t('gameover.encourageUnlock', { points: nextSkin.unlockScore - finalScore, fish: nextSkin.name });
   }
 
-  return 'Try again to climb the leaderboard!';
+  return t('gameover.encourageRetry');
 }
 
 function getSkinById(id: SkinId) {
@@ -57,6 +62,7 @@ export default function GameOverScreen({
   onMenu,
   onNewUnlocks,
 }: Props) {
+  const { t } = useI18n();
   const prevBest = getPersonalBest();
   const best = Math.max(prevBest, finalScore);
   const rank = estimateGlobalRank(finalScore);
@@ -79,7 +85,7 @@ export default function GameOverScreen({
   }, []);
 
   const handleDoubleRewards = () => {
-    setDoubleMsg('Ad space is reserved for production. Double rewards will return after launch approval.');
+    setDoubleMsg(t('gameover.doubleInfo'));
   };
 
   const xpNeeded = level * 150;
@@ -118,7 +124,7 @@ export default function GameOverScreen({
       await submitScoreToServer(trimmed, finalScore);
       setSubmitted(true);
     } catch {
-      setSubmitError('Could not save score. Please try again.');
+      setSubmitError(t('gameover.saveFailed'));
       setIsSubmitting(false);
     }
   }
@@ -130,21 +136,21 @@ export default function GameOverScreen({
 
   return (
     <div className="screen gameover-screen">
-      <h2 className="screen-title gameover-title">Game Over</h2>
+      <h2 className="screen-title gameover-title">{t('gameover.title')}</h2>
 
       <div className="gameover-stats">
         <div>
-          <span className="stat-label">Final Score</span>
+          <span className="stat-label">{t('gameover.finalScore')}</span>
           <span className="stat-value stat-value-lg">{finalScore}</span>
         </div>
 
         <div>
-          <span className="stat-label">Personal Best</span>
+          <span className="stat-label">{t('gameover.personalBest')}</span>
           <span className="stat-value">{best}</span>
         </div>
 
         <div>
-          <span className="stat-label">Global Rank (est.)</span>
+          <span className="stat-label">{t('gameover.globalRank')}</span>
           <span className="stat-value">#{rank}</span>
         </div>
       </div>
@@ -152,14 +158,14 @@ export default function GameOverScreen({
       {/* Game Over Player Level Progress */}
       <div style={{ width: '100%', maxWidth: '320px', margin: '14px auto', padding: '12px', backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '10px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>
-          <span>Level {level} Progression</span>
+          <span>{t('gameover.levelProgress', { level })}</span>
           <span style={{ fontSize: '11px', color: '#ffd54f' }}>{xp} / {xpNeeded} XP</span>
         </div>
         <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: '4px', overflow: 'hidden' }}>
           <div style={{ width: `${xpPercent}%`, height: '100%', backgroundColor: '#ffd54f', borderRadius: '4px', transition: 'width 0.4s ease' }} />
         </div>
         <p style={{ fontSize: '11px', color: '#b0bec5', margin: '6px 0 0 0', textAlign: 'center' }}>
-          Final score and coin counts converted into extra level XP!
+          {t('gameover.xpInfo')}
         </p>
       </div>
 
@@ -169,11 +175,11 @@ export default function GameOverScreen({
         </div>
       )}
 
-      <p className="gameover-encourage">{encouragement(finalScore, prevBest)}</p>
+      <p className="gameover-encourage">{encouragement(finalScore, prevBest, t)}</p>
 
       {newlyUnlocked.length > 0 && (
         <div className="name-entry-card">
-          <p className="gameover-encourage">New Fish Unlocked!</p>
+          <p className="gameover-encourage">{t('gameover.newFish')}</p>
 
           <div className="skin-grid">
             {newlyUnlocked.map((id) => {
@@ -204,7 +210,7 @@ export default function GameOverScreen({
                   </div>
 
                   <span className="skin-lock-req">
-                    {isEquipped ? 'Equipped' : 'Equip Now'}
+                    {isEquipped ? t('gameover.equipped') : t('gameover.equipNow')}
                   </span>
                 </button>
               );
@@ -215,13 +221,13 @@ export default function GameOverScreen({
 
       {qualifies && !submitted && (
         <div className="name-entry-card">
-          <p>You made the leaderboard! Enter a name:</p>
+          <p>{t('gameover.leaderboardEntry')}</p>
 
           <div className="name-entry-row">
             <input
               className="name-input"
               maxLength={16}
-              placeholder="Your name"
+              placeholder={t('gameover.yourName')}
               value={name}
               disabled={isSubmitting}
               onChange={(event) => setName(event.target.value)}
@@ -232,7 +238,7 @@ export default function GameOverScreen({
               onClick={handleSubmit}
               disabled={isSubmitting || !name.trim()}
             >
-              {isSubmitting ? 'Saving...' : 'Save'}
+              {isSubmitting ? t('gameover.saving') : t('gameover.save')}
             </button>
           </div>
 
@@ -240,12 +246,12 @@ export default function GameOverScreen({
         </div>
       )}
 
-      {submitted && <p className="name-saved-note">Score saved to the leaderboard!</p>}
+      {submitted && <p className="name-saved-note">{t('gameover.scoreSaved')}</p>}
 
       <div className="gameover-buttons">
         {canContinue && (
           <button className="btn btn-ad" onClick={onWatchAd}>
-            Ad space — continue coming soon
+            {t('gameover.continueSoon')}
           </button>
         )}
 
@@ -255,20 +261,20 @@ export default function GameOverScreen({
             onClick={handleDoubleRewards}
             style={{ background: 'linear-gradient(135deg, #fb8500, #ffb703)', border: 'none', color: '#000814' }}
           >
-            Ad space — double rewards coming soon
+            {t('gameover.doubleSoon')}
           </button>
         )}
 
         <button className="btn btn-primary" onClick={onPlayAgain}>
-          Play Again
+          {t('gameover.playAgain')}
         </button>
 
         <button className="btn btn-secondary" onClick={onLeaderboard}>
-          Leaderboard
+          {t('menu.leaderboard')}
         </button>
 
         <button className="btn btn-secondary" onClick={onMenu}>
-          Main Menu
+          {t('gameover.menu')}
         </button>
       </div>
     </div>

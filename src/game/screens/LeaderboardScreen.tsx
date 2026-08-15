@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { getLocalLeaderboard, getPersonalBest, fetchGlobalLeaderboard } from '../storage';
 import type { LeaderboardEntry } from '../types';
+import { useI18n } from '../i18n';
 
 interface Props {
   onBack: () => void;
 }
 
 export default function LeaderboardScreen({ onBack }: Props) {
+  const { t } = useI18n();
   const [board, setBoard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,7 @@ export default function LeaderboardScreen({ onBack }: Props) {
       } catch (err) {
         console.warn('[LeaderboardScreen] Firebase load failed, using local/sample data.');
         if (mounted) {
-          setError('Using offline scores');
+          setError(t('leaderboard.offline'));
           setBoard(getLocalLeaderboard());
         }
       } finally {
@@ -33,17 +35,17 @@ export default function LeaderboardScreen({ onBack }: Props) {
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [t]);
 
   return (
     <div className="screen leaderboard-screen">
-      <h2 className="screen-title">Top 10 Leaderboard</h2>
-      <p className="leaderboard-sub">Your best: {best}</p>
-      {loading && <p className="leaderboard-sub" style={{ opacity: 0.7 }}>Loading global scores...</p>}
+      <h2 className="screen-title">{t('leaderboard.title')}</h2>
+      <p className="leaderboard-sub">{t('leaderboard.yourBest', { score: best })}</p>
+      {loading && <p className="leaderboard-sub" style={{ opacity: 0.7 }}>{t('leaderboard.loadingScores')}</p>}
       {!loading && error && <p className="leaderboard-sub" style={{ color: '#f59e0b' }}>{error}</p>}
       <ol className="leaderboard-list">
         {board.length === 0 && !loading ? (
-          <li className="leaderboard-row">No scores yet. Play to set one!</li>
+          <li className="leaderboard-row">{t('leaderboard.noScores')}</li>
         ) : (
           board.map((entry, i) => (
             <li key={`${entry.name}-${entry.date}-${i}`} className={`leaderboard-row ${i < 3 ? 'leaderboard-top3' : ''}`}>
@@ -55,7 +57,7 @@ export default function LeaderboardScreen({ onBack }: Props) {
         )}
       </ol>
       <button className="btn btn-primary" onClick={onBack}>
-        Back
+        {t('common.back')}
       </button>
     </div>
   );

@@ -15,6 +15,7 @@ import {
 } from './constants';
 import type {
   DailyChallengeState,
+  AppLanguage,
   DailyRewardState,
   LeaderboardEntry,
   Settings,
@@ -132,12 +133,40 @@ export function incrementGameOverCount(): number {
 }
 
 // ---- Settings ----
-const DEFAULT_SETTINGS: Settings = { sound: true, music: true, vibration: true };
-export function getSettings(): Settings {
-  return readJSON(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
+function detectInitialLanguage(): AppLanguage {
+  if (typeof navigator === 'undefined') return 'en';
+  const deviceLanguage = navigator.languages?.[0] ?? navigator.language ?? 'en';
+  return deviceLanguage.toLowerCase().startsWith('ar') ? 'ar' : 'en';
 }
+
+const DEFAULT_SETTINGS: Settings = {
+  sound: true,
+  music: true,
+  vibration: true,
+  language: detectInitialLanguage(),
+};
+
+export function getSettings(): Settings {
+  const saved = readJSON<Partial<Settings>>(STORAGE_KEYS.settings, {});
+  const language: AppLanguage = saved.language === 'ar' || saved.language === 'en'
+    ? saved.language
+    : detectInitialLanguage();
+  const settings: Settings = { ...DEFAULT_SETTINGS, ...saved, language };
+
+  // Existing players receive a one-time device-language choice without overwriting a later manual choice.
+  if (saved.language !== 'ar' && saved.language !== 'en') {
+    writeJSON(STORAGE_KEYS.settings, settings);
+  }
+
+  return settings;
+}
+
 export function setSettings(settings: Settings) {
   writeJSON(STORAGE_KEYS.settings, settings);
+}
+
+export function setLanguage(language: AppLanguage) {
+  setSettings({ ...getSettings(), language });
 }
 
 // ---- Shop Inventory ----

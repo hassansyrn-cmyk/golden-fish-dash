@@ -1,6 +1,8 @@
 import { VERSION } from './constants';
+import { useI18n } from './i18n';
 
 export default function Footer() {
+  const { t } = useI18n();
   const openPrivacy = () => {
     window.open('/privacy.html', '_blank');
   };
@@ -9,13 +11,13 @@ export default function Footer() {
     <footer className="game-footer">
       <span className="footer-links">
         <a href="#" onClick={(e) => { e.preventDefault(); openPrivacy(); }}>
-          Privacy Policy
+          {t('footer.privacy')}
         </a>
         <a href="#" onClick={(e) => e.preventDefault()}>
-          Terms
+          {t('footer.terms')}
         </a>
         <a href="#" onClick={(e) => e.preventDefault()}>
-          Contact
+          {t('footer.contact')}
         </a>
       </span>
       <span className="footer-version">{VERSION}</span>

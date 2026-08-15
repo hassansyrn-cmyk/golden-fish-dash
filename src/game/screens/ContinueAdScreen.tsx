@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getShopItemCount, consumeShopItem } from '../storage';
+import { useI18n } from '../i18n';
 
 interface Props {
   onFinished: () => void;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function ContinueAdScreen({ onFinished, onSkip }: Props) {
+  const { t } = useI18n();
   const [hasToken, setHasToken] = useState(false);
   const [tokenCount, setTokenCount] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
@@ -24,34 +26,34 @@ export default function ContinueAdScreen({ onFinished, onSkip }: Props) {
   };
 
   const handleWatchAd = () => {
-    setMessage('Ad space is reserved for the production launch. Continue Tokens are available now.');
+    setMessage(t('continue.adNotice'));
   };
 
   return (
     <div className="screen continue-screen">
-      <h2 className="screen-title">One More Dive?</h2>
+      <h2 className="screen-title">{t('continue.oneMoreDive')}</h2>
       <p className="continue-copy">
-        Ad space is reserved for the production launch. Use a Continue Token to revive at a safe point.
+        {t('continue.copy')}
       </p>
 
       <div className="gameover-buttons">
         {hasToken && (
           <button className="btn btn-primary token-btn" onClick={handleUseToken}>
-            Use Continue Token ({tokenCount})
+            {t('continue.useTokenCount', { count: tokenCount })}
           </button>
         )}
 
         <button className="btn btn-ad" onClick={handleWatchAd}>
-          Ad space — coming soon
+          {t('continue.adSoon')}
         </button>
 
         <button className="btn btn-secondary" onClick={onSkip}>
-          No Thanks
+          {t('continue.noThanks')}
         </button>
       </div>
 
       {message && <p className="continue-note">{message}</p>}
-      <p className="continue-note">Rewarded ads will return with production-approved units.</p>
+      <p className="continue-note">{t('continue.approvedNotice')}</p>
     </div>
   );
 }

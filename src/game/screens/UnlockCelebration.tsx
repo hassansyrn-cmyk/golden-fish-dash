@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SKINS } from '../constants';
 import { getSelectedSkin, setSelectedSkin } from '../storage';
 import type { SkinId } from '../types';
+import { translateSkin, useI18n } from '../i18n';
 
 function FishIcon({ skinId }: { skinId: SkinId }) {
   const skin = SKINS.find((s) => s.id === skinId) ?? SKINS[0];
@@ -79,6 +80,7 @@ interface Props {
 }
 
 export default function UnlockCelebration({ unlockedIds, onContinue }: Props) {
+  const { language, t } = useI18n();
   const skins = unlockedIds
     .map((id) => SKINS.find((s) => s.id === id))
     .filter(Boolean) as typeof SKINS;
@@ -94,12 +96,12 @@ export default function UnlockCelebration({ unlockedIds, onContinue }: Props) {
     <div className="screen unlock-screen">
       <div className="unlock-sparkles" aria-hidden="true">✨</div>
 
-      <h2 className="screen-title unlock-title">Congratulations!</h2>
+      <h2 className="screen-title unlock-title">{t('unlock.congratulations')}</h2>
 
       <p className="unlock-subtitle">
         {skins.length === 1
-          ? 'You unlocked a new fish!'
-          : `You unlocked ${skins.length} new fish!`}
+          ? t('unlock.oneFish')
+          : t('unlock.manyFish', { count: skins.length })}
       </p>
 
       <div className="unlock-fish-list">
@@ -110,20 +112,20 @@ export default function UnlockCelebration({ unlockedIds, onContinue }: Props) {
             <div key={skin.id} className="unlock-fish-card">
               <FishIcon skinId={skin.id} />
 
-              <span className="unlock-fish-name">{skin.name}</span>
+              <span className="unlock-fish-name">{translateSkin(skin.id, 'name', language)}</span>
 
               <div style={{ fontSize: '12px', color: '#ffd54f', margin: '4px 0', fontWeight: 'bold', lineHeight: '1.2' }}>
-                {skin.ability}
+                {translateSkin(skin.id, 'ability', language)}
               </div>
 
-              <span className="unlock-fish-score">Score {skin.unlockScore}+</span>
+              <span className="unlock-fish-score">{t('unlock.score', { score: skin.unlockScore })}</span>
 
               <button
                 className={`btn ${isEquipped ? 'btn-secondary' : 'btn-primary'}`}
                 onClick={() => handleEquip(skin.id)}
                 disabled={isEquipped}
               >
-                {isEquipped ? 'Equipped' : 'Equip Now'}
+                {isEquipped ? t('gameover.equipped') : t('unlock.equipNow')}
               </button>
             </div>
           );
@@ -132,12 +134,12 @@ export default function UnlockCelebration({ unlockedIds, onContinue }: Props) {
 
       <p className="unlock-hint">
         {skins.some((skin) => equippedSkin === skin.id)
-          ? 'Your selected fish is ready for the next run!'
-          : 'Equip your new fish now or choose it later from Settings.'}
+          ? t('unlock.ready')
+          : t('unlock.chooseLater')}
       </p>
 
       <button className="btn btn-primary" onClick={onContinue}>
-        Awesome!
+        {t('unlock.awesome')}
       </button>
     </div>
   );

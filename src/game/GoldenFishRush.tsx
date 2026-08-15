@@ -17,6 +17,7 @@ import { BannerAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
 import { audioManager } from './managers/AudioManager';
+import { useI18n } from './i18n';
 import {
   getSelectedSkin,
   getSettings,
@@ -122,6 +123,7 @@ const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
 const MAX_VISIBLE_SHIELDS = 2;
 export default function GoldenFishRush() {
+  const { t } = useI18n();
   const [screen, setScreen] = useState<ScreenName>('loading');
   const [finalScore, setFinalScore] = useState(0);
   const [usedSecondChanceThisRun, setUsedSecondChanceThisRun] = useState(false);
@@ -313,10 +315,10 @@ export default function GoldenFishRush() {
   const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
   const visibleShields = Math.max(0, Math.min(shieldCharges, MAX_VISIBLE_SHIELDS));
   const activePowerUps = [
-    { id: 'magnet', icon: '🧲', label: 'MAGNET', remainingMs: magnetRemainingMs, color: '#ffb74d' },
-    { id: 'fever', icon: '✦', label: 'FEVER', remainingMs: feverRemainingMs, color: '#f48fb1' },
-    { id: 'slow', icon: '⌛', label: 'SLOW', remainingMs: hourglassRemainingMs, color: '#80deea' },
-    { id: 'drop-rush', icon: '✦', label: 'DROP RUSH', remainingMs: dropRushRemainingMs, color: '#fff176' },
+    { id: 'magnet', icon: '🧲', label: t('hud.magnet'), remainingMs: magnetRemainingMs, color: '#ffb74d' },
+    { id: 'fever', icon: '✦', label: t('hud.fever'), remainingMs: feverRemainingMs, color: '#f48fb1' },
+    { id: 'slow', icon: '⌛', label: t('hud.slow'), remainingMs: hourglassRemainingMs, color: '#80deea' },
+    { id: 'drop-rush', icon: '✦', label: t('hud.dropRush'), remainingMs: dropRushRemainingMs, color: '#fff176' },
   ].filter((powerUp) => powerUp.remainingMs > 0);
   const handleOpenShop = useCallback(() => {
     setScreen('shop');
@@ -407,7 +409,7 @@ export default function GoldenFishRush() {
             {(activePowerUps.length > 0 || miniChallenge) && (
               <div className="hud-status-stack">
                 {activePowerUps.length > 0 && (
-                  <div className="hud-powerups" aria-label="Active power-ups">
+                    <div className="hud-powerups" aria-label={t('hud.activePowerUps')}>
                     {activePowerUps.map((powerUp) => (
                       <div
                         key={powerUp.id}
@@ -424,15 +426,15 @@ export default function GoldenFishRush() {
                 {miniChallenge && (
                   <div className={`hud-challenge hud-challenge-${miniChallenge.status}`} aria-live="polite">
                     <div className="hud-challenge-heading">
-                      <span>{miniChallenge.status === 'complete' ? '✓ COMPLETE' : miniChallenge.status === 'failed' ? 'TRY AGAIN' : miniChallenge.label}</span>
+                      <span>{miniChallenge.status === 'complete' ? t('challenge.complete') : miniChallenge.status === 'failed' ? t('challenge.tryAgain') : miniChallenge.id === 'coin-sprint' ? t('challenge.coinSprint') : t('challenge.comboRush')}</span>
                       {miniChallenge.status === 'active' && <strong>{Math.max(1, Math.ceil(miniChallenge.remainingMs / 1000))}s</strong>}
                     </div>
                     <div className="hud-challenge-objective">
                       {miniChallenge.status === 'complete'
-                        ? `+${miniChallenge.rewardCoins} coins earned!`
+                        ? t('challenge.rewardEarned', { coins: miniChallenge.rewardCoins })
                         : miniChallenge.status === 'failed'
-                          ? 'Challenge expired'
-                          : `${miniChallenge.objective}: ${miniChallenge.progress}/${miniChallenge.target}`}
+                          ? t('challenge.expired')
+                          : `${miniChallenge.id === 'coin-sprint' ? t('challenge.collectCoins') : t('challenge.buildCombo')}: ${miniChallenge.progress}/${miniChallenge.target}`}
                     </div>
                   </div>
                 )}
@@ -463,7 +465,7 @@ export default function GoldenFishRush() {
         {showExitHint && screen === 'menu' && (
           <div className="exit-confirm-toast" role="status" aria-live="polite">
             <span className="exit-confirm-icon">↩</span>
-            <span>هل تريد الخروج من اللعبة؟<br /><strong>اضغط زر الرجوع مرة أخرى</strong></span>
+            <span>{t('exit.question')}<br /><strong>{t('exit.confirm')}</strong></span>
           </div>
         )}
 

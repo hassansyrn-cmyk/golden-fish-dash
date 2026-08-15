@@ -4,6 +4,7 @@ import {
   claimDailyReward,
   getCurrentDailyReward,
 } from '../storage';
+import { translateDailyRewardCard, useI18n } from '../i18n';
 
 interface Props {
   onBack: () => void;
@@ -21,6 +22,7 @@ const REWARD_CARDS = [
 ];
 
 export default function DailyRewardsScreen({ onBack }: Props) {
+  const { language, t } = useI18n();
   const [canClaim, setCanClaim] = useState(canClaimDailyReward());
   const [currentReward, setCurrentReward] = useState(getCurrentDailyReward());
   const [message, setMessage] = useState<string | null>(null);
@@ -42,12 +44,15 @@ export default function DailyRewardsScreen({ onBack }: Props) {
       // Refresh visible reward state after claim.
       setCanClaim(false);
       setCurrentReward(getCurrentDailyReward());
-      setMessage(result.message);
+      setMessage(t('rewards.claimedMessage', {
+        day: result.day,
+        reward: translateDailyRewardCard(result.day, language),
+      }));
 
       // Auto clear message after 3s
       setTimeout(() => setMessage(null), 3000);
     } else {
-      setMessage(result.message || 'Could not claim reward');
+      setMessage(result.message === 'Already claimed today' ? t('rewards.alreadyClaimed') : t('rewards.error'));
       setTimeout(() => setMessage(null), 2500);
     }
     setClaiming(false);
@@ -59,13 +64,13 @@ export default function DailyRewardsScreen({ onBack }: Props) {
     <div className="screen daily-rewards-screen">
       <div className="shop-header">
         <button className="btn btn-secondary" onClick={onBack}>
-          ← Back
+          ← {t('common.back')}
         </button>
-        <h2 className="screen-title">Daily Rewards</h2>
+        <h2 className="screen-title">{t('rewards.title')}</h2>
       </div>
 
       <p className="daily-rewards-subtitle">
-        Claim your daily reward! Streak resets if you miss a day.
+        {t('rewards.subtitleFull')}
       </p>
 
       {message && (
@@ -86,14 +91,14 @@ export default function DailyRewardsScreen({ onBack }: Props) {
                 `daily-reward-card ${isToday ? 'daily-reward-card-active' : ''} ${isClaimed && !isToday ? 'daily-reward-card-claimed' : ''}`
               }
             >
-              <div className="daily-reward-day">Day {card.day}</div>
+              <div className="daily-reward-day">{t('rewards.dayLabel', { day: card.day })}</div>
               <div className="daily-reward-icon">{card.icon}</div>
-              <div className="daily-reward-name">{card.label}</div>
+              <div className="daily-reward-name">{translateDailyRewardCard(card.day, language)}</div>
               {isToday && (
-                <div className="daily-reward-status today">Today's Reward</div>
+                <div className="daily-reward-status today">{t('rewards.todayReward')}</div>
               )}
               {isClaimed && !isToday && (
-                <div className="daily-reward-status claimed">Claimed</div>
+                <div className="daily-reward-status claimed">{t('rewards.claimed')}</div>
               )}
             </div>
           );
@@ -107,19 +112,19 @@ export default function DailyRewardsScreen({ onBack }: Props) {
           disabled={!canClaim || claiming}
         >
           {claiming
-            ? 'Claiming...'
+            ? t('rewards.claiming')
             : canClaim
-              ? 'Claim Reward'
-              : 'Claimed Today'}
+              ? t('rewards.claimReward')
+              : t('rewards.claimedToday')}
         </button>
 
         <button className="btn btn-secondary" onClick={onBack}>
-          Back to Menu
+          {t('rewards.backToMenu')}
         </button>
       </div>
 
       <p className="daily-rewards-note">
-        Rewards are added to your coins or inventory immediately.
+        {t('rewards.note')}
       </p>
     </div>
   );

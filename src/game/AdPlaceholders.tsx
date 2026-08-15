@@ -28,6 +28,8 @@
 //
 // -----------------------------------------------------------------------
 
+import { useI18n } from './i18n';
+
 // Advertising is intentionally paused during the current testing round.
 // Keep this flag false until production-approved AdMob units are configured.
 export const AD_SERVING_ENABLED = false;
@@ -59,9 +61,10 @@ export const AD_SERVING_ENABLED = false;
  * }, []);
  */
 export function BannerAd() {
+  const { t } = useI18n();
   return (
-    <div className="banner-ad-slot" role="complementary" aria-label="Advertisement space">
-      <span>Ad space</span>
+    <div className="banner-ad-slot" role="complementary" aria-label={t('gameover.adSpace')}>
+      <span>{t('gameover.adSpace')}</span>
     </div>
   );
 }
@@ -100,13 +103,14 @@ interface InterstitialProps {
  * };
  */
 export function InterstitialAd({ onClose }: InterstitialProps) {
+  const { t } = useI18n();
   return (
     <div className="modal-overlay">
       <div className="modal-card interstitial-card">
-        <span className="ad-label">Advertisement</span>
-        <div className="interstitial-placeholder">Ad space — Interstitial</div>
+        <span className="ad-label">{t('gameover.adSpace')}</span>
+        <div className="interstitial-placeholder">{t('gameover.adSpace')}</div>
         <button className="btn btn-primary" onClick={onClose}>
-          Continue
+          {t('pause.resume')}
         </button>
       </div>
     </div>

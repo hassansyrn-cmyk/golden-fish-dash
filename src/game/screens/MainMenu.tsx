@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getDailyChallenge, getGlobalBestScore, getPersonalBest, getCoins, canClaimDailyReward } from '../storage';
 import { dateKey } from '../constants';
+import { translateDailyChallenge, useI18n } from '../i18n';
 
 interface Props {
   onPlay: () => void;
@@ -74,6 +75,7 @@ export default function MainMenu({
   onDailyRewards,
   onLuckySpin,
 }: Props) {
+  const { language, setLanguage, t } = useI18n();
   const [best, setBest] = useState(0);
   const [globalBest, setGlobalBest] = useState(0);
   const [daily, setDaily] = useState(getDailyChallenge());
@@ -102,16 +104,25 @@ export default function MainMenu({
 
   return (
     <div className="screen menu-screen">
+      <button
+        className="menu-language-button"
+        type="button"
+        onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+        aria-label={t('settings.language')}
+        title={t('settings.language')}
+      >
+        {language === 'en' ? 'ع' : 'EN'}
+      </button>
       <MenuFish />
       <h1 className="game-title">
         Golden <span className="game-title-accent">Fish Dash</span>
       </h1>
-      <p className="menu-tagline">Dive deep. Dodge smart. Rise legendary.</p>
+      <p className="menu-tagline">{t('menu.tagline')}</p>
 
       {/* Player Progression Level & XP Bar */}
       <div className="menu-level-container" style={{ width: '100%', maxWidth: '280px', margin: '-10px auto 14px auto', padding: '0 12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>
-          <span>Level {level}</span>
+          <span>{t('common.level')} {level}</span>
           <span style={{ fontSize: '11px', color: '#b0bec5', fontWeight: 'normal' }}>{xp} / {xpNeeded} XP</span>
         </div>
         <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -123,23 +134,23 @@ export default function MainMenu({
       <div className="menu-coins">
         <span className="coin-icon">🪙</span>
         <span className="coin-value">{coins}</span>
-        <span className="coin-label">Coins</span>
+        <span className="coin-label">{t('common.coins')}</span>
       </div>
 
       <div className="menu-stats">
         <div className="stat-pill">
-          <span className="stat-label">Personal Best</span>
+          <span className="stat-label">{t('menu.personalBest')}</span>
           <span className="stat-value">{best}</span>
         </div>
         <div className="stat-pill">
-          <span className="stat-label">Global Best</span>
+          <span className="stat-label">{t('menu.globalBest')}</span>
           <span className="stat-value">{globalBest}</span>
         </div>
       </div>
 
       <div className="daily-challenge-card">
-        <span className="daily-badge">Daily Challenge</span>
-        <p>{daily.challenge.description}</p>
+        <span className="daily-badge">{t('menu.dailyChallenge')}</span>
+        <p>{translateDailyChallenge(daily.challenge.id, language)}</p>
         <div className="daily-progress-track">
           <div
             className="daily-progress-fill"
@@ -148,14 +159,14 @@ export default function MainMenu({
         </div>
         <span className="daily-status">
           {daily.completed
-            ? `Completed! +${daily.challenge.rewardCoins} coins`
+            ? t('menu.completedReward', { coins: daily.challenge.rewardCoins })
             : `${daily.progress}/${daily.challenge.target}`}
         </span>
       </div>
 
       <div className="menu-buttons">
         <button className="btn btn-primary" onClick={onPlay}>
-          Play
+          {t('menu.play')}
         </button>
 
         {/* Daily Rewards button - noticeable when available */}
@@ -163,7 +174,7 @@ export default function MainMenu({
           className={`btn ${dailyRewardAvailable ? 'btn-primary daily-reward-btn' : 'btn-secondary'}`}
           onClick={onDailyRewards}
         >
-          {dailyRewardAvailable ? '🎁 Daily Reward!' : 'Daily Rewards'}
+          {dailyRewardAvailable ? t('menu.dailyRewardReady') : t('menu.dailyRewards')}
         </button>
 
         {/* Lucky Spin button */}
@@ -172,20 +183,20 @@ export default function MainMenu({
           onClick={onLuckySpin}
           style={{ animation: spinAvailable ? 'pulse 1.5s infinite' : 'none' }}
         >
-          {spinAvailable ? '🎰 Lucky Spin!' : 'Lucky Spin'}
+          {spinAvailable ? t('menu.luckySpinReady') : t('menu.luckySpin')}
         </button>
 
         <button className="btn btn-secondary" onClick={onLeaderboard}>
-          Leaderboard
+          {t('menu.leaderboard')}
         </button>
         <button className="btn btn-secondary" onClick={onHowTo}>
-          How to Play
+          {t('menu.howToPlay')}
         </button>
         <button className="btn btn-secondary" onClick={onSettings}>
-          Settings
+          {t('menu.settings')}
         </button>
         <button className="btn btn-secondary" onClick={onShop}>
-          Shop
+          {t('menu.shop')}
         </button>
       </div>
     </div>
