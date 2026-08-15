@@ -28,8 +28,9 @@
 //
 // -----------------------------------------------------------------------
 
-import { useEffect } from 'react';
-import { adManager } from './managers/AdManager';
+// Advertising is intentionally paused during the current testing round.
+// Keep this flag false until production-approved AdMob units are configured.
+export const AD_SERVING_ENABLED = false;
 
 /**
  * 3. BANNER AD INTEGRATION
@@ -58,18 +59,9 @@ import { adManager } from './managers/AdManager';
  * }, []);
  */
 export function BannerAd() {
-  useEffect(() => {
-    void adManager.showBanner();
-    return () => {
-      void adManager.removeBanner();
-    };
-  }, []);
-
-  if (adManager.isNative()) return null;
-
   return (
-    <div className="banner-ad-slot" role="complementary" aria-label="Advertisement preview">
-      <span>Ad placement preview — Native AdMob banner on Android</span>
+    <div className="banner-ad-slot" role="complementary" aria-label="Advertisement space">
+      <span>Ad space</span>
     </div>
   );
 }

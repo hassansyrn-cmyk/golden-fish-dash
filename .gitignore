@@ -4,3 +4,6 @@ dist
 .cache
 .vite
 .replit
+
+# Local Android test artifacts
+/*.apk

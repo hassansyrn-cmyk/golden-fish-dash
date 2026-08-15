@@ -36,8 +36,8 @@ const SHOP_ITEMS: ShopItem[] = [
   },
   {
     id: 'gemBoost',
-    name: '💎 Gem Boost',
-    description: 'Increase gem/heart spawn chance for the next run.',
+    name: '❤️ Heart Boost',
+    description: 'Increase heart drop chance for the next run.',
     cost: 250,
   },
   {
@@ -70,8 +70,8 @@ const UPGRADE_ITEMS: UpgradeItem[] = [
   },
   {
     id: 'gemBoost',
-    name: '💎 Gem Spawn rate',
-    description: 'Permanently increases the spawn probability of hearts and gems.',
+    name: '❤️ Heart Drop Rate',
+    description: 'Permanently increases the chance of heart drops appearing.',
     baseCost: 300,
   },
   {
@@ -94,7 +94,7 @@ const CHEST_ITEMS: ChestItem[] = [
   {
     tier: 'bronze',
     name: '📦 Bronze Chest',
-    description: 'Contains simple rewards (1 to 2 shields, magnets, gem boosts, low coins, rare continue token).',
+    description: 'Contains simple rewards (1 to 2 shields, magnets, Heart Boosts, low coins, rare Continue Tokens).',
     cost: 400,
     color: '#cd7f32',
   },
@@ -222,7 +222,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         const inv = getShopInventory();
         inv.gemBoost = (inv.gemBoost ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Gem Boost! 💎`;
+        rewardText = `Won ${amt}x Heart Boost! ❤️`;
       } else {
         const inv = getShopInventory();
         inv.continueToken = (inv.continueToken ?? 0) + 1;
@@ -252,7 +252,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         const inv = getShopInventory();
         inv.gemBoost = (inv.gemBoost ?? 0) + amt;
         localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-        rewardText = `Won ${amt}x Gem Boost charges! 💎`;
+        rewardText = `Won ${amt}x Heart Boost charges! ❤️`;
       } else {
         const amt = 1 + Math.floor(Math.random() * 3); // 1 to 3
         const inv = getShopInventory();
@@ -307,7 +307,7 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
           const inv = getShopInventory();
           inv.gemBoost = (inv.gemBoost ?? 0) + amt;
           localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
-          rewardText = `Won ${amt}x Gem Boost charges! 💎`;
+          rewardText = `Won ${amt}x Heart Boost charges! ❤️`;
         } else {
           const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
           const inv = getShopInventory();

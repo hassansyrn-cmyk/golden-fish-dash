@@ -21,7 +21,7 @@ const PRIZES: Prize[] = [
   { name: '+100 Coins', type: 'coins', amount: 100, color: '#fb8500' },          // index 2: 20%
   { name: 'Coin Magnet', type: 'item', itemId: 'magnet', amount: 1, color: '#e91e63' },   // index 3: 10%
   { name: '+150 Coins', type: 'coins', amount: 150, color: '#ffeb3b' },          // index 4: 15%
-  { name: 'Gem Boost', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },   // index 5: 8%
+  { name: 'Heart Boost', type: 'item', itemId: 'gemBoost', amount: 1, color: '#9c27b0' },   // index 5: 8%
   { name: '+300 Coins', type: 'coins', amount: 300, color: '#ff5722' },          // index 6: 5%
   { name: 'Continue Token', type: 'item', itemId: 'continueToken', amount: 1, color: '#4caf50' }, // index 7: 5%
 ];

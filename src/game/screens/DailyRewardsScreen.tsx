@@ -11,13 +11,13 @@ interface Props {
 
 // 7-day reward cycle data (matches storage)
 const REWARD_CARDS = [
-  { day: 1, label: '10 Coins', icon: '🪙' },
-  { day: 2, label: '15 Coins', icon: '🪙' },
-  { day: 3, label: 'Shield', icon: '🛡️' },
-  { day: 4, label: '25 Coins', icon: '🪙' },
+  { day: 1, label: '75 Coins', icon: '🪙' },
+  { day: 2, label: '125 Coins', icon: '🪙' },
+  { day: 3, label: 'Shield Charge', icon: '🛡️' },
+  { day: 4, label: '175 Coins', icon: '🪙' },
   { day: 5, label: 'Coin Magnet', icon: '🧲' },
-  { day: 6, label: 'Gem Boost', icon: '💎' },
-  { day: 7, label: 'Continue Token', icon: '🔄' },
+  { day: 6, label: 'Heart Boost', icon: '❤️' },
+  { day: 7, label: '400 Coins', icon: '🪙' },
 ];
 
 export default function DailyRewardsScreen({ onBack }: Props) {

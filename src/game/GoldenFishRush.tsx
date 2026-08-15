@@ -13,19 +13,17 @@ import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
 import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import LuckySpinScreen from './screens/LuckySpinScreen';
-import { BannerAd, InterstitialAd } from './AdPlaceholders';
+import { BannerAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
 import {
   getSelectedSkin,
-  incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { adManager } from './managers/AdManager';
 
 // Custom 3D/Glossy Heart Icon component for the HUD
 const HeartIcon = ({ full }: { full: boolean }) => {
@@ -102,7 +100,6 @@ export default function GoldenFishRush() {
   const [finalScore, setFinalScore] = useState(0);
   const [usedSecondChanceThisRun, setUsedSecondChanceThisRun] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
-  const [showInterstitial, setShowInterstitial] = useState(false);
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
   const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
 
@@ -113,12 +110,6 @@ export default function GoldenFishRush() {
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
     return () => clearTimeout(timer);
-  }, []);
-
-  // Initialize and preload native inventory early so a rewarded continuation
-  // is ready when the player chooses it instead of delaying the revive flow.
-  useEffect(() => {
-    void adManager.initializeAndPreload();
   }, []);
 
   // Android hardware back button handling (Capacitor)
@@ -197,7 +188,6 @@ export default function GoldenFishRush() {
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
-    setShowInterstitial(false);
     setNewUnlocks(null);
 
     setScreen('ready');
@@ -233,27 +223,6 @@ export default function GoldenFishRush() {
     }, 700);
     return () => clearTimeout(timer);
   }, [reviveCountdown]);
-
-  useEffect(() => {
-    if (screen !== 'gameover') return;
-    const count = incrementGameOverCount();
-    if (count % 3 === 0) {
-      setShowInterstitial(true);
-    }
-  }, [screen]);
-
-  useEffect(() => {
-    if (!showInterstitial || !adManager.isNative()) return;
-    let active = true;
-
-    void adManager.showInterstitial().finally(() => {
-      if (active) setShowInterstitial(false);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [showInterstitial]);
 
   useEffect(() => {
     if (screen !== 'playing') return;
@@ -443,7 +412,6 @@ export default function GoldenFishRush() {
 
         {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
 
-        {showInterstitial && <InterstitialAd onClose={() => setShowInterstitial(false)} />}
       </div>
 
       {screen === 'menu' && (

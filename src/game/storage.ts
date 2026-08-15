@@ -324,13 +324,13 @@ export function updateDailyChallengeProgress(metric: 'score' | 'coins' | 'hardMo
 // Uses dateKey for calendar day check. Safe reset on corruption.
 
 const DAILY_REWARDS: Array<{ day: number; type: 'coins' | ShopItemId; amount: number; label: string }> = [
-  { day: 1, type: 'coins', amount: 10, label: '10 Coins' },
-  { day: 2, type: 'coins', amount: 15, label: '15 Coins' },
-  { day: 3, type: 'shield', amount: 1, label: 'Shield' },
-  { day: 4, type: 'coins', amount: 25, label: '25 Coins' },
+  { day: 1, type: 'coins', amount: 75, label: '75 Coins' },
+  { day: 2, type: 'coins', amount: 125, label: '125 Coins' },
+  { day: 3, type: 'shield', amount: 1, label: 'Shield Charge' },
+  { day: 4, type: 'coins', amount: 175, label: '175 Coins' },
   { day: 5, type: 'magnet', amount: 1, label: 'Coin Magnet' },
-  { day: 6, type: 'gemBoost', amount: 1, label: 'Gem Boost' },
-  { day: 7, type: 'continueToken', amount: 1, label: 'Continue Token' },
+  { day: 6, type: 'gemBoost', amount: 1, label: 'Heart Boost' },
+  { day: 7, type: 'coins', amount: 400, label: '400 Coins' },
 ];
 
 const DEFAULT_DAILY_REWARD: DailyRewardState = { lastClaimDate: '', streakDay: 1 };

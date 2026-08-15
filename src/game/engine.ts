@@ -9,7 +9,7 @@
 import { BASE, SKINS } from './constants';
 import type { SkinId, FloatingText } from './types';
 
-type EnvironmentId = 'lagoon' | 'coral' | 'kelp' | 'ruins' | 'volcanic' | 'temple';
+type EnvironmentId = 'lagoon' | 'coral' | 'kelp' | 'ruins' | 'volcanic' | 'temple' | 'abyss' | 'crystal' | 'moonlit' | 'sunkenCity' | 'aurora' | 'crownReef' | 'eternalTemple';
 
 interface EnvironmentTheme {
   id: EnvironmentId;
@@ -204,6 +204,13 @@ const ENVIRONMENTS: EnvironmentTheme[] = [
   { id: 'ruins', minScore: 55, label: 'Twilight Ruins', top: '#33468a', mid: '#172a68', bottom: '#080e30', ray: '#aeb6ff', pillarDark: '#252b69', pillarMid: '#5a56b0', pillarLight: '#8e9cff', cap: '#737ce8', accent: '#85f0ff', speck: '#c6d2ff' },
   { id: 'volcanic', minScore: 85, label: 'Ember Vents', top: '#4c3c72', mid: '#382346', bottom: '#180b22', ray: '#ffc0a1', pillarDark: '#3a2430', pillarMid: '#924550', pillarLight: '#ff845d', cap: '#e6634d', accent: '#ffcb76', speck: '#ffb25e' },
   { id: 'temple', minScore: 120, label: 'Bioluminescent Temple', top: '#163c77', mid: '#102452', bottom: '#05091d', ray: '#8cf6ff', pillarDark: '#18285b', pillarMid: '#265a82', pillarLight: '#4cf0e1', cap: '#4bd9dd', accent: '#7bfbff', speck: '#a6ffff' },
+  { id: 'abyss', minScore: 170, label: 'Abyssal Current', top: '#1b2960', mid: '#111747', bottom: '#030414', ray: '#91a8ff', pillarDark: '#151a48', pillarMid: '#35408f', pillarLight: '#7386e4', cap: '#6576db', accent: '#aebdff', speck: '#849dff' },
+  { id: 'crystal', minScore: 240, label: 'Crystal Grotto', top: '#1c6f88', mid: '#155064', bottom: '#071e3a', ray: '#a8ffff', pillarDark: '#194564', pillarMid: '#2c94ad', pillarLight: '#8affef', cap: '#64dacc', accent: '#c9ffff', speck: '#aafff4' },
+  { id: 'moonlit', minScore: 330, label: 'Moonlit Tides', top: '#32447f', mid: '#252a65', bottom: '#0b1030', ray: '#edf0ff', pillarDark: '#293060', pillarMid: '#6870bb', pillarLight: '#bec5ff', cap: '#a5abed', accent: '#f0f2ff', speck: '#e0e4ff' },
+  { id: 'sunkenCity', minScore: 460, label: 'Sunken City', top: '#17666e', mid: '#11474f', bottom: '#06242f', ray: '#b8fff0', pillarDark: '#1f504c', pillarMid: '#4e9b7b', pillarLight: '#b4d56b', cap: '#8ebf68', accent: '#e1ffac', speck: '#ccffbf' },
+  { id: 'aurora', minScore: 650, label: 'Aurora Trench', top: '#25326e', mid: '#2b2162', bottom: '#100b2c', ray: '#d7b9ff', pillarDark: '#35215e', pillarMid: '#7c4aa1', pillarLight: '#ee8fe3', cap: '#c76fd1', accent: '#ffc5f3', speck: '#eeb6ff' },
+  { id: 'crownReef', minScore: 850, label: 'Crown Reef', top: '#5c3b69', mid: '#69304f', bottom: '#210f2d', ray: '#ffe3a0', pillarDark: '#59303c', pillarMid: '#b15b58', pillarLight: '#ffc77b', cap: '#f49b62', accent: '#fff0b8', speck: '#ffd182' },
+  { id: 'eternalTemple', minScore: 1000, label: 'Eternal Temple', top: '#162b72', mid: '#1a315f', bottom: '#050617', ray: '#b5fff6', pillarDark: '#163651', pillarMid: '#27738c', pillarLight: '#80fff0', cap: '#50d7cf', accent: '#d4fffb', speck: '#9cfff5' },
 ];
 
 function environmentForScore(score: number): EnvironmentTheme {
@@ -214,6 +221,16 @@ function environmentForScore(score: number): EnvironmentTheme {
 }
 
 let waterTexture: HTMLImageElement | null = null;
+let heartDropImage: HTMLImageElement | null = null;
+
+function getHeartDropImage() {
+  if (typeof Image === 'undefined') return null;
+  if (!heartDropImage) {
+    heartDropImage = new Image();
+    heartDropImage.src = '/assets/heart-drop.svg';
+  }
+  return heartDropImage;
+}
 
 function getWaterTexture() {
   if (typeof Image === 'undefined') return null;
@@ -329,10 +346,12 @@ function clampGapY(state: EngineState, gapY: number, gapSize: number) {
  * route through a gate, especially on narrow high-score gaps.
  */
 function safeHazardLane(gapY: number, gapSize: number, hazardHalfHeight: number) {
-  // Never place a live enemy inside the navigable gate opening. It sits just
-  // beyond the top or bottom lip, so a player always has a full-width route
-  // through every generated pipe pair regardless of movement animation.
-  const offset = gapSize / 2 + hazardHalfHeight + 18;
+  // Put hazards in a randomized side lane inside the gate: never in the
+  // center flight line, never glued to the pipe lip, and always leaving an
+  // obvious open route on the other side.
+  const minOffset = Math.max(hazardHalfHeight + 20, gapSize * 0.23);
+  const maxOffset = Math.max(minOffset, gapSize / 2 - hazardHalfHeight - 20);
+  const offset = minOffset + Math.random() * (maxOffset - minOffset);
   return gapY + (Math.random() < 0.5 ? -offset : offset);
 }
 
@@ -396,7 +415,7 @@ function spawnObstacle(state: EngineState, score: number) {
 
     // Shark enemy after score >= 20. It uses a short vertical bob, so the
     // reserved lane remains usable throughout the encounter.
-    if (score >= 20 && hazardRoll < 0.10 * diffMultiplier) {
+    if (score >= 20 && hazardRoll < 0.12 * diffMultiplier) {
       const sharkY = safeHazardLane(gapY, gap, 19);
       state.sharks.push({
         id: 'shark_' + Math.random(),
@@ -412,7 +431,7 @@ function spawnObstacle(state: EngineState, score: number) {
       });
     // Sea mine after score >= 10. Keep it away from the centerline so it
     // challenges route choice without blocking both paths.
-    } else if (score >= 10 && hazardRoll < 0.19 * diffMultiplier) {
+    } else if (score >= 10 && hazardRoll < 0.35 * diffMultiplier) {
       state.seaMines.push({
         id: 'mine_' + Math.random(),
         x: state.width + 86,
@@ -423,7 +442,7 @@ function spawnObstacle(state: EngineState, score: number) {
       });
     // Jellyfish after score >= 15. Vertical movement is intentionally subtle
     // to keep the protected half of the pipe gap navigable.
-    } else if (score >= 15 && hazardRoll < 0.27 * diffMultiplier) {
+    } else if (score >= 15 && hazardRoll < 0.55 * diffMultiplier) {
       const jellyY = safeHazardLane(gapY, gap, 12);
       state.jellyfish.push({
         id: 'jelly_' + Math.random(),
@@ -449,9 +468,9 @@ function spawnObstacle(state: EngineState, score: number) {
     });
   }
 
-  // Treasure Chest spawn (extremely rare)
-  if (Math.random() < 0.02) {
-    const chestY = state.height - 45; // resting near bottom
+  // Treasure Chest spawn (rare, but always placed inside a readable gate).
+  if (Math.random() < 0.025) {
+    const chestY = gapY + (Math.random() - 0.5) * gap * 0.24;
     state.chests.push({
       x: state.width + BASE.obstacleWidth + 240,
       y: chestY,
@@ -931,10 +950,12 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = chest.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 22) {
         chest.collected = true;
-        callbacks.onCoinCollect(15);
-        triggerFloatingText(state, 'Treasure +15', chest.x, chest.y - 20, '#ffd54f', true);
+        callbacks.onCoinCollect(25);
+        state.score += 25;
+        callbacks.onScore(state.score);
+        triggerFloatingText(state, 'Treasure +25 Coins · +25 Score', chest.x, chest.y - 20, '#ffd54f', true);
         callbacks.onShake(1); // Very minor shake
-        addBurst(state, chest.x, chest.y, '#ffd54f', 24, 3);
+        addBurst(state, chest.x, chest.y, '#ffd54f', 30, 3);
       }
     }
   }
@@ -1765,13 +1786,14 @@ function drawJellyfish(ctx: CanvasRenderingContext2D, jelly: Jellyfish, timeMs: 
 
 function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   if (coin.collected) return;
-  // Coins float gently rather than flipping edge-on, which could look like a
-  // visual stutter on a fast phone display.
-  const scaleX = 0.96 + Math.sin(timeMs * 0.002 + coin.x) * 0.035;
+  // Restore the pleasing spinning-coin read, but keep the cycle smooth and
+  // slow enough that it never resembles a dropped frame.
+  const spin = Math.abs(Math.cos(timeMs * 0.0025 + coin.x * 0.01));
+  const scaleX = 0.22 + spin * 0.78;
 
   ctx.save();
   ctx.translate(coin.x, coin.y + Math.sin(timeMs * 0.00115 + coin.x) * 0.85);
-  ctx.scale(scaleX, scaleX);
+  ctx.scale(scaleX, 1);
 
   ctx.beginPath();
   ctx.arc(0, 0, coin.bonus ? 12 : 9, 0, Math.PI * 2);
@@ -1802,7 +1824,17 @@ function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   ctx.translate(gem.x, gem.y + bobY);
   ctx.scale(pulse, pulse);
 
-  // Soft heart glow
+  const heartImage = getHeartDropImage();
+  if (heartImage?.complete && heartImage.naturalWidth) {
+    const size = 18;
+    ctx.shadowColor = '#ff1744';
+    ctx.shadowBlur = 10;
+    ctx.drawImage(heartImage, -size, -size * 0.93, size * 2, size * 1.8);
+    ctx.restore();
+    return;
+  }
+
+  // Fallback while the vector asset is loading.
   ctx.shadowColor = '#ff1744';
   ctx.shadowBlur = 12;
 
