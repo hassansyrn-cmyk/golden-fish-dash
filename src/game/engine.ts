@@ -132,18 +132,49 @@ export interface Jellyfish {
   bobAmount: number;
 }
 
+type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken';
+type BossWeapon = 'ink' | 'plasma' | 'electric' | 'bubble' | 'surge' | 'coral';
+type BossMotion = 'tentacles' | 'fins' | 'lure' | 'serpent' | 'coralTentacles';
+
 interface BossShockwave {
   id: string;
   x: number;
   y: number;
   radius: number;
-  type: 'ink' | 'plasma';
+  type: BossWeapon;
   speedMultiplier: number;
   phase: 'warning' | 'active';
   activateAt: number;
 }
 
-interface AbyssalOctopusBoss {
+interface BossAttackPattern {
+  type: BossWeapon;
+  lanes: number[];
+  staggerMs: number;
+  speedMultiplier: number;
+}
+
+interface BossConfig {
+  id: BossId;
+  milestone: number;
+  imagePath: string;
+  nameKey: string;
+  warningKey: string;
+  motion: BossMotion;
+  accent: string;
+  secondaryAccent: string;
+  widthCap: number;
+  widthRatio: number;
+  battleDurationMs: number;
+  waveIntervalMs: number;
+  rewardCoins: number;
+  rewardScore: number;
+  patterns: BossAttackPattern[];
+  summonsSharks?: boolean;
+}
+
+interface BossEncounter {
+  config: BossConfig;
   x: number;
   y: number;
   baseY: number;
@@ -154,6 +185,7 @@ interface AbyssalOctopusBoss {
   nextWaveAt: number;
   nextSummonAt: number;
   summonedSharks: number;
+  lastAttackAt: number;
   waves: BossShockwave[];
 }
 
@@ -219,9 +251,10 @@ export interface EngineState {
   elapsedSinceFeverCoinSpawn: number;
   hourglassUntil: number;
 
-  // Abyssal octopus boss encounter
-  boss: AbyssalOctopusBoss | null;
-  bossDefeated: boolean;
+  // Multi-stage boss encounters
+  boss: BossEncounter | null;
+  defeatedBosses: BossId[];
+  previewMode?: boolean;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -231,34 +264,80 @@ const DROP_RUSH_DURATION_MS = 20_000;
 const MAGNET_DURATION_MS = 12_000;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
-const ABYSSAL_OCTOPUS_BOSS_SCORE = 100;
 const BOSS_WARNING_MS = 2_500;
-const BOSS_BATTLE_DURATION_MS = 24_000;
 const BOSS_WAVE_WARNING_MS = 900;
-const BOSS_WAVE_INTERVAL_MS = 2_450;
 const BOSS_WAVE_SPEED = 5.35;
-const BOSS_REWARD_COINS = 60;
-const BOSS_REWARD_SCORE = 30;
 const BOSS_SUMMON_INTERVAL_MS = 6_200;
 const BOSS_MAX_SUMMONED_SHARKS = 3;
 
-interface AbyssalAttackPattern {
-  type: BossShockwave['type'];
-  lanes: number[];
-  staggerMs: number;
-  speedMultiplier: number;
-}
-
-// The pattern alternates slow, heavy violet ink with faster cyan plasma.
-// Two-lane bursts are staggered and always leave a broad vertical escape route.
-const ABYSSAL_ATTACK_PATTERNS: AbyssalAttackPattern[] = [
-  { type: 'ink', lanes: [0.26], staggerMs: 0, speedMultiplier: 0.92 },
-  { type: 'plasma', lanes: [0.74], staggerMs: 0, speedMultiplier: 1.20 },
-  { type: 'ink', lanes: [0.32, 0.68], staggerMs: 290, speedMultiplier: 0.96 },
-  { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.30 },
-  { type: 'ink', lanes: [0.22, 0.56], staggerMs: 310, speedMultiplier: 1.02 },
-  { type: 'plasma', lanes: [0.78], staggerMs: 0, speedMultiplier: 1.35 },
-  { type: 'ink', lanes: [0.38, 0.72], staggerMs: 320, speedMultiplier: 1.06 },
+// Every staged fight reserves the arena, provides a warning window, and keeps
+// one broad vertical escape route in each deterministic attack sequence.
+const BOSS_CONFIGS: BossConfig[] = [
+  {
+    id: 'abyssalOctopus', milestone: 100, imagePath: '/assets/abyssal-octopus-boss.png',
+    nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
+    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 195, widthRatio: 0.44,
+    battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30, summonsSharks: true,
+    patterns: [
+      { type: 'ink', lanes: [0.26], staggerMs: 0, speedMultiplier: 0.92 },
+      { type: 'plasma', lanes: [0.74], staggerMs: 0, speedMultiplier: 1.20 },
+      { type: 'ink', lanes: [0.32, 0.68], staggerMs: 290, speedMultiplier: 0.96 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.30 },
+      { type: 'ink', lanes: [0.22, 0.56], staggerMs: 310, speedMultiplier: 1.02 },
+      { type: 'plasma', lanes: [0.78], staggerMs: 0, speedMultiplier: 1.35 },
+    ],
+  },
+  {
+    id: 'electricManta', milestone: 200, imagePath: '/assets/bosses/electric-manta-ray.png',
+    nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
+    accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
+    battleDurationMs: 26_000, waveIntervalMs: 2_200, rewardCoins: 80, rewardScore: 40,
+    patterns: [
+      { type: 'electric', lanes: [0.22], staggerMs: 0, speedMultiplier: 1.30 },
+      { type: 'electric', lanes: [0.76], staggerMs: 0, speedMultiplier: 1.38 },
+      { type: 'electric', lanes: [0.34, 0.68], staggerMs: 250, speedMultiplier: 1.25 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.48 },
+      { type: 'electric', lanes: [0.18, 0.56], staggerMs: 280, speedMultiplier: 1.34 },
+    ],
+  },
+  {
+    id: 'abyssalAnglerfish', milestone: 300, imagePath: '/assets/bosses/abyssal-anglerfish.png',
+    nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
+    accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
+    battleDurationMs: 27_000, waveIntervalMs: 2_080, rewardCoins: 105, rewardScore: 55,
+    patterns: [
+      { type: 'bubble', lanes: [0.50], staggerMs: 0, speedMultiplier: 0.98 },
+      { type: 'bubble', lanes: [0.24, 0.72], staggerMs: 330, speedMultiplier: 1.06 },
+      { type: 'plasma', lanes: [0.38], staggerMs: 0, speedMultiplier: 1.48 },
+      { type: 'bubble', lanes: [0.18, 0.56], staggerMs: 310, speedMultiplier: 1.14 },
+    ],
+  },
+  {
+    id: 'leviathan', milestone: 400, imagePath: '/assets/bosses/leviathan-sea-serpent.png',
+    nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
+    accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 220, widthRatio: 0.50,
+    battleDurationMs: 29_000, waveIntervalMs: 1_960, rewardCoins: 135, rewardScore: 72,
+    patterns: [
+      { type: 'surge', lanes: [0.26], staggerMs: 0, speedMultiplier: 1.32 },
+      { type: 'surge', lanes: [0.72], staggerMs: 0, speedMultiplier: 1.38 },
+      { type: 'surge', lanes: [0.34, 0.66], staggerMs: 270, speedMultiplier: 1.34 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.58 },
+      { type: 'surge', lanes: [0.20, 0.54], staggerMs: 290, speedMultiplier: 1.42 },
+    ],
+  },
+  {
+    id: 'coralKraken', milestone: 500, imagePath: '/assets/bosses/coral-kraken-king.png',
+    nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
+    accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 218, widthRatio: 0.49,
+    battleDurationMs: 31_000, waveIntervalMs: 1_830, rewardCoins: 170, rewardScore: 95,
+    patterns: [
+      { type: 'coral', lanes: [0.24], staggerMs: 0, speedMultiplier: 1.22 },
+      { type: 'coral', lanes: [0.76], staggerMs: 0, speedMultiplier: 1.28 },
+      { type: 'coral', lanes: [0.30, 0.68], staggerMs: 250, speedMultiplier: 1.30 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.62 },
+      { type: 'coral', lanes: [0.18, 0.52], staggerMs: 280, speedMultiplier: 1.38 },
+    ],
+  },
 ];
 // The artwork intentionally extends beyond the gameplay body. A smaller,
 // circular contact zone makes collisions match what players can see.
@@ -289,7 +368,7 @@ function environmentForScore(score: number): EnvironmentTheme {
 
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
-let abyssalOctopusBossImage: HTMLImageElement | null = null;
+const bossImageCache = new Map<BossId, HTMLImageElement>();
 
 function getHeartDropImage() {
   if (typeof Image === 'undefined') return null;
@@ -300,13 +379,15 @@ function getHeartDropImage() {
   return heartDropImage;
 }
 
-function getAbyssalOctopusBossImage() {
+function getBossImage(config: BossConfig) {
   if (typeof Image === 'undefined') return null;
-  if (!abyssalOctopusBossImage) {
-    abyssalOctopusBossImage = new Image();
-    abyssalOctopusBossImage.src = '/assets/abyssal-octopus-boss.png';
+  let image = bossImageCache.get(config.id);
+  if (!image) {
+    image = new Image();
+    image.src = config.imagePath;
+    bossImageCache.set(config.id, image);
   }
-  return abyssalOctopusBossImage;
+  return image;
 }
 
 function getWaterTexture() {
@@ -350,7 +431,11 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
   const bossPreview = import.meta.env.DEV
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).has('bossPreview');
-  const startingScore = bossPreview ? ABYSSAL_OCTOPUS_BOSS_SCORE : 0;
+  const bossPreviewScore = bossPreview && typeof window !== 'undefined'
+    ? Number(new URLSearchParams(window.location.search).get('bossPreview'))
+    : 0;
+  const previewBoss = BOSS_CONFIGS.find((config) => config.milestone === bossPreviewScore) ?? BOSS_CONFIGS[0];
+  const startingScore = bossPreview ? previewBoss.milestone : 0;
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({
     x: Math.random() * width,
     y: Math.random() * height,
@@ -381,7 +466,10 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     elapsedSinceFeverCoinSpawn: 0,
     hourglassUntil: 0,
     boss: null,
-    bossDefeated: false,
+    defeatedBosses: bossPreview
+      ? BOSS_CONFIGS.filter((config) => config.milestone < previewBoss.milestone).map((config) => config.id)
+      : [],
+    previewMode: bossPreview,
   };
 }
 
@@ -607,26 +695,30 @@ function clearDangerousReviveArea(state: EngineState) {
   state.elapsedSinceSpawn = -SAFE_REVIVE_DELAY_MS;
 }
 
-function startAbyssalOctopusBoss(state: EngineState, callbacks: EngineCallbacks) {
+function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, config: BossConfig) {
   clearDangerousReviveArea(state);
-  const boss: AbyssalOctopusBoss = {
+  const width = Math.min(config.widthCap, state.width * config.widthRatio);
+  const boss: BossEncounter = {
+    config,
     x: state.width + 160,
     y: state.height * 0.52,
     baseY: state.height * 0.52,
-    width: Math.min(195, state.width * 0.44),
-    height: Math.min(195, state.width * 0.44),
+    width,
+    height: width,
     startedAt: state.timeMs,
     battleStartedAt: state.timeMs + BOSS_WARNING_MS,
     nextWaveAt: state.timeMs + BOSS_WARNING_MS + 820,
-    nextSummonAt: state.timeMs + BOSS_WARNING_MS + 6_200,
+    nextSummonAt: state.timeMs + BOSS_WARNING_MS + BOSS_SUMMON_INTERVAL_MS,
     summonedSharks: 0,
+    lastAttackAt: 0,
     waves: [],
   };
   state.boss = boss;
-  state.elapsedSinceSpawn = -BOSS_BATTLE_DURATION_MS;
-  triggerFloatingText(state, translate('engine.bossWarning'), state.width * 0.5, state.height * 0.25, '#d98cff', true);
-  callbacks.onFloatingText?.(translate('engine.bossWarning'), state.width * 0.5, state.height * 0.25, '#d98cff', true);
-  addBurst(state, state.width * 0.75, state.height * 0.52, '#a771ff', 28, 3.2);
+  state.elapsedSinceSpawn = -config.battleDurationMs;
+  const warning = translate(config.warningKey);
+  triggerFloatingText(state, warning, state.width * 0.5, state.height * 0.25, config.accent, true);
+  callbacks.onFloatingText?.(warning, state.width * 0.5, state.height * 0.25, config.accent, true);
+  addBurst(state, state.width * 0.75, state.height * 0.52, config.accent, 28, 3.2);
   callbacks.onBossStart?.();
 }
 
@@ -644,25 +736,30 @@ function absorbBossHit(state: EngineState, callbacks: EngineCallbacks, fishX: nu
   return true;
 }
 
-function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: EngineCallbacks, fishX: number, invincible: boolean, isFeverActive: boolean) {
+function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCallbacks, fishX: number, invincible: boolean, isFeverActive: boolean) {
   const boss = state.boss;
   if (!boss) return false;
 
+  const { config } = boss;
   const targetX = state.width * 0.75;
   boss.x += (targetX - boss.x) * Math.min(1, dt * 0.052);
-  boss.y = boss.baseY + Math.sin(state.timeMs * 0.0018) * Math.min(15, state.height * 0.04);
+  const motionAmplitude = config.motion === 'serpent' ? 22 : config.motion === 'fins' ? 17 : 14;
+  const motionRate = config.motion === 'fins' ? 0.0032 : config.motion === 'serpent' ? 0.0028 : 0.0018;
+  boss.y = boss.baseY + Math.sin(state.timeMs * motionRate) * Math.min(motionAmplitude, state.height * 0.052);
 
   if (state.timeMs >= boss.battleStartedAt && state.timeMs >= boss.nextWaveAt) {
-    const sequenceIndex = Math.floor((state.timeMs - boss.battleStartedAt) / BOSS_WAVE_INTERVAL_MS);
-    const pattern = ABYSSAL_ATTACK_PATTERNS[sequenceIndex % ABYSSAL_ATTACK_PATTERNS.length];
+    const sequenceIndex = Math.floor((state.timeMs - boss.battleStartedAt) / config.waveIntervalMs);
+    const pattern = config.patterns[sequenceIndex % config.patterns.length];
+    boss.lastAttackAt = state.timeMs;
     pattern.lanes.forEach((laneRatio, laneIndex) => {
+      const isHeavy = pattern.type === 'ink' || pattern.type === 'bubble' || pattern.type === 'coral';
       boss.waves.push({
         id: `${pattern.type}_bolt_${state.timeMs}_${laneIndex}`,
         x: boss.x - boss.width * 0.42,
         y: state.height * laneRatio,
-        radius: pattern.type === 'ink'
-          ? Math.max(18, Math.min(27, state.width * 0.068))
-          : Math.max(13, Math.min(19, state.width * 0.050)),
+        radius: isHeavy
+          ? Math.max(18, Math.min(28, state.width * 0.070))
+          : Math.max(13, Math.min(20, state.width * 0.052)),
         type: pattern.type,
         speedMultiplier: pattern.speedMultiplier,
         phase: 'warning',
@@ -670,11 +767,12 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
       });
     });
     callbacks.onBossAttack?.(pattern.type);
-    boss.nextWaveAt = state.timeMs + BOSS_WAVE_INTERVAL_MS;
+    boss.nextWaveAt = state.timeMs + config.waveIntervalMs;
   }
 
   if (
-    state.timeMs >= boss.battleStartedAt
+    config.summonsSharks
+    && state.timeMs >= boss.battleStartedAt
     && boss.summonedSharks < BOSS_MAX_SUMMONED_SHARKS
     && state.timeMs >= boss.nextSummonAt
   ) {
@@ -682,7 +780,7 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
     const lane = summonLanes[boss.summonedSharks];
     const sharkY = state.height * lane;
     state.sharks.push({
-      id: `abyssal_summon_${state.timeMs}`,
+      id: `boss_summon_${state.timeMs}`,
       x: state.width + 92,
       y: sharkY,
       baseY: sharkY,
@@ -702,9 +800,7 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
   }
 
   for (const wave of boss.waves) {
-    if (wave.phase === 'warning' && state.timeMs >= wave.activateAt) {
-      wave.phase = 'active';
-    }
+    if (wave.phase === 'warning' && state.timeMs >= wave.activateAt) wave.phase = 'active';
     if (wave.phase === 'active') {
       wave.x -= BOSS_WAVE_SPEED * wave.speedMultiplier * dt;
       if (!invincible && !isFeverActive) {
@@ -718,18 +814,19 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
   }
   boss.waves = boss.waves.filter((wave) => wave.phase === 'warning' || wave.x > -80);
 
-  if (state.timeMs >= boss.battleStartedAt + BOSS_BATTLE_DURATION_MS) {
+  if (state.timeMs >= boss.battleStartedAt + config.battleDurationMs) {
     const rewardX = Math.min(state.width * 0.75, boss.x);
     const rewardY = boss.y;
     state.boss = null;
-    state.bossDefeated = true;
-    state.score += BOSS_REWARD_SCORE;
+    if (!state.defeatedBosses.includes(config.id)) state.defeatedBosses.push(config.id);
+    state.score += config.rewardScore;
     callbacks.onScore(state.score);
-    callbacks.onCoinCollect(BOSS_REWARD_COINS);
-    triggerFloatingText(state, translate('engine.bossDefeated', undefined, { coins: BOSS_REWARD_COINS, score: BOSS_REWARD_SCORE }), rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
-    callbacks.onFloatingText?.(translate('engine.bossDefeated', undefined, { coins: BOSS_REWARD_COINS, score: BOSS_REWARD_SCORE }), rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
+    callbacks.onCoinCollect(config.rewardCoins);
+    const rewardText = translate('engine.bossDefeated', undefined, { coins: config.rewardCoins, score: config.rewardScore });
+    triggerFloatingText(state, rewardText, rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
+    callbacks.onFloatingText?.(rewardText, rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
     addBurst(state, rewardX, rewardY, '#ffe082', 38, 3.9);
-    addBurst(state, rewardX, rewardY, '#a771ff', 30, 3.4);
+    addBurst(state, rewardX, rewardY, config.accent, 30, 3.4);
     callbacks.onShake(3);
     callbacks.onBossDefeated?.();
     state.elapsedSinceSpawn = -900;
@@ -789,6 +886,10 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
   state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
   state.fishY += state.fishVY * dt;
+  if (state.previewMode) {
+    state.fishY = state.height * 0.5;
+    state.fishVY = 0;
+  }
   state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
   const groundY = state.height - 8;
   const ceilingY = 8;
@@ -818,8 +919,9 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   const fishX = state.width * FISH_X_RATIO;
 
   state.elapsedSinceSpawn += dtMs;
-  if (!state.boss && !state.bossDefeated && state.score >= ABYSSAL_OCTOPUS_BOSS_SCORE) {
-    startAbyssalOctopusBoss(state, callbacks);
+  const nextBoss = BOSS_CONFIGS.find((config) => !state.defeatedBosses.includes(config.id) && state.score >= config.milestone);
+  if (!state.boss && nextBoss) {
+    startBossEncounter(state, callbacks, nextBoss);
   }
 
   // The boss arena clears existing danger and temporarily pauses new gates.
@@ -833,7 +935,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
   // === FEVER MODE STREAM SPANNING ===
   const isFeverActive = state.feverUntil > state.timeMs;
-  if (updateAbyssalOctopusBoss(state, dt, callbacks, fishX, invincible, isFeverActive)) return;
+  if (updateBossEncounter(state, dt, callbacks, fishX, invincible, isFeverActive)) return;
 
   if (isFeverActive) {
     state.elapsedSinceFeverCoinSpawn += dtMs;
@@ -1903,31 +2005,43 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.restore();
 }
 
-function drawAbyssalOctopusBoss(ctx: CanvasRenderingContext2D, state: EngineState) {
+function bossWeaponPalette(type: BossWeapon) {
+  switch (type) {
+    case 'electric': return { warning: '#7df6ff', core: 'rgba(230, 255, 255, 0.98)', mid: 'rgba(52, 225, 255, 0.86)', outer: 'rgba(40, 122, 255, 0)', stroke: '#b4fbff' };
+    case 'bubble': return { warning: '#bd86ff', core: 'rgba(239, 232, 255, 0.98)', mid: 'rgba(158, 95, 255, 0.76)', outer: 'rgba(104, 67, 255, 0)', stroke: '#e6ceff' };
+    case 'surge': return { warning: '#78fff0', core: 'rgba(230, 255, 252, 0.98)', mid: 'rgba(58, 236, 208, 0.82)', outer: 'rgba(34, 122, 255, 0)', stroke: '#a6fff4' };
+    case 'coral': return { warning: '#ffbc75', core: 'rgba(255, 245, 214, 0.98)', mid: 'rgba(255, 126, 80, 0.82)', outer: 'rgba(255, 77, 58, 0)', stroke: '#ffe0a1' };
+    case 'plasma': return { warning: '#78f4ff', core: 'rgba(231, 255, 255, 0.98)', mid: 'rgba(73, 238, 255, 0.86)', outer: 'rgba(45, 135, 255, 0)', stroke: '#9ff7ff' };
+    default: return { warning: '#e7a8ff', core: 'rgba(244, 220, 255, 0.94)', mid: 'rgba(169, 83, 255, 0.76)', outer: 'rgba(49, 145, 255, 0)', stroke: '#e8b8ff' };
+  }
+}
+
+function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   const boss = state.boss;
   if (!boss) return;
 
+  const { config } = boss;
   const isWarning = state.timeMs < boss.battleStartedAt;
-  const remaining = Math.max(0, boss.battleStartedAt + BOSS_BATTLE_DURATION_MS - state.timeMs);
+  const remaining = Math.max(0, boss.battleStartedAt + config.battleDurationMs - state.timeMs);
   const pulse = 0.62 + (Math.sin(state.timeMs * 0.007) + 1) * 0.19;
 
   if (isWarning) {
     const remainingSeconds = Math.max(1, Math.ceil((boss.battleStartedAt - state.timeMs) / 1000));
     ctx.save();
-    ctx.fillStyle = 'rgba(19, 0, 36, 0.62)';
+    ctx.fillStyle = 'rgba(9, 15, 42, 0.68)';
     ctx.fillRect(0, 0, state.width, state.height);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowColor = '#d77aff';
+    ctx.shadowColor = config.accent;
     ctx.shadowBlur = 14;
     ctx.font = '900 34px system-ui, sans-serif';
     ctx.fillStyle = '#fff2ff';
     ctx.fillText('⚠', state.width * 0.5, state.height * 0.39);
     ctx.font = '900 14px system-ui, sans-serif';
-    ctx.fillStyle = '#ffd5ff';
-    ctx.fillText(translate('engine.bossWarning'), state.width * 0.5, state.height * 0.47);
+    ctx.fillStyle = config.accent;
+    ctx.fillText(translate(config.warningKey), state.width * 0.5, state.height * 0.47);
     ctx.font = '700 10px system-ui, sans-serif';
-    ctx.fillStyle = '#b9f8ff';
+    ctx.fillStyle = config.secondaryAccent;
     ctx.fillText(`${remainingSeconds}`, state.width * 0.5, state.height * 0.52);
     ctx.restore();
     return;
@@ -1935,24 +2049,45 @@ function drawAbyssalOctopusBoss(ctx: CanvasRenderingContext2D, state: EngineStat
 
   ctx.save();
   const halo = ctx.createRadialGradient(boss.x, boss.y, boss.width * 0.16, boss.x, boss.y, boss.width * 0.9);
-  halo.addColorStop(0, isWarning ? 'rgba(216, 121, 255, 0.30)' : 'rgba(120, 78, 255, 0.30)');
-  halo.addColorStop(0.48, 'rgba(55, 228, 255, 0.10)');
-  halo.addColorStop(1, 'rgba(67, 228, 255, 0)');
+  halo.addColorStop(0, `${config.accent}52`);
+  halo.addColorStop(0.48, `${config.secondaryAccent}22`);
+  halo.addColorStop(1, `${config.secondaryAccent}00`);
   ctx.fillStyle = halo;
   ctx.beginPath();
   ctx.arc(boss.x, boss.y, boss.width * 0.9, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.translate(boss.x, boss.y);
-  ctx.rotate(Math.sin(state.timeMs * 0.0018) * 0.022);
-  const swell = 1 + Math.sin(state.timeMs * 0.004) * 0.012;
+  const attackKick = Math.max(0, 1 - (state.timeMs - boss.lastAttackAt) / 420);
+  const motionRate = config.motion === 'fins' ? 0.006 : config.motion === 'serpent' ? 0.0048 : 0.004;
+  const rotation = Math.sin(state.timeMs * motionRate) * (config.motion === 'fins' ? 0.05 : 0.028) - attackKick * 0.055;
+  const swell = 1 + Math.sin(state.timeMs * (motionRate * 2.1)) * 0.022 + attackKick * 0.045;
+  ctx.translate(boss.x + attackKick * boss.width * 0.075, boss.y);
+  ctx.rotate(rotation);
   ctx.scale(swell, swell);
   ctx.imageSmoothingEnabled = true;
-  const bossImage = getAbyssalOctopusBossImage();
+  const bossImage = getBossImage(config);
   if (bossImage?.complete && bossImage.naturalWidth) {
-    ctx.shadowColor = isWarning ? '#bf75ff' : '#4ce6ff';
-    ctx.shadowBlur = 18 * pulse;
+    ctx.shadowColor = config.secondaryAccent;
+    ctx.shadowBlur = 16 * pulse;
     ctx.drawImage(bossImage, -boss.width / 2, -boss.height / 2, boss.width, boss.height);
+
+    // A soft moving light wash conveys fin/tentacle motion without tearing the
+    // supplied character art into visible strips on small phone screens.
+    const flow = (Math.sin(state.timeMs * motionRate * 1.7) + 1) * 0.5;
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.10 + flow * 0.10;
+    const livingGlow = ctx.createLinearGradient(-boss.width / 2, -boss.height / 2, boss.width / 2, boss.height / 2);
+    livingGlow.addColorStop(0, 'transparent');
+    livingGlow.addColorStop(0.48, config.secondaryAccent);
+    livingGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = livingGlow;
+    ctx.fillRect(-boss.width / 2, -boss.height / 2, boss.width, boss.height);
+    const eyePulse = 0.18 + (Math.sin(state.timeMs * 0.011) + 1) * 0.12;
+    ctx.globalAlpha = eyePulse;
+    ctx.fillStyle = config.secondaryAccent;
+    ctx.beginPath();
+    ctx.arc(-boss.width * 0.15, -boss.height * 0.12, boss.width * 0.15, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 
@@ -1963,24 +2098,24 @@ function drawAbyssalOctopusBoss(ctx: CanvasRenderingContext2D, state: EngineStat
   ctx.fillStyle = '#eaffff';
   ctx.shadowColor = '#21002e';
   ctx.shadowBlur = 5;
-  ctx.fillText(translate('engine.bossName'), boss.x, boss.y - boss.height * 0.64);
+  ctx.fillText(translate(config.nameKey), boss.x, boss.y - boss.height * 0.64);
   if (!isWarning) {
     const barWidth = Math.min(96, boss.width * 0.72);
-    const progress = Math.max(0, Math.min(1, remaining / BOSS_BATTLE_DURATION_MS));
+    const progress = Math.max(0, Math.min(1, remaining / config.battleDurationMs));
     ctx.fillStyle = 'rgba(0, 18, 38, 0.72)';
     ctx.fillRect(boss.x - barWidth / 2, boss.y - boss.height * 0.54, barWidth, 4);
-    ctx.fillStyle = '#c581ff';
+    ctx.fillStyle = config.accent;
     ctx.fillRect(boss.x - barWidth / 2, boss.y - boss.height * 0.54, barWidth * progress, 4);
   }
   ctx.restore();
 
   for (const wave of boss.waves) {
     ctx.save();
-    const isPlasma = wave.type === 'plasma';
+    const palette = bossWeaponPalette(wave.type);
     if (wave.phase === 'warning') {
       const warningPulse = 0.45 + (Math.sin(state.timeMs * 0.012) + 1) * 0.23;
       ctx.globalAlpha = warningPulse;
-      ctx.strokeStyle = isPlasma ? '#78f4ff' : '#e7a8ff';
+      ctx.strokeStyle = palette.warning;
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 5]);
       ctx.beginPath();
@@ -1988,29 +2123,53 @@ function drawAbyssalOctopusBoss(ctx: CanvasRenderingContext2D, state: EngineStat
       ctx.lineTo(boss.x - boss.width * 0.2, wave.y);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = isPlasma ? '#d7fbff' : '#f0d4ff';
+      ctx.fillStyle = palette.core;
       ctx.beginPath();
       ctx.arc(wave.x, wave.y, wave.radius * 0.44, 0, Math.PI * 2);
       ctx.fill();
     } else {
       const wavePulse = 0.7 + (Math.sin(state.timeMs * 0.016) + 1) * 0.15;
       const ring = ctx.createRadialGradient(wave.x, wave.y, wave.radius * 0.12, wave.x, wave.y, wave.radius);
-      if (isPlasma) {
-        ring.addColorStop(0, 'rgba(231, 255, 255, 0.98)');
-        ring.addColorStop(0.34, 'rgba(73, 238, 255, 0.86)');
-        ring.addColorStop(0.72, 'rgba(45, 135, 255, 0.38)');
-        ring.addColorStop(1, 'rgba(45, 135, 255, 0)');
-      } else {
-        ring.addColorStop(0, 'rgba(244, 220, 255, 0.94)');
-        ring.addColorStop(0.35, 'rgba(169, 83, 255, 0.76)');
-        ring.addColorStop(0.72, 'rgba(61, 224, 255, 0.34)');
-        ring.addColorStop(1, 'rgba(49, 145, 255, 0)');
-      }
+      ring.addColorStop(0, palette.core);
+      ring.addColorStop(0.35, palette.mid);
+      ring.addColorStop(1, palette.outer);
       ctx.fillStyle = ring;
       ctx.beginPath();
       ctx.arc(wave.x, wave.y, wave.radius * wavePulse, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = isPlasma ? '#9ff7ff' : '#e8b8ff';
+      ctx.strokeStyle = palette.stroke;
+      if (wave.type === 'electric') {
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(wave.x - wave.radius, wave.y - wave.radius * 0.25);
+        ctx.lineTo(wave.x - wave.radius * 0.2, wave.y + wave.radius * 0.34);
+        ctx.lineTo(wave.x + wave.radius * 0.08, wave.y - wave.radius * 0.18);
+        ctx.lineTo(wave.x + wave.radius, wave.y + wave.radius * 0.18);
+        ctx.stroke();
+      } else if (wave.type === 'surge') {
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(wave.x, wave.y, wave.radius * 1.4, wave.radius * 0.48, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (wave.type === 'coral') {
+        ctx.fillStyle = palette.stroke;
+        ctx.beginPath();
+        for (let spike = 0; spike < 6; spike += 1) {
+          const angle = (Math.PI * 2 * spike) / 6 - Math.PI / 2;
+          const radius = spike % 2 === 0 ? wave.radius * 1.22 : wave.radius * 0.54;
+          const pointX = wave.x + Math.cos(angle) * radius;
+          const pointY = wave.y + Math.sin(angle) * radius;
+          if (spike === 0) ctx.moveTo(pointX, pointY); else ctx.lineTo(pointX, pointY);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else if (wave.type === 'bubble') {
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(wave.x - wave.radius * 0.34, wave.y - wave.radius * 0.28, wave.radius * 0.28, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = palette.stroke;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(wave.x, wave.y, wave.radius * 0.76, 0, Math.PI * 2);
@@ -2721,7 +2880,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   for (const shark of state.sharks) drawShark(ctx, shark, state.timeMs);
   for (const mine of state.seaMines) drawSeaMine(ctx, mine, state.timeMs);
   for (const jelly of state.jellyfish) drawJellyfish(ctx, jelly, state.timeMs);
-  drawAbyssalOctopusBoss(ctx, state);
+  drawBossEncounter(ctx, state);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
   for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
   for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);
