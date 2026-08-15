@@ -321,6 +321,7 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.treasure': '+25 coins · +25 score',
     'engine.bossWarning': '⚠ Abyssal Octopus awakens!',
     'engine.bossName': 'ABYSSAL OCTOPUS',
+    'engine.bossSharks': 'SHARKS SUMMONED!',
     'engine.bossDefeated': 'Abyssal Guardian repelled! +{{coins}} coins · +{{score}} score',
   },
   ar: {
@@ -638,6 +639,7 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.treasure': '+25 عملة · +25 نقطة',
     'engine.bossWarning': '⚠ أخطبوط الأعماق يستيقظ!',
     'engine.bossName': 'أخطبوط الأعماق',
+    'engine.bossSharks': 'تم استدعاء القروش!',
     'engine.bossDefeated': 'تم صدّ حارس الأعماق! +{{coins}} عملة · +{{score}} نقطة',
   },
 };

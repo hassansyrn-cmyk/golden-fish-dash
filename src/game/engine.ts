@@ -93,6 +93,7 @@ export interface PredatorShark {
   bobPhase: number;
   bobSpeed: number;
   bobAmount: number;
+  speedMultiplier?: number;
   passed: boolean;
 }
 
@@ -136,6 +137,8 @@ interface BossShockwave {
   x: number;
   y: number;
   radius: number;
+  type: 'ink' | 'plasma';
+  speedMultiplier: number;
   phase: 'warning' | 'active';
   activateAt: number;
 }
@@ -149,6 +152,8 @@ interface AbyssalOctopusBoss {
   startedAt: number;
   battleStartedAt: number;
   nextWaveAt: number;
+  nextSummonAt: number;
+  summonedSharks: number;
   waves: BossShockwave[];
 }
 
@@ -164,6 +169,10 @@ export interface EngineCallbacks {
   onNearMiss?: () => void;
   onFeverStart?: () => void;
   onPowerUpCollect?: (type: PowerUp['type']) => void;
+  onBossStart?: () => void;
+  onBossAttack?: (weapon: BossShockwave['type']) => void;
+  onBossSummon?: () => void;
+  onBossDefeated?: () => void;
 }
 
 export interface EngineState {
@@ -224,22 +233,32 @@ const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
 const ABYSSAL_OCTOPUS_BOSS_SCORE = 50;
 const BOSS_WARNING_MS = 1_650;
-const BOSS_BATTLE_DURATION_MS = 22_000;
-const BOSS_WAVE_WARNING_MS = 1_000;
-const BOSS_WAVE_INTERVAL_MS = 2_850;
-const BOSS_WAVE_SPEED = 5.15;
-const BOSS_REWARD_COINS = 50;
-const BOSS_REWARD_SCORE = 25;
-// A short sequence of readable lanes. Multi-bolt patterns require movement,
-// but always leave generous vertical escape space.
-const ABYSSAL_ATTACK_PATTERNS: number[][] = [
-  [0.28],
-  [0.70],
-  [0.32, 0.68],
-  [0.50],
-  [0.24, 0.56],
-  [0.74],
-  [0.38, 0.72],
+const BOSS_BATTLE_DURATION_MS = 24_000;
+const BOSS_WAVE_WARNING_MS = 900;
+const BOSS_WAVE_INTERVAL_MS = 2_450;
+const BOSS_WAVE_SPEED = 5.35;
+const BOSS_REWARD_COINS = 60;
+const BOSS_REWARD_SCORE = 30;
+const BOSS_SUMMON_INTERVAL_MS = 6_200;
+const BOSS_MAX_SUMMONED_SHARKS = 3;
+
+interface AbyssalAttackPattern {
+  type: BossShockwave['type'];
+  lanes: number[];
+  staggerMs: number;
+  speedMultiplier: number;
+}
+
+// The pattern alternates slow, heavy violet ink with faster cyan plasma.
+// Two-lane bursts are staggered and always leave a broad vertical escape route.
+const ABYSSAL_ATTACK_PATTERNS: AbyssalAttackPattern[] = [
+  { type: 'ink', lanes: [0.26], staggerMs: 0, speedMultiplier: 0.92 },
+  { type: 'plasma', lanes: [0.74], staggerMs: 0, speedMultiplier: 1.20 },
+  { type: 'ink', lanes: [0.32, 0.68], staggerMs: 290, speedMultiplier: 0.96 },
+  { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.30 },
+  { type: 'ink', lanes: [0.22, 0.56], staggerMs: 310, speedMultiplier: 1.02 },
+  { type: 'plasma', lanes: [0.78], staggerMs: 0, speedMultiplier: 1.35 },
+  { type: 'ink', lanes: [0.38, 0.72], staggerMs: 320, speedMultiplier: 1.06 },
 ];
 // The artwork intentionally extends beyond the gameplay body. A smaller,
 // circular contact zone makes collisions match what players can see.
@@ -591,21 +610,24 @@ function clearDangerousReviveArea(state: EngineState) {
 function startAbyssalOctopusBoss(state: EngineState, callbacks: EngineCallbacks) {
   clearDangerousReviveArea(state);
   const boss: AbyssalOctopusBoss = {
-    x: state.width + 240,
-    y: state.height * 0.50,
-    baseY: state.height * 0.50,
-    width: Math.min(300, state.width * 0.82),
-    height: Math.min(300, state.width * 0.82),
+    x: state.width + 160,
+    y: state.height * 0.52,
+    baseY: state.height * 0.52,
+    width: Math.min(195, state.width * 0.44),
+    height: Math.min(195, state.width * 0.44),
     startedAt: state.timeMs,
     battleStartedAt: state.timeMs + BOSS_WARNING_MS,
-    nextWaveAt: state.timeMs + BOSS_WARNING_MS + 900,
+    nextWaveAt: state.timeMs + BOSS_WARNING_MS + 820,
+    nextSummonAt: state.timeMs + BOSS_WARNING_MS + 6_200,
+    summonedSharks: 0,
     waves: [],
   };
   state.boss = boss;
   state.elapsedSinceSpawn = -BOSS_BATTLE_DURATION_MS;
   triggerFloatingText(state, translate('engine.bossWarning'), state.width * 0.5, state.height * 0.25, '#d98cff', true);
   callbacks.onFloatingText?.(translate('engine.bossWarning'), state.width * 0.5, state.height * 0.25, '#d98cff', true);
-  addBurst(state, state.width * 0.67, state.height * 0.50, '#a771ff', 28, 3.2);
+  addBurst(state, state.width * 0.75, state.height * 0.52, '#a771ff', 28, 3.2);
+  callbacks.onBossStart?.();
 }
 
 function absorbBossHit(state: EngineState, callbacks: EngineCallbacks, fishX: number) {
@@ -626,24 +648,57 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
   const boss = state.boss;
   if (!boss) return false;
 
-  const targetX = state.width * 0.67;
-  boss.x += (targetX - boss.x) * Math.min(1, dt * 0.058);
-  boss.y = boss.baseY + Math.sin(state.timeMs * 0.0018) * Math.min(20, state.height * 0.055);
+  const targetX = state.width * 0.75;
+  boss.x += (targetX - boss.x) * Math.min(1, dt * 0.052);
+  boss.y = boss.baseY + Math.sin(state.timeMs * 0.0018) * Math.min(15, state.height * 0.04);
 
   if (state.timeMs >= boss.battleStartedAt && state.timeMs >= boss.nextWaveAt) {
     const sequenceIndex = Math.floor((state.timeMs - boss.battleStartedAt) / BOSS_WAVE_INTERVAL_MS);
     const pattern = ABYSSAL_ATTACK_PATTERNS[sequenceIndex % ABYSSAL_ATTACK_PATTERNS.length];
-    pattern.forEach((laneRatio, laneIndex) => {
+    pattern.lanes.forEach((laneRatio, laneIndex) => {
       boss.waves.push({
-        id: `ink_bolt_${state.timeMs}_${laneIndex}`,
-        x: boss.x - boss.width * 0.35,
+        id: `${pattern.type}_bolt_${state.timeMs}_${laneIndex}`,
+        x: boss.x - boss.width * 0.42,
         y: state.height * laneRatio,
-        radius: Math.max(18, Math.min(28, state.width * 0.072)),
+        radius: pattern.type === 'ink'
+          ? Math.max(18, Math.min(27, state.width * 0.068))
+          : Math.max(13, Math.min(19, state.width * 0.050)),
+        type: pattern.type,
+        speedMultiplier: pattern.speedMultiplier,
         phase: 'warning',
-        activateAt: state.timeMs + BOSS_WAVE_WARNING_MS + laneIndex * 260,
+        activateAt: state.timeMs + BOSS_WAVE_WARNING_MS + laneIndex * pattern.staggerMs,
       });
     });
+    callbacks.onBossAttack?.(pattern.type);
     boss.nextWaveAt = state.timeMs + BOSS_WAVE_INTERVAL_MS;
+  }
+
+  if (
+    state.timeMs >= boss.battleStartedAt
+    && boss.summonedSharks < BOSS_MAX_SUMMONED_SHARKS
+    && state.timeMs >= boss.nextSummonAt
+  ) {
+    const summonLanes = [0.22, 0.78, 0.34];
+    const lane = summonLanes[boss.summonedSharks];
+    const sharkY = state.height * lane;
+    state.sharks.push({
+      id: `abyssal_summon_${state.timeMs}`,
+      x: state.width + 92,
+      y: sharkY,
+      baseY: sharkY,
+      width: 76,
+      height: 34,
+      bobPhase: boss.summonedSharks * 1.8,
+      bobSpeed: 0.0045,
+      bobAmount: 6,
+      speedMultiplier: 1.32,
+      passed: false,
+    });
+    boss.summonedSharks += 1;
+    boss.nextSummonAt += BOSS_SUMMON_INTERVAL_MS;
+    triggerFloatingText(state, translate('engine.bossSharks'), state.width * 0.62, sharkY - 24, '#ff8ab5', false);
+    callbacks.onFloatingText?.(translate('engine.bossSharks'), state.width * 0.62, sharkY - 24, '#ff8ab5', false);
+    callbacks.onBossSummon?.();
   }
 
   for (const wave of boss.waves) {
@@ -651,7 +706,7 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
       wave.phase = 'active';
     }
     if (wave.phase === 'active') {
-      wave.x -= BOSS_WAVE_SPEED * dt;
+      wave.x -= BOSS_WAVE_SPEED * wave.speedMultiplier * dt;
       if (!invincible && !isFeverActive) {
         const distance = Math.hypot(wave.x - fishX, wave.y - state.fishY);
         if (distance < FAIR_FISH_HITBOX_RADIUS + wave.radius * 0.55) {
@@ -664,7 +719,7 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
   boss.waves = boss.waves.filter((wave) => wave.phase === 'warning' || wave.x > -80);
 
   if (state.timeMs >= boss.battleStartedAt + BOSS_BATTLE_DURATION_MS) {
-    const rewardX = Math.min(state.width * 0.67, boss.x);
+    const rewardX = Math.min(state.width * 0.75, boss.x);
     const rewardY = boss.y;
     state.boss = null;
     state.bossDefeated = true;
@@ -676,6 +731,7 @@ function updateAbyssalOctopusBoss(state: EngineState, dt: number, callbacks: Eng
     addBurst(state, rewardX, rewardY, '#ffe082', 38, 3.9);
     addBurst(state, rewardX, rewardY, '#a771ff', 30, 3.4);
     callbacks.onShake(3);
+    callbacks.onBossDefeated?.();
     state.elapsedSinceSpawn = -900;
   }
   return false;
@@ -891,7 +947,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
   // Shark movement and collision
   for (const shark of state.sharks) {
-    const sharkSpeed = (speed + 0.8) * dt;
+    const sharkSpeed = (speed + 0.8) * (shark.speedMultiplier ?? 1) * dt;
     shark.x -= sharkSpeed;
     shark.bobPhase += shark.bobSpeed * dtMs;
     shark.y = shark.baseY + Math.sin(shark.bobPhase) * shark.bobAmount;
@@ -1898,10 +1954,11 @@ function drawAbyssalOctopusBoss(ctx: CanvasRenderingContext2D, state: EngineStat
 
   for (const wave of boss.waves) {
     ctx.save();
+    const isPlasma = wave.type === 'plasma';
     if (wave.phase === 'warning') {
       const warningPulse = 0.45 + (Math.sin(state.timeMs * 0.012) + 1) * 0.23;
       ctx.globalAlpha = warningPulse;
-      ctx.strokeStyle = '#e7a8ff';
+      ctx.strokeStyle = isPlasma ? '#78f4ff' : '#e7a8ff';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 5]);
       ctx.beginPath();
@@ -1909,22 +1966,29 @@ function drawAbyssalOctopusBoss(ctx: CanvasRenderingContext2D, state: EngineStat
       ctx.lineTo(boss.x - boss.width * 0.2, wave.y);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = '#f0d4ff';
+      ctx.fillStyle = isPlasma ? '#d7fbff' : '#f0d4ff';
       ctx.beginPath();
       ctx.arc(wave.x, wave.y, wave.radius * 0.44, 0, Math.PI * 2);
       ctx.fill();
     } else {
       const wavePulse = 0.7 + (Math.sin(state.timeMs * 0.016) + 1) * 0.15;
       const ring = ctx.createRadialGradient(wave.x, wave.y, wave.radius * 0.12, wave.x, wave.y, wave.radius);
-      ring.addColorStop(0, 'rgba(244, 220, 255, 0.94)');
-      ring.addColorStop(0.35, 'rgba(169, 83, 255, 0.76)');
-      ring.addColorStop(0.72, 'rgba(61, 224, 255, 0.34)');
-      ring.addColorStop(1, 'rgba(49, 145, 255, 0)');
+      if (isPlasma) {
+        ring.addColorStop(0, 'rgba(231, 255, 255, 0.98)');
+        ring.addColorStop(0.34, 'rgba(73, 238, 255, 0.86)');
+        ring.addColorStop(0.72, 'rgba(45, 135, 255, 0.38)');
+        ring.addColorStop(1, 'rgba(45, 135, 255, 0)');
+      } else {
+        ring.addColorStop(0, 'rgba(244, 220, 255, 0.94)');
+        ring.addColorStop(0.35, 'rgba(169, 83, 255, 0.76)');
+        ring.addColorStop(0.72, 'rgba(61, 224, 255, 0.34)');
+        ring.addColorStop(1, 'rgba(49, 145, 255, 0)');
+      }
       ctx.fillStyle = ring;
       ctx.beginPath();
       ctx.arc(wave.x, wave.y, wave.radius * wavePulse, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#e8b8ff';
+      ctx.strokeStyle = isPlasma ? '#9ff7ff' : '#e8b8ff';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(wave.x, wave.y, wave.radius * 0.76, 0, Math.PI * 2);

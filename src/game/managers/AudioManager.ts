@@ -15,12 +15,18 @@ export type SoundName =
   | 'milestone'
   | 'shield'
   | 'powerup'
-  | 'back';
+  | 'back'
+  | 'bossWarning'
+  | 'bossAttack'
+  | 'bossSummon'
+  | 'bossDefeated';
 
 class AudioManager {
   private static instance: AudioManager;
   private audioContext: AudioContext | null = null;
   private sfxVolume: number = 0.05;
+  private bossMusic: HTMLAudioElement | null = null;
+  private bossMusicEnabled = false;
   private readonly lastPlayedAt = new Map<SoundName, number>();
   private readonly cooldownMs: Partial<Record<SoundName, number>> = {
     jump: 45,
@@ -28,6 +34,8 @@ class AudioManager {
     gem: 110,
     hit: 170,
     back: 140,
+    bossAttack: 180,
+    bossSummon: 650,
   };
 
   private constructor() {}
@@ -93,6 +101,51 @@ class AudioManager {
       // Fail silently on older platforms, private tabs, or WebViews
       console.warn('[AudioManager] Failed to play tone:', e);
     }
+  }
+
+  private getBossMusic(): HTMLAudioElement | null {
+    if (typeof Audio === 'undefined') return null;
+    if (!this.bossMusic) {
+      this.bossMusic = new Audio('/audio/abyssal-octopus-boss-loop.mp3');
+      this.bossMusic.loop = true;
+      this.bossMusic.preload = 'auto';
+    }
+    return this.bossMusic;
+  }
+
+  public startBossMusic(enabled: boolean) {
+    if (!enabled) return;
+    const music = this.getBossMusic();
+    if (!music) return;
+
+    try {
+      music.volume = Math.max(0.045, Math.min(0.16, this.sfxVolume * 2.2));
+      music.currentTime = 0;
+      this.bossMusicEnabled = true;
+      void music.play().catch(() => undefined);
+    } catch {
+      // A muted or older WebView may reject media playback; gameplay continues.
+    }
+  }
+
+  public pauseBossMusic() {
+    this.bossMusic?.pause();
+  }
+
+  public resumeBossMusic(enabled: boolean) {
+    if (!enabled || !this.bossMusicEnabled || !this.bossMusic) return;
+    try {
+      void this.bossMusic.play().catch(() => undefined);
+    } catch {
+      // Safe fallback for media-restricted WebViews.
+    }
+  }
+
+  public stopBossMusic() {
+    this.bossMusicEnabled = false;
+    if (!this.bossMusic) return;
+    this.bossMusic.pause();
+    this.bossMusic.currentTime = 0;
   }
 
   private canPlay(name: SoundName): boolean {
@@ -173,6 +226,28 @@ class AudioManager {
       case 'back':
         this.playTone(390, 44, 'triangle', 0.46);
         setTimeout(() => this.playTone(310, 58, 'sine', 0.38), 38);
+        break;
+
+      case 'bossWarning':
+        this.playTone(148, 280, 'sawtooth', 0.70);
+        setTimeout(() => this.playTone(196, 270, 'sawtooth', 0.60), 170);
+        setTimeout(() => this.playTone(294, 360, 'triangle', 0.56), 350);
+        break;
+
+      case 'bossAttack':
+        this.playTone(230, 140, 'sawtooth', 0.52);
+        setTimeout(() => this.playTone(150, 190, 'triangle', 0.50), 55);
+        break;
+
+      case 'bossSummon':
+        this.playTone(125, 250, 'sine', 0.64);
+        setTimeout(() => this.playTone(250, 180, 'triangle', 0.48), 140);
+        break;
+
+      case 'bossDefeated':
+        this.playTone(440, 90, 'triangle', 0.68);
+        setTimeout(() => this.playTone(660, 105, 'triangle', 0.60), 76);
+        setTimeout(() => this.playTone(990, 130, 'sine', 0.52), 168);
         break;
 
       default:
