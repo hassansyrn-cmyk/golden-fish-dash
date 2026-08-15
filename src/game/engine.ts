@@ -131,6 +131,27 @@ export interface Jellyfish {
   bobAmount: number;
 }
 
+interface BossShockwave {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  phase: 'warning' | 'active';
+  activateAt: number;
+}
+
+interface HammerheadBoss {
+  x: number;
+  y: number;
+  baseY: number;
+  width: number;
+  height: number;
+  startedAt: number;
+  battleStartedAt: number;
+  nextWaveAt: number;
+  waves: BossShockwave[];
+}
+
 export interface EngineCallbacks {
   onScore: (score: number) => void;
   onCoinCollect: (total: number) => void;
@@ -188,6 +209,10 @@ export interface EngineState {
   feverUntil: number;
   elapsedSinceFeverCoinSpawn: number;
   hourglassUntil: number;
+
+  // Hammerhead boss encounter
+  boss: HammerheadBoss | null;
+  bossDefeated: boolean;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -197,6 +222,14 @@ const DROP_RUSH_DURATION_MS = 20_000;
 const MAGNET_DURATION_MS = 12_000;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
+const HAMMERHEAD_BOSS_SCORE = 35;
+const BOSS_WARNING_MS = 1_450;
+const BOSS_BATTLE_DURATION_MS = 16_000;
+const BOSS_WAVE_WARNING_MS = 1_150;
+const BOSS_WAVE_INTERVAL_MS = 3_250;
+const BOSS_WAVE_SPEED = 4.15;
+const BOSS_REWARD_COINS = 30;
+const BOSS_REWARD_SCORE = 15;
 // The artwork intentionally extends beyond the gameplay body. A smaller,
 // circular contact zone makes collisions match what players can see.
 const FAIR_FISH_HITBOX_RADIUS = BASE.fishRadius * 0.82;
@@ -226,6 +259,7 @@ function environmentForScore(score: number): EnvironmentTheme {
 
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
+let hammerheadBossImage: HTMLImageElement | null = null;
 
 function getHeartDropImage() {
   if (typeof Image === 'undefined') return null;
@@ -234,6 +268,15 @@ function getHeartDropImage() {
     heartDropImage.src = '/assets/heart-drop.svg';
   }
   return heartDropImage;
+}
+
+function getHammerheadBossImage() {
+  if (typeof Image === 'undefined') return null;
+  if (!hammerheadBossImage) {
+    hammerheadBossImage = new Image();
+    hammerheadBossImage.src = '/assets/hammerhead-boss.png';
+  }
+  return hammerheadBossImage;
 }
 
 function getWaterTexture() {
@@ -273,6 +316,11 @@ const getInvincibilityDuration = (state: EngineState) => {
 };
 
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
+  // Local visual verification only; Vite replaces this DEV branch in production builds.
+  const bossPreview = import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('bossPreview');
+  const startingScore = bossPreview ? HAMMERHEAD_BOSS_SCORE : 0;
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({
     x: Math.random() * width,
     y: Math.random() * height,
@@ -281,8 +329,8 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     drift: (Math.random() - 0.5) * 0.45,
   }));
   return {
-    width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: 0, running: true,
-    invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
+    width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: startingScore, running: true,
+    invincibleUntil: bossPreview ? 25_000 : 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
     lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
 
@@ -302,6 +350,8 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     feverUntil: 0,
     elapsedSinceFeverCoinSpawn: 0,
     hourglassUntil: 0,
+    boss: null,
+    bossDefeated: false,
   };
 }
 
@@ -527,6 +577,102 @@ function clearDangerousReviveArea(state: EngineState) {
   state.elapsedSinceSpawn = -SAFE_REVIVE_DELAY_MS;
 }
 
+function startHammerheadBoss(state: EngineState, callbacks: EngineCallbacks) {
+  clearDangerousReviveArea(state);
+  const boss: HammerheadBoss = {
+    x: state.width + 170,
+    y: state.height * 0.5,
+    baseY: state.height * 0.5,
+    width: Math.min(220, state.width * 0.62),
+    height: Math.min(220, state.width * 0.62),
+    startedAt: state.timeMs,
+    battleStartedAt: state.timeMs + BOSS_WARNING_MS,
+    nextWaveAt: state.timeMs + BOSS_WARNING_MS + 900,
+    waves: [],
+  };
+  state.boss = boss;
+  state.elapsedSinceSpawn = -BOSS_BATTLE_DURATION_MS;
+  triggerFloatingText(state, translate('engine.bossWarning'), state.width * 0.5, state.height * 0.26, '#ffce58', true);
+  callbacks.onFloatingText?.(translate('engine.bossWarning'), state.width * 0.5, state.height * 0.26, '#ffce58', true);
+  addBurst(state, state.width * 0.70, state.height * 0.5, '#8defff', 20, 2.6);
+}
+
+function absorbBossHit(state: EngineState, callbacks: EngineCallbacks, fishX: number) {
+  callbacks.onShake(5);
+  callbacks.onRedFlash?.();
+  addBurst(state, fishX, state.fishY, '#73e8ff', 18, 2.8);
+  if (state.shieldCharges > 0) {
+    state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+    state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
+    triggerFloatingText(state, translate('engine.shield'), fishX, state.fishY - 30, '#80d8ff', true);
+    return false;
+  }
+  killOrUseLife(state, callbacks);
+  return true;
+}
+
+function updateHammerheadBoss(state: EngineState, dt: number, callbacks: EngineCallbacks, fishX: number, invincible: boolean, isFeverActive: boolean) {
+  const boss = state.boss;
+  if (!boss) return false;
+
+  const targetX = state.width * 0.70;
+  boss.x += (targetX - boss.x) * Math.min(1, dt * 0.07);
+  boss.y = boss.baseY + Math.sin(state.timeMs * 0.0022) * Math.min(26, state.height * 0.07);
+
+  if (state.timeMs >= boss.battleStartedAt && state.timeMs >= boss.nextWaveAt) {
+    const sequenceIndex = Math.floor((state.timeMs - boss.battleStartedAt) / BOSS_WAVE_INTERVAL_MS);
+    const lanes = [state.height * 0.32, state.height * 0.50, state.height * 0.68];
+    const laneOffset = sequenceIndex % lanes.length;
+    const rotatedLanes = lanes.map((_, index) => lanes[(index + laneOffset) % lanes.length]);
+    const safeLane = rotatedLanes.reduce((furthest, lane) => (
+      Math.abs(lane - state.fishY) > Math.abs(furthest - state.fishY) ? lane : furthest
+    ), rotatedLanes[0]);
+    boss.waves.push({
+      id: `boss_wave_${state.timeMs}`,
+      x: boss.x - boss.width * 0.42,
+      y: safeLane,
+      radius: Math.max(16, Math.min(22, state.width * 0.058)),
+      phase: 'warning',
+      activateAt: state.timeMs + BOSS_WAVE_WARNING_MS,
+    });
+    boss.nextWaveAt = state.timeMs + BOSS_WAVE_INTERVAL_MS;
+  }
+
+  for (const wave of boss.waves) {
+    if (wave.phase === 'warning' && state.timeMs >= wave.activateAt) {
+      wave.phase = 'active';
+    }
+    if (wave.phase === 'active') {
+      wave.x -= BOSS_WAVE_SPEED * dt;
+      if (!invincible && !isFeverActive) {
+        const distance = Math.hypot(wave.x - fishX, wave.y - state.fishY);
+        if (distance < FAIR_FISH_HITBOX_RADIUS + wave.radius * 0.62) {
+          if (absorbBossHit(state, callbacks, fishX)) return true;
+          wave.x = -100;
+        }
+      }
+    }
+  }
+  boss.waves = boss.waves.filter((wave) => wave.phase === 'warning' || wave.x > -80);
+
+  if (state.timeMs >= boss.battleStartedAt + BOSS_BATTLE_DURATION_MS) {
+    const rewardX = Math.min(state.width * 0.70, boss.x);
+    const rewardY = boss.y;
+    state.boss = null;
+    state.bossDefeated = true;
+    state.score += BOSS_REWARD_SCORE;
+    callbacks.onScore(state.score);
+    callbacks.onCoinCollect(BOSS_REWARD_COINS);
+    triggerFloatingText(state, translate('engine.bossDefeated', undefined, { coins: BOSS_REWARD_COINS, score: BOSS_REWARD_SCORE }), rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
+    callbacks.onFloatingText?.(translate('engine.bossDefeated', undefined, { coins: BOSS_REWARD_COINS, score: BOSS_REWARD_SCORE }), rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
+    addBurst(state, rewardX, rewardY, '#ffe082', 32, 3.5);
+    addBurst(state, rewardX, rewardY, '#5df1ff', 24, 3);
+    callbacks.onShake(2);
+    state.elapsedSinceSpawn = -850;
+  }
+  return false;
+}
+
 function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   if (state.lives <= 0) return false;
   state.lives -= 1;
@@ -608,16 +754,23 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   const fishX = state.width * FISH_X_RATIO;
 
   state.elapsedSinceSpawn += dtMs;
-  // Keep enough horizontal breathing room between pipe gates. The timer stays
-  // armed until the previous gate moves on, rather than forcing an overlap.
+  if (!state.boss && !state.bossDefeated && state.score >= HAMMERHEAD_BOSS_SCORE) {
+    startHammerheadBoss(state, callbacks);
+  }
+
+  // The boss arena clears existing danger and temporarily pauses new gates.
+  // This gives every incoming shockwave a deliberately readable escape route.
+  const bossActive = state.boss !== null;
   const gateSpacingClear = state.obstacles.every((obstacle) => obstacle.x < state.width * 0.52);
-  if (state.elapsedSinceSpawn >= spawnInterval && gateSpacingClear) {
+  if (!bossActive && state.elapsedSinceSpawn >= spawnInterval && gateSpacingClear) {
     spawnObstacle(state, state.score);
     state.elapsedSinceSpawn = 0;
   }
 
   // === FEVER MODE STREAM SPANNING ===
   const isFeverActive = state.feverUntil > state.timeMs;
+  if (updateHammerheadBoss(state, dt, callbacks, fishX, invincible, isFeverActive)) return;
+
   if (isFeverActive) {
     state.elapsedSinceFeverCoinSpawn += dtMs;
     if (state.elapsedSinceFeverCoinSpawn >= 180) {
@@ -1686,6 +1839,89 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.restore();
 }
 
+function drawHammerheadBoss(ctx: CanvasRenderingContext2D, state: EngineState) {
+  const boss = state.boss;
+  if (!boss) return;
+
+  const isWarning = state.timeMs < boss.battleStartedAt;
+  const remaining = Math.max(0, boss.battleStartedAt + BOSS_BATTLE_DURATION_MS - state.timeMs);
+  const pulse = 0.62 + (Math.sin(state.timeMs * 0.007) + 1) * 0.19;
+
+  ctx.save();
+  const halo = ctx.createRadialGradient(boss.x, boss.y, boss.width * 0.16, boss.x, boss.y, boss.width * 0.9);
+  halo.addColorStop(0, isWarning ? 'rgba(255, 178, 78, 0.30)' : 'rgba(67, 228, 255, 0.24)');
+  halo.addColorStop(1, 'rgba(67, 228, 255, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(boss.x, boss.y, boss.width * 0.9, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.translate(boss.x, boss.y);
+  ctx.rotate(Math.sin(state.timeMs * 0.0022) * 0.028);
+  ctx.imageSmoothingEnabled = false;
+  const bossImage = getHammerheadBossImage();
+  if (bossImage?.complete && bossImage.naturalWidth) {
+    ctx.shadowColor = isWarning ? '#ffb74d' : '#61ecff';
+    ctx.shadowBlur = 14 * pulse;
+    ctx.drawImage(bossImage, -boss.width / 2, -boss.height / 2, boss.width, boss.height);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '800 10px system-ui, sans-serif';
+  ctx.fillStyle = '#eaffff';
+  ctx.shadowColor = '#00243d';
+  ctx.shadowBlur = 5;
+  ctx.fillText(translate('engine.bossName'), boss.x, boss.y - boss.height * 0.64);
+  if (!isWarning) {
+    const barWidth = Math.min(96, boss.width * 0.72);
+    const progress = Math.max(0, Math.min(1, remaining / BOSS_BATTLE_DURATION_MS));
+    ctx.fillStyle = 'rgba(0, 18, 38, 0.72)';
+    ctx.fillRect(boss.x - barWidth / 2, boss.y - boss.height * 0.54, barWidth, 4);
+    ctx.fillStyle = '#5df1ff';
+    ctx.fillRect(boss.x - barWidth / 2, boss.y - boss.height * 0.54, barWidth * progress, 4);
+  }
+  ctx.restore();
+
+  for (const wave of boss.waves) {
+    ctx.save();
+    if (wave.phase === 'warning') {
+      const warningPulse = 0.45 + (Math.sin(state.timeMs * 0.012) + 1) * 0.23;
+      ctx.globalAlpha = warningPulse;
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(state.width * 0.08, wave.y);
+      ctx.lineTo(boss.x - boss.width * 0.2, wave.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#fff3c4';
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, wave.radius * 0.44, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const wavePulse = 0.7 + (Math.sin(state.timeMs * 0.016) + 1) * 0.15;
+      const ring = ctx.createRadialGradient(wave.x, wave.y, wave.radius * 0.12, wave.x, wave.y, wave.radius);
+      ring.addColorStop(0, 'rgba(225, 255, 255, 0.94)');
+      ring.addColorStop(0.35, 'rgba(80, 228, 255, 0.7)');
+      ring.addColorStop(1, 'rgba(49, 145, 255, 0)');
+      ctx.fillStyle = ring;
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, wave.radius * wavePulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#b9faff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, wave.radius * 0.76, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 function drawSeaMine(ctx: CanvasRenderingContext2D, mine: SeaMine, timeMs: number) {
   if (mine.exploded) return;
   ctx.save();
@@ -2387,6 +2623,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   for (const shark of state.sharks) drawShark(ctx, shark, state.timeMs);
   for (const mine of state.seaMines) drawSeaMine(ctx, mine, state.timeMs);
   for (const jelly of state.jellyfish) drawJellyfish(ctx, jelly, state.timeMs);
+  drawHammerheadBoss(ctx, state);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
   for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
   for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);

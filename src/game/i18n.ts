@@ -319,6 +319,9 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.slowMo': 'Slow Mo!',
     'engine.dropRush': 'DROP RUSH · {{seconds}}s',
     'engine.treasure': '+25 coins · +25 score',
+    'engine.bossWarning': '⚠ Hammerhead Guardian incoming!',
+    'engine.bossName': 'HAMMERHEAD GUARDIAN',
+    'engine.bossDefeated': 'Boss defeated! +{{coins}} coins · +{{score}} score',
   },
   ar: {
     'language.english': 'English',
@@ -633,6 +636,9 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.slowMo': 'إبطاء الوقت!',
     'engine.dropRush': 'اندفاع الدروبات · {{seconds}}ث',
     'engine.treasure': '+25 عملة · +25 نقطة',
+    'engine.bossWarning': '⚠ حارس قرش المطرقة يقترب!',
+    'engine.bossName': 'حارس قرش المطرقة',
+    'engine.bossDefeated': 'تم هزيمة الزعيم! +{{coins}} عملة · +{{score}} نقطة',
   },
 };
 
