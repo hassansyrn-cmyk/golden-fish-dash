@@ -167,6 +167,7 @@ interface BossConfig {
   spriteColumns?: number;
   spriteRows?: number;
   spriteFps?: number;
+  previewOnly?: boolean;
   nameKey: string;
   warningKey: string;
   motion: BossMotion;
@@ -362,7 +363,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'abyssalRazorback', milestone: 600,
-    spriteSheetPath: '/assets/boss-sprites/abyssal-razorback-idle-sheet.png', spriteColumns: 6, spriteRows: 2, spriteFps: 10,
+    spriteSheetPath: '/assets/boss-sprites/abyssal-razorback-idle-sheet.png', spriteColumns: 6, spriteRows: 2, spriteFps: 10, previewOnly: true,
     nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
     accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
     battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
@@ -1153,7 +1154,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   const fishX = state.width * FISH_X_RATIO;
 
   state.elapsedSinceSpawn += dtMs;
-  const nextBoss = BOSS_CONFIGS.find((config) => !state.defeatedBosses.includes(config.id) && state.score >= config.milestone);
+  const nextBoss = BOSS_CONFIGS.find((config) => !config.previewOnly && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone);
   if (!state.boss && nextBoss) {
     startBossEncounter(state, callbacks, nextBoss);
   }
