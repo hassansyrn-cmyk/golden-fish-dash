@@ -2293,8 +2293,9 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.scale(swell * cinematicScale, swell * cinematicScale);
   ctx.imageSmoothingEnabled = true;
   const bossVideo = getBossVideo(config);
+  const hasAnimatedVideo = Boolean(config.alphaVideoPath);
   const videoReady = Boolean(bossVideo && bossVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && bossVideo.videoWidth);
-  const bossImage = getBossImage(config);
+  const bossImage = hasAnimatedVideo ? null : getBossImage(config);
   const travelAlpha = boss.phase === 'retreating' ? Math.max(0.34, 1 - retreatProgress * 0.58) : 1;
   ctx.globalAlpha = travelAlpha;
   ctx.shadowColor = config.secondaryAccent;
@@ -2304,11 +2305,11 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
     const animationSize = boss.width * 1.36;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(videoFrame.canvas, 0, 0, videoFrame.width, videoFrame.height, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
-  } else if (bossImage?.complete && bossImage.naturalWidth) {
+  } else if (!hasAnimatedVideo && bossImage?.complete && bossImage.naturalWidth) {
     ctx.drawImage(bossImage, -boss.width / 2, -boss.height / 2, boss.width, boss.height);
   }
 
-  if (videoFrame || (bossImage?.complete && bossImage.naturalWidth)) {
+  if (videoFrame || (!hasAnimatedVideo && bossImage?.complete && bossImage.naturalWidth)) {
     // The animated footage carries organic motion; this overlay keeps all supplied artwork
     // visually tied to the same active energy language during attacks.
     const flow = (Math.sin(state.timeMs * motionRate * 1.7) + 1) * 0.5;
