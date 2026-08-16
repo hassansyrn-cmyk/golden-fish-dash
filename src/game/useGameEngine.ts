@@ -30,6 +30,7 @@ interface UseGameEngineOptions {
   active: boolean;
   paused: boolean;
   skin: SkinId;
+  bossPreviewMilestone?: number;
   onGameOver: (finalScore: number) => void;
 }
 
@@ -106,7 +107,7 @@ function sizeCanvasForDisplay(canvas: HTMLCanvasElement, width: number, height: 
   context?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 }
 
-export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
+export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMilestone, onGameOver }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
@@ -148,43 +149,37 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     sizeCanvasForDisplay(canvas, width, height);
 
-    const engine = createEngine(width, height, skin);
+    const engine = createEngine(width, height, skin, bossPreviewMilestone);
 
-    // Apply upgrade levels directly to starting engine configurations
-    const shieldLvl = getUpgradeLevel('shield');
-    const magnetLvl = getUpgradeLevel('magnet');
-    const gemLvl = getUpgradeLevel('gemBoost');
-
+    const isBossPreview = Boolean(bossPreviewMilestone);
     stateRef.current = engine;
 
-    // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
-    // This runs every time a new engine is created for a run.
-    // It checks current inventory, applies the boosts, and consumes the items.
-    const inv = getShopInventory();
+    // The temporary boss test must not consume player items or alter progress.
+    if (!isBossPreview) {
+      // Apply upgrade levels directly to starting engine configurations.
+      const shieldLvl = getUpgradeLevel('shield');
+      const magnetLvl = getUpgradeLevel('magnet');
+      const gemLvl = getUpgradeLevel('gemBoost');
+      const inv = getShopInventory();
 
-    if (inv.shield > 0 || shieldLvl > 0) {
-      if (inv.shield > 0) consumeShopItem('shield');
-      // Shield capacity is intentionally capped at two visible HUD slots.
-      engine.shieldCharges = Math.min(2, 1 + shieldLvl);
-      incrementMissionProgress('m_shield', 1);
-    }
+      if (inv.shield > 0 || shieldLvl > 0) {
+        if (inv.shield > 0) consumeShopItem('shield');
+        engine.shieldCharges = Math.min(2, 1 + shieldLvl);
+        incrementMissionProgress('m_shield', 1);
+      }
 
-    // Moorish Idol legendary skin ability: 15% chance to start with a free shield if no shield is active
-    if (skin === 'legendary' && engine.shieldCharges === 0) {
-      if (Math.random() < 0.15) {
+      if (skin === 'legendary' && engine.shieldCharges === 0 && Math.random() < 0.15) {
         engine.shieldCharges = 1;
       }
-    }
 
-    if (inv.magnet > 0 || magnetLvl > 0) {
-      if (inv.magnet > 0) consumeShopItem('magnet');
-      // Upgrade increases starting magnet duration (12s base + 3s per level).
-      engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
-    }
-    if (inv.gemBoost > 0 || gemLvl > 0) {
-      if (inv.gemBoost > 0) consumeShopItem('gemBoost');
-      // Upgrade increases gem spawn rate even further
-      engine.gemBoostActive = true;
+      if (inv.magnet > 0 || magnetLvl > 0) {
+        if (inv.magnet > 0) consumeShopItem('magnet');
+        engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
+      }
+      if (inv.gemBoost > 0 || gemLvl > 0) {
+        if (inv.gemBoost > 0) consumeShopItem('gemBoost');
+        engine.gemBoostActive = true;
+      }
     }
 
     roundCoinsRef.current = 0;
@@ -198,7 +193,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setMiniChallenge(null);
     miniChallengeRef.current = null;
     lastHudRefreshRef.current = 0;
-  }, [canvasRef, skin]);
+  }, [canvasRef, skin, bossPreviewMilestone]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
     const state = stateRef.current;
@@ -246,8 +241,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     if (!active) return;
 
     setup();
-    incrementRoundsPlayed();
-    unlockAchievement('first_flight');
+    if (!bossPreviewMilestone) {
+      incrementRoundsPlayed();
+      unlockAchievement('first_flight');
+    }
 
     let mounted = true;
     lastTimeRef.current = performance.now();
@@ -556,7 +553,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
       window.removeEventListener('resize', handleResize);
     };
-  }, [active, setup, canvasRef]);
+  }, [active, setup, canvasRef, bossPreviewMilestone]);
 
   const doJump = useCallback(() => {
     const state = stateRef.current;

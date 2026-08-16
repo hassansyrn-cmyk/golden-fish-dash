@@ -345,7 +345,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'coralKraken', milestone: 500, imagePath: '/assets/bosses/coral-kraken-king-transparent.webp',
-    nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
+    alphaVideoPath: '/assets/boss-alpha-videos/coral-kraken-alpha.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 218, widthRatio: 0.49,
     battleDurationMs: 33_000, waveIntervalMs: 1_560, rewardCoins: 170, rewardScore: 95,
     summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 3_250, maxSummons: 7,
@@ -553,14 +553,17 @@ const getInvincibilityDuration = (state: EngineState) => {
   return base;
 };
 
-export function createEngine(width: number, height: number, skin: SkinId): EngineState {
-  // Local visual verification only; Vite replaces this DEV branch in production builds.
-  const bossPreview = import.meta.env.DEV
+export function createEngine(width: number, height: number, skin: SkinId, selectedBossPreview?: number): EngineState {
+  // The menu's temporary Boss Test panel can select a production-safe preview.
+  // The query parameter remains available only for local development checks.
+  const queryBossPreview = import.meta.env.DEV
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).has('bossPreview');
-  const bossPreviewScore = bossPreview && typeof window !== 'undefined'
+  const queryBossScore = queryBossPreview && typeof window !== 'undefined'
     ? Number(new URLSearchParams(window.location.search).get('bossPreview'))
     : 0;
+  const bossPreviewScore = selectedBossPreview ?? queryBossScore;
+  const bossPreview = Boolean(selectedBossPreview || queryBossPreview);
   const previewBoss = BOSS_CONFIGS.find((config) => config.milestone === bossPreviewScore) ?? BOSS_CONFIGS[0];
   const startingScore = bossPreview ? previewBoss.milestone : 0;
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({

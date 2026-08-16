@@ -131,6 +131,7 @@ export default function GoldenFishRush() {
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
   const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
   const [showExitHint, setShowExitHint] = useState(false);
+  const [bossPreviewMilestone, setBossPreviewMilestone] = useState<number | undefined>(undefined);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
@@ -239,11 +240,13 @@ export default function GoldenFishRush() {
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
+    bossPreviewMilestone,
     onGameOver: handleGameOver,
   });
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
+    setBossPreviewMilestone(undefined);
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
@@ -357,8 +360,19 @@ export default function GoldenFishRush() {
   }, []);
 
   const handleGoToMenu = useCallback(() => {
+    setBossPreviewMilestone(undefined);
     setReviveCountdown(null);
     setScreen('menu');
+  }, []);
+
+  const handleBossPreview = useCallback((milestone: number) => {
+    setBossPreviewMilestone(milestone);
+    setUsedSecondChanceThisRun(true);
+    setReviveCountdown(null);
+    setFinalScore(0);
+    setNewUnlocks(null);
+    // Skip the ordinary dive countdown: this temporary tool is for quick boss checks.
+    setScreen('playing');
   }, []);
 
   const handleResumePlaying = useCallback(() => {
@@ -482,6 +496,7 @@ export default function GoldenFishRush() {
             onShop={handleOpenShop}
             onDailyRewards={handleOpenDailyRewards}
             onLuckySpin={handleOpenLuckySpin}
+            onBossPreview={handleBossPreview}
           />
         )}
 

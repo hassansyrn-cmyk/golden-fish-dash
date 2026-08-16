@@ -11,6 +11,7 @@ interface Props {
   onShop: () => void;
   onDailyRewards: () => void;
   onLuckySpin: () => void;
+  onBossPreview: (milestone: number) => void;
 }
 
 /**
@@ -74,6 +75,7 @@ export default function MainMenu({
   onShop,
   onDailyRewards,
   onLuckySpin,
+  onBossPreview,
 }: Props) {
   const { language, setLanguage, t } = useI18n();
   const [best, setBest] = useState(0);
@@ -84,6 +86,14 @@ export default function MainMenu({
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
   const [spinAvailable, setSpinAvailable] = useState(false);
+  const [showBossTest, setShowBossTest] = useState(false);
+  const bossTests = [
+    { milestone: 100, nameKey: 'engine.bossName.octopus' },
+    { milestone: 200, nameKey: 'engine.bossName.manta' },
+    { milestone: 300, nameKey: 'engine.bossName.anglerfish' },
+    { milestone: 400, nameKey: 'engine.bossName.leviathan' },
+    { milestone: 500, nameKey: 'engine.bossName.kraken' },
+  ] as const;
 
   useEffect(() => {
     setBest(getPersonalBest());
@@ -168,6 +178,34 @@ export default function MainMenu({
         <button className="btn btn-primary" onClick={onPlay}>
           {t('menu.play')}
         </button>
+
+        <button className="btn btn-secondary boss-test-menu-btn" onClick={() => setShowBossTest((visible) => !visible)}>
+          ⚔️ {t('menu.bossTest')}
+        </button>
+
+        {showBossTest && (
+          <section className="boss-test-panel" aria-label={t('menu.bossTest')}>
+            <div className="boss-test-panel-heading">
+              <strong>{t('menu.bossTestTitle')}</strong>
+              <span>{t('menu.bossTestHint')}</span>
+            </div>
+            <div className="boss-test-grid">
+              {bossTests.map((boss) => (
+                <button
+                  key={boss.milestone}
+                  className="boss-test-choice"
+                  onClick={() => {
+                    setShowBossTest(false);
+                    onBossPreview(boss.milestone);
+                  }}
+                >
+                  <span>{boss.milestone}</span>
+                  <small>{t(boss.nameKey)}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Daily Rewards button - noticeable when available */}
         <button
