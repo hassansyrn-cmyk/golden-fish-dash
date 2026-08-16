@@ -136,7 +136,7 @@ export interface Jellyfish {
   speedMultiplier?: number;
 }
 
-type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken';
+type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken' | 'abyssalRazorback';
 type BossWeapon = 'ink' | 'plasma' | 'electric' | 'bubble' | 'surge' | 'coral';
 type BossMotion = 'tentacles' | 'fins' | 'lure' | 'serpent' | 'coralTentacles';
 type BossPhase = 'warning' | 'entering' | 'battle' | 'retreating';
@@ -162,7 +162,11 @@ interface BossAttackPattern {
 interface BossConfig {
   id: BossId;
   milestone: number;
-  alphaVideoPath: string;
+  alphaVideoPath?: string;
+  spriteSheetPath?: string;
+  spriteColumns?: number;
+  spriteRows?: number;
+  spriteFps?: number;
   nameKey: string;
   warningKey: string;
   motion: BossMotion;
@@ -356,6 +360,20 @@ const BOSS_CONFIGS: BossConfig[] = [
       { type: 'coral', lanes: [0.18, 0.52], staggerMs: 280, speedMultiplier: 1.38 },
     ],
   },
+  {
+    id: 'abyssalRazorback', milestone: 600,
+    spriteSheetPath: '/assets/boss-sprites/abyssal-razorback-idle-sheet.png', spriteColumns: 6, spriteRows: 2, spriteFps: 10,
+    nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
+    accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
+    battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
+    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_550, maxSummons: 6,
+    patterns: [
+      { type: 'electric', lanes: [0.24, 0.72], staggerMs: 160, speedMultiplier: 1.56 },
+      { type: 'surge', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.64 },
+      { type: 'electric', lanes: [0.18, 0.48, 0.80], staggerMs: 210, speedMultiplier: 1.58 },
+      { type: 'plasma', lanes: [0.32, 0.68], staggerMs: 260, speedMultiplier: 1.70 },
+    ],
+  },
 ];
 // The artwork intentionally extends beyond the gameplay body. A smaller,
 // circular contact zone makes collisions match what players can see.
@@ -387,6 +405,7 @@ function environmentForScore(score: number): EnvironmentTheme {
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
 const bossVideoCache = new Map<BossId, HTMLVideoElement>();
+const bossSpriteSheetCache = new Map<BossId, HTMLImageElement>();
 
 interface BossVideoFrame {
   canvas: HTMLCanvasElement;
@@ -403,6 +422,18 @@ function getHeartDropImage() {
     heartDropImage.src = '/assets/heart-drop.svg';
   }
   return heartDropImage;
+}
+
+function getBossSpriteSheet(config: BossConfig) {
+  if (typeof Image === 'undefined' || !config.spriteSheetPath) return null;
+  let spriteSheet = bossSpriteSheetCache.get(config.id);
+  if (!spriteSheet) {
+    spriteSheet = new Image();
+    spriteSheet.decoding = 'async';
+    spriteSheet.src = config.spriteSheetPath;
+    bossSpriteSheetCache.set(config.id, spriteSheet);
+  }
+  return spriteSheet;
 }
 
 function getBossVideo(config: BossConfig) {
@@ -2288,6 +2319,8 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
       && bossVideo.currentTime >= 0.12
       && !bossVideo.paused,
   );
+  const spriteSheet = getBossSpriteSheet(config);
+  const spriteReady = Boolean(spriteSheet?.complete && spriteSheet.naturalWidth && spriteSheet.naturalHeight);
   const travelAlpha = boss.phase === 'retreating' ? Math.max(0.34, 1 - retreatProgress * 0.58) : 1;
   ctx.globalAlpha = travelAlpha;
   ctx.shadowColor = config.secondaryAccent;
@@ -2297,9 +2330,21 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
     const animationSize = boss.width * 1.36;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(videoFrame.canvas, 0, 0, videoFrame.width, videoFrame.height, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
+  } else if (spriteReady && spriteSheet) {
+    const columns = config.spriteColumns ?? 1;
+    const rows = config.spriteRows ?? 1;
+    const frameCount = columns * rows;
+    const frame = Math.floor((state.timeMs / 1000) * (config.spriteFps ?? 12)) % frameCount;
+    const frameWidth = spriteSheet.naturalWidth / columns;
+    const frameHeight = spriteSheet.naturalHeight / rows;
+    const sourceX = (frame % columns) * frameWidth;
+    const sourceY = Math.floor(frame / columns) * frameHeight;
+    const animationSize = boss.width * 1.38;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(spriteSheet, sourceX, sourceY, frameWidth, frameHeight, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
   }
 
-  if (videoFrame) {
+  if (videoFrame || spriteReady) {
     // The animated footage carries organic motion; this overlay keeps all supplied artwork
     // visually tied to the same active energy language during attacks.
     const flow = (Math.sin(state.timeMs * motionRate * 1.7) + 1) * 0.5;
