@@ -97,7 +97,7 @@ export interface PredatorShark {
   passed: boolean;
 }
 
-type BossMinionKind = 'reefShark' | 'electricEel' | 'lanternFish' | 'tideRay' | 'coralJelly';
+type BossMinionKind = 'reefShark' | 'moonJellyfish' | 'anglerfish' | 'hammerheadShark' | 'reefSquid';
 
 interface BossMinion {
   id: string;
@@ -319,7 +319,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
     accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
     battleDurationMs: 27_000, waveIntervalMs: 1_720, rewardCoins: 80, rewardScore: 40,
-    summonKind: 'electricEel', summonLabelKey: 'engine.bossSummon.eel', summonIntervalMs: 4_800, maxSummons: 4,
+    summonKind: 'moonJellyfish', summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 4_800, maxSummons: 4,
     patterns: [
       { type: 'electric', lanes: [0.18, 0.74], staggerMs: 150, speedMultiplier: 1.56 },
       { type: 'electric', lanes: [0.34, 0.64], staggerMs: 260, speedMultiplier: 1.62 },
@@ -333,7 +333,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
     accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
     battleDurationMs: 29_000, waveIntervalMs: 1_920, rewardCoins: 105, rewardScore: 55,
-    summonKind: 'lanternFish', summonLabelKey: 'engine.bossSummon.lantern', summonIntervalMs: 4_450, maxSummons: 4,
+    summonKind: 'anglerfish', summonLabelKey: 'engine.bossSummon.angler', summonIntervalMs: 4_450, maxSummons: 4,
     patterns: [
       { type: 'bubble', lanes: [0.30, 0.70], staggerMs: 420, speedMultiplier: 0.92 },
       { type: 'plasma', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.70 },
@@ -346,7 +346,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
     accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 220, widthRatio: 0.50,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
-    summonKind: 'tideRay', summonLabelKey: 'engine.bossSummon.ray', summonIntervalMs: 4_100, maxSummons: 5,
+    summonKind: 'hammerheadShark', summonLabelKey: 'engine.bossSummon.hammerhead', summonIntervalMs: 4_100, maxSummons: 5,
     patterns: [
       { type: 'surge', lanes: [0.26], staggerMs: 0, speedMultiplier: 1.32 },
       { type: 'surge', lanes: [0.72], staggerMs: 0, speedMultiplier: 1.38 },
@@ -360,7 +360,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 218, widthRatio: 0.49,
     battleDurationMs: 33_000, waveIntervalMs: 1_560, rewardCoins: 170, rewardScore: 95,
-    summonKind: 'coralJelly', summonLabelKey: 'engine.bossSummon.coral', summonIntervalMs: 3_850, maxSummons: 5,
+    summonKind: 'reefSquid', summonLabelKey: 'engine.bossSummon.squid', summonIntervalMs: 3_850, maxSummons: 5,
     patterns: [
       { type: 'coral', lanes: [0.24], staggerMs: 0, speedMultiplier: 1.22 },
       { type: 'coral', lanes: [0.76], staggerMs: 0, speedMultiplier: 1.28 },
@@ -400,6 +400,21 @@ function environmentForScore(score: number): EnvironmentTheme {
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
 const bossImageCache = new Map<BossId, HTMLImageElement>();
+const bossMinionImageCache = new Map<BossMinionKind, HTMLImageElement>();
+const BOSS_MINION_ASSET_PATHS: Record<BossMinionKind, string> = {
+  reefShark: '/assets/summons/reef-shark.png',
+  moonJellyfish: '/assets/summons/moon-jellyfish.svg',
+  anglerfish: '/assets/summons/anglerfish.svg',
+  hammerheadShark: '/assets/summons/hammerhead-shark.svg',
+  reefSquid: '/assets/summons/reef-squid.svg',
+};
+const BOSS_MINION_DIMENSIONS: Record<BossMinionKind, { width: number; height: number; bobSpeed: number; bobAmount: number; speed: number }> = {
+  reefShark: { width: 64, height: 40, bobSpeed: 0.0048, bobAmount: 6, speed: 1.35 },
+  moonJellyfish: { width: 46, height: 52, bobSpeed: 0.0042, bobAmount: 9, speed: 1.42 },
+  anglerfish: { width: 66, height: 46, bobSpeed: 0.0046, bobAmount: 7, speed: 1.48 },
+  hammerheadShark: { width: 74, height: 42, bobSpeed: 0.0051, bobAmount: 7, speed: 1.56 },
+  reefSquid: { width: 48, height: 58, bobSpeed: 0.0054, bobAmount: 10, speed: 1.52 },
+};
 
 function getHeartDropImage() {
   if (typeof Image === 'undefined') return null;
@@ -419,6 +434,32 @@ function getBossImage(config: BossConfig) {
     bossImageCache.set(config.id, image);
   }
   return image;
+}
+
+function getBossMinionImage(kind: BossMinionKind) {
+  if (typeof Image === 'undefined') return null;
+  let image = bossMinionImageCache.get(kind);
+  if (!image) {
+    image = new Image();
+    image.src = BOSS_MINION_ASSET_PATHS[kind];
+    bossMinionImageCache.set(kind, image);
+  }
+  return image;
+}
+
+function bossCameraScale(state: EngineState) {
+  const boss = state.boss;
+  if (!boss || boss.phase === 'warning') return 1;
+  const targetScale = 0.88;
+  if (boss.phase === 'entering') {
+    const progress = Math.max(0, Math.min(1, (state.timeMs - boss.entryStartedAt) / BOSS_ENTRY_MS));
+    return 1 + (targetScale - 1) * (1 - Math.pow(1 - progress, 3));
+  }
+  if (boss.phase === 'retreating') {
+    const progress = Math.max(0, Math.min(1, (state.timeMs - boss.retreatStartedAt) / BOSS_RETREAT_MS));
+    return targetScale + (1 - targetScale) * (progress * progress * (3 - 2 * progress));
+  }
+  return targetScale;
 }
 
 function getWaterTexture() {
@@ -781,7 +822,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
   if (!boss) return false;
 
   const { config } = boss;
-  const targetX = state.width * 0.75;
+  const targetX = state.width * 0.82;
   const entryX = state.width + boss.width * 0.72;
   const exitX = state.width + boss.width * 0.95;
   const motionAmplitude = config.motion === 'serpent' ? 22 : config.motion === 'fins' ? 17 : 14;
@@ -865,31 +906,29 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
     && boss.summonedSharks < (config.maxSummons ?? BOSS_MAX_SUMMONED_SHARKS)
     && state.timeMs >= boss.nextSummonAt
   ) {
-    const summonLanes = config.summonKind === 'electricEel'
-      ? [0.18, 0.78, 0.38, 0.64]
-      : config.summonKind === 'lanternFish'
-        ? [0.30, 0.70, 0.48, 0.22]
-        : config.summonKind === 'tideRay'
-          ? [0.22, 0.76, 0.42, 0.62, 0.32]
-          : config.summonKind === 'coralJelly'
-            ? [0.18, 0.82, 0.50, 0.30, 0.70]
-            : [0.22, 0.78, 0.34];
-    const lane = summonLanes[boss.summonedSharks % summonLanes.length];
+    const summonLanes: Record<BossMinionKind, number[]> = {
+      reefShark: [0.22, 0.78, 0.34],
+      moonJellyfish: [0.18, 0.78, 0.38, 0.64],
+      anglerfish: [0.30, 0.70, 0.48, 0.22],
+      hammerheadShark: [0.22, 0.76, 0.42, 0.62, 0.32],
+      reefSquid: [0.18, 0.82, 0.50, 0.30, 0.70],
+    };
+    const lanes = summonLanes[config.summonKind];
+    const lane = lanes[boss.summonedSharks % lanes.length];
     const minionY = state.height * lane;
-    const isEel = config.summonKind === 'electricEel';
-    const isRay = config.summonKind === 'tideRay';
+    const visual = BOSS_MINION_DIMENSIONS[config.summonKind];
     state.bossMinions.push({
       id: `boss_${config.summonKind}_${state.timeMs}`,
       kind: config.summonKind,
-      x: state.width + 92,
+      x: state.width + visual.width,
       y: minionY,
       baseY: minionY,
-      width: isEel ? 82 : isRay ? 72 : 58,
-      height: isEel ? 24 : isRay ? 34 : 42,
+      width: visual.width,
+      height: visual.height,
       bobPhase: boss.summonedSharks * 1.8,
-      bobSpeed: isEel ? 0.0062 : isRay ? 0.0054 : 0.0046,
-      bobAmount: isEel ? 10 : isRay ? 8 : 6,
-      speedMultiplier: isEel ? 1.72 : isRay ? 1.50 : 1.34,
+      bobSpeed: visual.bobSpeed,
+      bobAmount: visual.bobAmount,
+      speedMultiplier: visual.speed,
     });
     boss.summonedSharks += 1;
     boss.nextSummonAt += config.summonIntervalMs ?? BOSS_SUMMON_INTERVAL_MS;
@@ -914,7 +953,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
   }
   boss.waves = boss.waves.filter((wave) => wave.phase === 'warning' || wave.x > -80);
 
-  if (boss.phase === 'battle' && state.timeMs >= boss.battleStartedAt + config.battleDurationMs) {
+  if (!state.previewMode && boss.phase === 'battle' && state.timeMs >= boss.battleStartedAt + config.battleDurationMs) {
     boss.phase = 'retreating';
     boss.retreatStartedAt = state.timeMs;
     boss.waves = [];
@@ -985,7 +1024,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
   const groundY = state.height - 8;
   const ceilingY = 8;
-  const invincible = state.timeMs < state.invincibleUntil;
+  const invincible = Boolean(state.previewMode) || state.timeMs < state.invincibleUntil;
   if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
     state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
     if (!invincible) { killOrUseLife(state, callbacks); return; }
@@ -2137,93 +2176,24 @@ function bossWeaponPalette(type: BossWeapon) {
 }
 
 function drawBossMinion(ctx: CanvasRenderingContext2D, minion: BossMinion, timeMs: number) {
-  const pulse = 0.55 + (Math.sin(timeMs * 0.008 + minion.bobPhase) + 1) * 0.22;
+  const image = getBossMinionImage(minion.kind);
+  if (!image?.complete || !image.naturalWidth) return;
+
+  const pulse = 0.66 + (Math.sin(timeMs * 0.008 + minion.bobPhase) + 1) * 0.14;
+  const tilt = Math.sin(timeMs * minion.bobSpeed + minion.bobPhase) * 0.10;
+  const glow = minion.kind === 'moonJellyfish' ? '#7bd8ff'
+    : minion.kind === 'anglerfish' ? '#9f76ff'
+      : minion.kind === 'hammerheadShark' ? '#63fff0'
+        : minion.kind === 'reefSquid' ? '#ffad7b' : '#b8f8ff';
   ctx.save();
   ctx.translate(minion.x, minion.y);
-
-  if (minion.kind === 'reefShark') {
-    ctx.shadowColor = '#a75cff';
-    ctx.shadowBlur = 10 * pulse;
-    ctx.fillStyle = '#4d2a7b';
-    ctx.beginPath();
-    ctx.moveTo(-minion.width * 0.48, 0);
-    ctx.quadraticCurveTo(-minion.width * 0.12, -minion.height * 0.52, minion.width * 0.40, 0);
-    ctx.quadraticCurveTo(-minion.width * 0.12, minion.height * 0.52, -minion.width * 0.48, 0);
-    ctx.fill();
-    ctx.fillStyle = '#b764ff';
-    ctx.beginPath();
-    ctx.moveTo(minion.width * 0.18, -minion.height * 0.18);
-    ctx.lineTo(minion.width * 0.38, -minion.height * 0.72);
-    ctx.lineTo(minion.width * 0.34, 0);
-    ctx.fill();
-  } else if (minion.kind === 'electricEel') {
-    ctx.shadowColor = '#68f7ff';
-    ctx.shadowBlur = 15 * pulse;
-    ctx.strokeStyle = '#8affff';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    for (let index = 0; index < 5; index += 1) {
-      const x = -minion.width * 0.46 + index * minion.width * 0.23;
-      const y = Math.sin(minion.bobPhase * 2 + index * 1.8) * minion.height * 0.24;
-      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.fillStyle = '#d5ffff';
-    ctx.beginPath();
-    ctx.arc(-minion.width * 0.43, 0, 4, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (minion.kind === 'lanternFish') {
-    ctx.shadowColor = '#b76cff';
-    ctx.shadowBlur = 14 * pulse;
-    ctx.fillStyle = '#32205f';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, minion.width * 0.42, minion.height * 0.34, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#80f8ff';
-    ctx.beginPath();
-    ctx.arc(-minion.width * 0.16, -minion.height * 0.52, 5 + pulse * 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#80f8ff';
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-minion.width * 0.10, -minion.height * 0.22);
-    ctx.quadraticCurveTo(-minion.width * 0.18, -minion.height * 0.55, -minion.width * 0.16, -minion.height * 0.52);
-    ctx.stroke();
-  } else if (minion.kind === 'tideRay') {
-    ctx.shadowColor = '#69fff0';
-    ctx.shadowBlur = 13 * pulse;
-    ctx.fillStyle = '#197f9c';
-    ctx.beginPath();
-    ctx.moveTo(-minion.width * 0.48, 0);
-    ctx.quadraticCurveTo(-minion.width * 0.05, -minion.height * 0.72, minion.width * 0.46, -minion.height * 0.12);
-    ctx.lineTo(minion.width * 0.16, minion.height * 0.12);
-    ctx.quadraticCurveTo(-minion.width * 0.10, minion.height * 0.72, -minion.width * 0.48, 0);
-    ctx.fill();
-    ctx.strokeStyle = '#b9fff8';
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-minion.width * 0.18, 0);
-    ctx.lineTo(minion.width * 0.28, 0);
-    ctx.stroke();
-  } else {
-    ctx.shadowColor = '#ffb36b';
-    ctx.shadowBlur = 13 * pulse;
-    ctx.fillStyle = '#e05a58';
-    ctx.beginPath();
-    ctx.arc(0, -minion.height * 0.12, minion.width * 0.26, Math.PI, 0);
-    ctx.lineTo(minion.width * 0.26, minion.height * 0.18);
-    ctx.lineTo(-minion.width * 0.26, minion.height * 0.18);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#ffd28f';
-    ctx.lineWidth = 1.4;
-    for (let tentacle = -2; tentacle <= 2; tentacle += 1) {
-      ctx.beginPath();
-      ctx.moveTo(tentacle * 5, minion.height * 0.16);
-      ctx.quadraticCurveTo(tentacle * 7 + Math.sin(minion.bobPhase) * 4, minion.height * 0.52, tentacle * 8, minion.height * 0.68);
-      ctx.stroke();
-    }
-  }
+  ctx.rotate(tilt);
+  ctx.scale(pulse, pulse);
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 8 + pulse * 8;
+  ctx.globalAlpha = 0.92;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(image, -minion.width / 2, -minion.height / 2, minion.width, minion.height);
   ctx.restore();
 }
 
@@ -3105,6 +3075,14 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     const dy = Math.cos(state.timeMs * 0.052) * state.shakeIntensity * 0.20;
     ctx.translate(dx, dy);
   }
+  const cameraScale = bossCameraScale(state);
+  if (cameraScale < 0.999) {
+    const cameraAnchorX = width * FISH_X_RATIO;
+    const cameraAnchorY = height * 0.5;
+    ctx.translate(cameraAnchorX, cameraAnchorY);
+    ctx.scale(cameraScale, cameraScale);
+    ctx.translate(-cameraAnchorX, -cameraAnchorY);
+  }
   drawBackground(ctx, state);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const shark of state.sharks) drawShark(ctx, shark, state.timeMs);
@@ -3119,7 +3097,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   for (const chest of state.chests) drawTreasureChest(ctx, chest, state.timeMs);
 
   const fishX = width * FISH_X_RATIO;
-  const invincible = state.timeMs < state.invincibleUntil;
+  const invincible = Boolean(state.previewMode) || state.timeMs < state.invincibleUntil;
   drawFish(ctx, state, fishX, invincible);
   for (const particle of state.particles) drawParticle(ctx, particle);
 

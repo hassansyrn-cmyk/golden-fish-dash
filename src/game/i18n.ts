@@ -337,6 +337,10 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.bossSummon.lantern': 'LANTERN FISH SWARM!',
     'engine.bossSummon.ray': 'TIDE RAYS SURGE!',
     'engine.bossSummon.coral': 'CORAL JELLIES AWAKEN!',
+    'engine.bossSummon.jelly': 'MOON JELLIES DRIFT IN!',
+    'engine.bossSummon.angler': 'ANGLERFISH SWARM!',
+    'engine.bossSummon.hammerhead': 'HAMMERHEADS CHARGE!',
+    'engine.bossSummon.squid': 'REEF SQUIDS RELEASED!',
     'engine.bossDefeated': 'Abyssal Guardian repelled! +{{coins}} coins · +{{score}} score',
   },
   ar: {
@@ -670,6 +674,10 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.bossSummon.lantern': 'سرب أسماك الفانوس!',
     'engine.bossSummon.ray': 'شفانين المدّ تندفع!',
     'engine.bossSummon.coral': 'قناديل مرجانية تستيقظ!',
+    'engine.bossSummon.jelly': 'قناديل القمر تقترب!',
+    'engine.bossSummon.angler': 'سرب سمك الصياد!',
+    'engine.bossSummon.hammerhead': 'قروش المطرقة تندفع!',
+    'engine.bossSummon.squid': 'حبار الشعاب أُطلق!',
     'engine.bossDefeated': 'تم صدّ حارس الأعماق! +{{coins}} عملة · +{{score}} نقطة',
   },
 };

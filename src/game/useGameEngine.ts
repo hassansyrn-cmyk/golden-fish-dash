@@ -131,15 +131,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     onGameOverRef.current = onGameOver;
   }, [onGameOver]);
 
-  useEffect(() => {
-    const settings = getSettings();
-    if (paused) {
-      audioManager.pauseBossMusic();
-    } else {
-      audioManager.resumeBossMusic(settings.sound);
-    }
-  }, [paused]);
-
   const setup = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -151,7 +142,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     sizeCanvasForDisplay(canvas, width, height);
 
     const engine = createEngine(width, height, skin);
-    audioManager.stopBossMusic();
 
     // Apply upgrade levels directly to starting engine configurations
     const shieldLvl = getUpgradeLevel('shield');
@@ -390,7 +380,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 const finalScore = state.score;
                 const best = getPersonalBest();
 
-                audioManager.stopBossMusic();
                 audioManager.playSound('gameover', settings.sound);
                 safeVibrate([80, 50, 120], settings.vibration);
 
@@ -473,9 +462,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 }
               },
 
-              onBossStart: (bossId) => {
-                audioManager.startBossMusic(bossId, settings.sound);
-                audioManager.playBossRoar(bossId, settings.sound);
+              onBossStart: () => {
                 audioManager.playSound('bossWarning', settings.sound);
                 safeVibrate([90, 50, 120], settings.vibration);
               },
@@ -490,7 +477,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
               },
 
               onBossDefeated: () => {
-                audioManager.stopBossMusic();
                 audioManager.playSound('bossDefeated', settings.sound);
                 safeVibrate([30, 28, 45, 25, 65], settings.vibration);
               },
@@ -559,7 +545,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       }
 
       window.removeEventListener('resize', handleResize);
-      audioManager.stopBossMusic();
     };
   }, [active, setup, canvasRef]);
 

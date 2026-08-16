@@ -4,8 +4,6 @@
 // Fully optimized for Capacitor WebViews on Android (silent fallback on failure).
 // -----------------------------------------------------------------------
 
-export type BossAudioId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken';
-
 export type SoundName =
   | 'jump'
   | 'coin'
@@ -27,16 +25,6 @@ class AudioManager {
   private static instance: AudioManager;
   private audioContext: AudioContext | null = null;
   private sfxVolume: number = 0.05;
-  private bossMusic: HTMLAudioElement | null = null;
-  private bossMusicId: BossAudioId | null = null;
-  private bossMusicEnabled = false;
-  private readonly bossMusicPaths: Record<BossAudioId, string> = {
-    abyssalOctopus: '/audio/boss-octopus-danger-loop.mp3',
-    electricManta: '/audio/boss-manta-danger-loop.mp3',
-    abyssalAnglerfish: '/audio/boss-anglerfish-danger-loop.mp3',
-    leviathan: '/audio/boss-leviathan-danger-loop.mp3',
-    coralKraken: '/audio/boss-kraken-danger-loop.mp3',
-  };
   private readonly lastPlayedAt = new Map<SoundName, number>();
   private readonly cooldownMs: Partial<Record<SoundName, number>> = {
     jump: 45,
@@ -110,84 +98,6 @@ class AudioManager {
     } catch (e) {
       // Fail silently on older platforms, private tabs, or WebViews
       console.warn('[AudioManager] Failed to play tone:', e);
-    }
-  }
-
-  private getBossMusic(bossId: BossAudioId): HTMLAudioElement | null {
-    if (typeof Audio === 'undefined') return null;
-    if (!this.bossMusic || this.bossMusicId !== bossId) {
-      this.bossMusic?.pause();
-      this.bossMusic = new Audio(this.bossMusicPaths[bossId]);
-      this.bossMusic.loop = true;
-      this.bossMusic.preload = 'auto';
-      this.bossMusicId = bossId;
-    }
-    return this.bossMusic;
-  }
-
-  public startBossMusic(bossId: BossAudioId, enabled: boolean) {
-    if (!enabled) return;
-    const music = this.getBossMusic(bossId);
-    if (!music) return;
-
-    try {
-      music.volume = Math.max(0.045, Math.min(0.16, this.sfxVolume * 2.2));
-      music.currentTime = 0;
-      this.bossMusicEnabled = true;
-      void music.play().catch(() => undefined);
-    } catch {
-      // A muted or older WebView may reject media playback; gameplay continues.
-    }
-  }
-
-  public pauseBossMusic() {
-    this.bossMusic?.pause();
-  }
-
-  public resumeBossMusic(enabled: boolean) {
-    if (!enabled || !this.bossMusicEnabled || !this.bossMusic) return;
-    try {
-      void this.bossMusic.play().catch(() => undefined);
-    } catch {
-      // Safe fallback for media-restricted WebViews.
-    }
-  }
-
-  public stopBossMusic() {
-    this.bossMusicEnabled = false;
-    if (!this.bossMusic) return;
-    this.bossMusic.pause();
-    this.bossMusic.currentTime = 0;
-  }
-
-  public playBossRoar(bossId: BossAudioId, enabled: boolean) {
-    if (!enabled) return;
-    switch (bossId) {
-      case 'abyssalOctopus':
-        this.playTone(92, 520, 'sawtooth', 0.82);
-        setTimeout(() => this.playTone(68, 620, 'triangle', 0.68), 180);
-        setTimeout(() => this.playTone(142, 340, 'sine', 0.44), 410);
-        break;
-      case 'electricManta':
-        this.playTone(188, 110, 'square', 0.62);
-        setTimeout(() => this.playTone(330, 95, 'square', 0.56), 80);
-        setTimeout(() => this.playTone(610, 145, 'sawtooth', 0.46), 160);
-        break;
-      case 'abyssalAnglerfish':
-        this.playTone(74, 740, 'sine', 0.82);
-        setTimeout(() => this.playTone(104, 430, 'triangle', 0.52), 260);
-        setTimeout(() => this.playTone(48, 560, 'sine', 0.44), 420);
-        break;
-      case 'leviathan':
-        this.playTone(56, 780, 'sawtooth', 0.94);
-        setTimeout(() => this.playTone(82, 640, 'triangle', 0.72), 170);
-        setTimeout(() => this.playTone(126, 420, 'sine', 0.48), 430);
-        break;
-      case 'coralKraken':
-        this.playTone(118, 520, 'sawtooth', 0.86);
-        setTimeout(() => this.playTone(164, 480, 'square', 0.64), 145);
-        setTimeout(() => this.playTone(238, 300, 'triangle', 0.56), 330);
-        break;
     }
   }
 
