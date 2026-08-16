@@ -163,6 +163,7 @@ interface BossConfig {
   id: BossId;
   milestone: number;
   imagePath: string;
+  animatedPath?: string;
   nameKey: string;
   warningKey: string;
   motion: BossMotion;
@@ -288,7 +289,7 @@ const BOSS_MAX_SUMMONED_SHARKS = 3;
 const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100, imagePath: '/assets/bosses/abyssal-octopus-transparent.webp',
-    nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
+    animatedPath: '/assets/boss-loops/abyssal-octopus-loop.webp', nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
     accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 195, widthRatio: 0.44,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
     summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
@@ -303,7 +304,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'electricManta', milestone: 200, imagePath: '/assets/bosses/electric-manta-ray-transparent.webp',
-    nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
+    animatedPath: '/assets/boss-loops/electric-manta-loop.webp', nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
     accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
     battleDurationMs: 27_000, waveIntervalMs: 1_720, rewardCoins: 80, rewardScore: 40,
     summonPattern: ['shark'], summonLabelKey: 'engine.bossSummon.shark', summonIntervalMs: 4_900, maxSummons: 3,
@@ -317,7 +318,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'abyssalAnglerfish', milestone: 300, imagePath: '/assets/bosses/abyssal-anglerfish-transparent.webp',
-    nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
+    animatedPath: '/assets/boss-loops/abyssal-anglerfish-loop.webp', nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
     accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
     battleDurationMs: 29_000, waveIntervalMs: 1_920, rewardCoins: 105, rewardScore: 55,
     summonPattern: ['mine'], summonLabelKey: 'engine.bossSummon.mine', summonIntervalMs: 4_300, maxSummons: 4,
@@ -330,7 +331,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'leviathan', milestone: 400, imagePath: '/assets/bosses/leviathan-sea-serpent-transparent.webp',
-    nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
+    animatedPath: '/assets/boss-loops/leviathan-loop.webp', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
     accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 220, widthRatio: 0.50,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
     summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_750, maxSummons: 5,
@@ -387,6 +388,7 @@ function environmentForScore(score: number): EnvironmentTheme {
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
 const bossImageCache = new Map<BossId, HTMLImageElement>();
+const bossAnimationCache = new Map<BossId, HTMLImageElement>();
 
 function getHeartDropImage() {
   if (typeof Image === 'undefined') return null;
@@ -406,6 +408,17 @@ function getBossImage(config: BossConfig) {
     bossImageCache.set(config.id, image);
   }
   return image;
+}
+
+function getBossAnimation(config: BossConfig) {
+  if (typeof Image === 'undefined' || !config.animatedPath) return null;
+  let animation = bossAnimationCache.get(config.id);
+  if (!animation) {
+    animation = new Image();
+    animation.src = config.animatedPath;
+    bossAnimationCache.set(config.id, animation);
+  }
+  return animation;
 }
 
 function bossEncounterScale(state: EngineState) {
@@ -2192,16 +2205,23 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.rotate(rotation);
   ctx.scale(swell * cinematicScale, swell * cinematicScale);
   ctx.imageSmoothingEnabled = true;
+  const bossAnimation = getBossAnimation(config);
+  const animationReady = Boolean(bossAnimation?.complete && bossAnimation.naturalWidth);
   const bossImage = getBossImage(config);
-  if (bossImage?.complete && bossImage.naturalWidth) {
-    const travelAlpha = boss.phase === 'retreating' ? Math.max(0.34, 1 - retreatProgress * 0.58) : 1;
-    ctx.globalAlpha = travelAlpha;
-    ctx.shadowColor = config.secondaryAccent;
-    ctx.shadowBlur = 16 * pulse;
+  const travelAlpha = boss.phase === 'retreating' ? Math.max(0.34, 1 - retreatProgress * 0.58) : 1;
+  ctx.globalAlpha = travelAlpha;
+  ctx.shadowColor = config.secondaryAccent;
+  ctx.shadowBlur = 16 * pulse;
+  if (animationReady && bossAnimation) {
+    const animationSize = boss.width * 1.36;
+    ctx.drawImage(bossAnimation, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
+  } else if (bossImage?.complete && bossImage.naturalWidth) {
     ctx.drawImage(bossImage, -boss.width / 2, -boss.height / 2, boss.width, boss.height);
+  }
 
-    // A soft moving light wash conveys fin/tentacle motion without tearing the
-    // supplied character art into visible strips on small phone screens.
+  if (animationReady || (bossImage?.complete && bossImage.naturalWidth)) {
+    // The animated footage carries organic motion; this overlay keeps all supplied artwork
+    // visually tied to the same active energy language during attacks.
     const flow = (Math.sin(state.timeMs * motionRate * 1.7) + 1) * 0.5;
     ctx.globalCompositeOperation = 'screen';
     ctx.globalAlpha = 0.10 + flow * 0.10;
