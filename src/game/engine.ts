@@ -475,22 +475,25 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
     const pixels = frame.context.getImageData(0, 0, frameWidth, video.videoHeight);
     const alphaOffset = frameWidth * frameHeight * 4;
     for (let index = 0; index < alphaOffset; index += 4) {
-      // The source was composited over black before encoding. Restore its
-      // un-premultiplied RGB values before assigning the alpha matte; otherwise
-      // Canvas multiplies the color by alpha a second time and makes it muddy.
-      const alpha = pixels.data[alphaOffset + index];
-      if (alpha <= 8) {
+      // Use the matte only to separate the black video backdrop from the boss.
+      // The boss itself stays fully opaque, preserving the rich original RGB
+      // values instead of letting a soft matte darken it over the game world.
+      const matte = pixels.data[alphaOffset + index];
+      if (matte <= 18) {
         pixels.data[index] = 0;
         pixels.data[index + 1] = 0;
         pixels.data[index + 2] = 0;
         pixels.data[index + 3] = 0;
         continue;
       }
-      const restoreColor = 255 / alpha;
-      pixels.data[index] = Math.min(255, Math.round(pixels.data[index] * restoreColor));
-      pixels.data[index + 1] = Math.min(255, Math.round(pixels.data[index + 1] * restoreColor));
-      pixels.data[index + 2] = Math.min(255, Math.round(pixels.data[index + 2] * restoreColor));
-      pixels.data[index + 3] = alpha;
+      // The H.264 source is authored on black. A gentle gamma lift restores
+      // the original perceived brightness on the underwater game background
+      // without shifting the boss palette or blowing out its highlights.
+      const lift = (channel: number) => Math.min(255, Math.round(255 * Math.pow(channel / 255, 0.60)));
+      pixels.data[index] = lift(pixels.data[index]);
+      pixels.data[index + 1] = lift(pixels.data[index + 1]);
+      pixels.data[index + 2] = lift(pixels.data[index + 2]);
+      pixels.data[index + 3] = 255;
     }
     frame.context.putImageData(pixels, 0, 0, 0, 0, frameWidth, frameHeight);
     frame.lastTime = video.currentTime;
