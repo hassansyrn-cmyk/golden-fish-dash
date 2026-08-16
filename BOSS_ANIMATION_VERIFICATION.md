@@ -11,3 +11,11 @@ Stage 300 verification passed. The Abyssal Anglerfish appears with its supplied 
 Stage 400 verification passed. The Ancient Leviathan asset rendered fully in the boss arena with turquoise water-energy effects, organic body sway, and a luminous surge-shot palette. Its size preserves a broad gap between the fish and boss.
 
 Stage 500 verification passed. The Coral Kraken King renders as a distinct high-tier boss with the supplied coral artwork, whole-body breathing/sway, moving warm energy wash, and orange coral weapon telegraphs. The player retains a clear movement corridor between the fish and boss.
+
+Cinematic encounter revision: generative background cleanup initially produced a visible checkerboard on the manta preview. The generated assets were converted to real alpha-channel PNGs and all boss bindings now point to the alpha files; final in-game verification is in progress.
+The first alpha verification attempt returned to the menu before a useful combat frame was captured; the browser console contained no runtime error. The preview is being rerun with staged capture rather than treating that attempt as a pass.
+The staged manta capture confirmed that the checkerboard is gone, but a blue-toned rectangular residue from the source remains behind the creature. This does not meet the visual requirement, so semantic background removal is required before the stage can pass.
+The local preview reloaded successfully with the semantic transparent asset bindings and is ready for the final staged combat capture.
+The glow-layer correction triggered the development hot reload and restarted the preview, so the final transparency frame is being recaptured from a fresh stabilized round.
+Stage 200 final visual check passed. The Electric Manta Ray now renders without the rectangular checkerboard or the blue glow panel; it has only a clean subject silhouette with a circular energy halo. Its accelerated electric patterns remain visibly telegraphed across the reserved arena.
+The longer Stage 200 session returned to the menu once preview protection elapsed; no browser runtime error was reported. The visual check was already captured before this expected preview timeout.

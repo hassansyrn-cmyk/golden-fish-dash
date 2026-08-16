@@ -4,10 +4,10 @@ Boss encounters are reserved for every 100 score. The arena enters a warning sta
 
 | Score | Boss | Primary weapons | Difficulty intent | Asset status |
 |---:|---|---|---|---|
-| 100 | Abyssal Octopus | Violet ink bolts, fast cyan plasma, summoned sharks | First full boss encounter; readable staggered patterns | Integrated with breathing/tentacle-style motion |
-| 200 | Electric Manta Ray | Electric arcs and crossing bolts | Faster transitions and alternating high/low routes | Integrated with fin-wave banking and charge pulse |
-| 300 | Abyssal Anglerfish | Lure zones, bubble bursts, rapid shots | Route deception with clear pre-telegraphs | Integrated with body sway and luminous lure pulse |
-| 400 | Leviathan Sea Serpent | Water surge lines and plasma wakes | Sustained movement and multi-step escape routes | Integrated with serpentine body sway and scale glow |
-| 500 | Coral Kraken King | Coral spikes and warm plasma patterns | Multi-pattern finale with generous warning time | Integrated with tentacle-style sway and coral glow |
+| 100 | Abyssal Octopus | Ink lanes, cyan plasma, reef sharks | Introductory staggered patterns with a readable exit lane | Cinematic entry, tentacle sway, and deep bioluminescent presence |
+| 200 | Electric Manta Ray | Fast electric forks, centre plasma, electric eels | Quicker alternating strike lanes and the first three-lane cadence | Fin-wave banking, charge pulse, and high-speed electric identity |
+| 300 | Abyssal Anglerfish | Slow bubble traps, rapid plasma, lantern-fish swarm | Ambush rhythm: delayed traps force route choices before a burst | Heavy body sway, luminous lure pulse, and abyssal ambush identity |
+| 400 | Leviathan Sea Serpent | Water surges, plasma wakes, tide rays | Relentless tidal rhythm and quicker multi-step escapes | Wide serpentine sway, scale glow, and heavy current presence |
+| 500 | Coral Kraken King | Coral spikes, warm plasma, coral jellies | Fast finale patterns with short but readable warning windows | Tentacle-style sway, coral glow, and the strongest final-stage pressure |
 
-The shared rule for all encounters is that the game must never combine normal pipe gates, mines, jellyfish, or ambient sharks with boss weapons. Each dangerous lane must receive a visible pre-telegraph, and every sequence must preserve an escape route. Imported boss artwork is animated through body sway, breathing scale, bank/rotation, attack recoil, and moving energy light; the artwork itself is never replaced by code-drawn character shapes.
+The shared rule for all encounters is that the game must never combine normal pipe gates, mines, jellyfish, or ambient sharks with boss weapons. Each dangerous lane must receive a visible pre-telegraph, and every sequence must preserve an escape route. Every encounter runs through warning, swim-in from the right, battle, and dramatic retreat before its reward. Imported boss artwork uses true transparency and is animated through body sway, breathing scale, bank/rotation, attack recoil, and moving energy light; the artwork itself is never replaced by code-drawn character shapes.

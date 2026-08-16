@@ -473,8 +473,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 }
               },
 
-              onBossStart: () => {
-                audioManager.startBossMusic(settings.sound);
+              onBossStart: (bossId) => {
+                audioManager.startBossMusic(bossId, settings.sound);
+                audioManager.playBossRoar(bossId, settings.sound);
                 audioManager.playSound('bossWarning', settings.sound);
                 safeVibrate([90, 50, 120], settings.vibration);
               },

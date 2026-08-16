@@ -332,6 +332,11 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.bossName.leviathan': 'ANCIENT LEVIATHAN',
     'engine.bossName.kraken': 'CORAL KRAKEN KING',
     'engine.bossSharks': 'SHARKS SUMMONED!',
+    'engine.bossSummon.shark': 'REEF SHARKS INBOUND!',
+    'engine.bossSummon.eel': 'ELECTRIC EELS RELEASED!',
+    'engine.bossSummon.lantern': 'LANTERN FISH SWARM!',
+    'engine.bossSummon.ray': 'TIDE RAYS SURGE!',
+    'engine.bossSummon.coral': 'CORAL JELLIES AWAKEN!',
     'engine.bossDefeated': 'Abyssal Guardian repelled! +{{coins}} coins · +{{score}} score',
   },
   ar: {
@@ -660,6 +665,11 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.bossName.leviathan': 'لوياثان العتيق',
     'engine.bossName.kraken': 'ملك الكراكن المرجاني',
     'engine.bossSharks': 'تم استدعاء القروش!',
+    'engine.bossSummon.shark': 'قروش الشعاب تندفع!',
+    'engine.bossSummon.eel': 'ثعابين كهربائية أُطلقت!',
+    'engine.bossSummon.lantern': 'سرب أسماك الفانوس!',
+    'engine.bossSummon.ray': 'شفانين المدّ تندفع!',
+    'engine.bossSummon.coral': 'قناديل مرجانية تستيقظ!',
     'engine.bossDefeated': 'تم صدّ حارس الأعماق! +{{coins}} عملة · +{{score}} نقطة',
   },
 };
