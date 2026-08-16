@@ -475,9 +475,22 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
     const pixels = frame.context.getImageData(0, 0, frameWidth, video.videoHeight);
     const alphaOffset = frameWidth * frameHeight * 4;
     for (let index = 0; index < alphaOffset; index += 4) {
-      // The bottom half is a grayscale alpha matte prepared from the original
-      // black background. Its brightness becomes the alpha of the color pixel.
-      pixels.data[index + 3] = pixels.data[alphaOffset + index];
+      // The source was composited over black before encoding. Restore its
+      // un-premultiplied RGB values before assigning the alpha matte; otherwise
+      // Canvas multiplies the color by alpha a second time and makes it muddy.
+      const alpha = pixels.data[alphaOffset + index];
+      if (alpha <= 8) {
+        pixels.data[index] = 0;
+        pixels.data[index + 1] = 0;
+        pixels.data[index + 2] = 0;
+        pixels.data[index + 3] = 0;
+        continue;
+      }
+      const restoreColor = 255 / alpha;
+      pixels.data[index] = Math.min(255, Math.round(pixels.data[index] * restoreColor));
+      pixels.data[index + 1] = Math.min(255, Math.round(pixels.data[index + 1] * restoreColor));
+      pixels.data[index + 2] = Math.min(255, Math.round(pixels.data[index + 2] * restoreColor));
+      pixels.data[index + 3] = alpha;
     }
     frame.context.putImageData(pixels, 0, 0, 0, 0, frameWidth, frameHeight);
     frame.lastTime = video.currentTime;
