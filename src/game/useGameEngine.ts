@@ -125,6 +125,13 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
+  useEffect(() => {
+    if (paused) audioManager.pauseBossMusic();
+    else audioManager.resumeBossMusic();
+  }, [paused]);
+
+  useEffect(() => () => audioManager.stopBossMusic(), []);
+
   const onGameOverRef = useRef(onGameOver);
 
   useEffect(() => {
@@ -380,6 +387,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 const finalScore = state.score;
                 const best = getPersonalBest();
 
+                audioManager.stopBossMusic();
                 audioManager.playSound('gameover', settings.sound);
                 safeVibrate([80, 50, 120], settings.vibration);
 
@@ -464,6 +472,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
               onBossStart: () => {
                 audioManager.playSound('bossWarning', settings.sound);
+                audioManager.startBossMusic(settings.sound);
                 safeVibrate([90, 50, 120], settings.vibration);
               },
 
@@ -477,6 +486,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
               },
 
               onBossDefeated: () => {
+                audioManager.stopBossMusic();
                 audioManager.playSound('bossDefeated', settings.sound);
                 safeVibrate([30, 28, 45, 25, 65], settings.vibration);
               },

@@ -24,6 +24,8 @@ export type SoundName =
 class AudioManager {
   private static instance: AudioManager;
   private audioContext: AudioContext | null = null;
+  private bossMusic: HTMLAudioElement | null = null;
+  private bossMusicActive = false;
   private sfxVolume: number = 0.05;
   private readonly lastPlayedAt = new Map<SoundName, number>();
   private readonly cooldownMs: Partial<Record<SoundName, number>> = {
@@ -206,6 +208,39 @@ class AudioManager {
       default:
         break;
     }
+  }
+
+  public startBossMusic(enabled: boolean) {
+    if (!enabled || typeof Audio === 'undefined') return;
+    try {
+      if (!this.bossMusic) {
+        this.bossMusic = new Audio('/audio/boss-danger-loop.mp3');
+        this.bossMusic.loop = true;
+        this.bossMusic.preload = 'auto';
+      }
+      this.bossMusicActive = true;
+      this.bossMusic.volume = 0.20;
+      void this.bossMusic.play().catch(() => undefined);
+    } catch {
+      // A browser or WebView may block media playback until the first user gesture.
+    }
+  }
+
+  public pauseBossMusic() {
+    if (this.bossMusicActive) this.bossMusic?.pause();
+  }
+
+  public resumeBossMusic() {
+    if (this.bossMusicActive && this.bossMusic?.paused) {
+      void this.bossMusic.play().catch(() => undefined);
+    }
+  }
+
+  public stopBossMusic() {
+    this.bossMusicActive = false;
+    if (!this.bossMusic) return;
+    this.bossMusic.pause();
+    this.bossMusic.currentTime = 0;
   }
 
   public setVolume(level: number) {

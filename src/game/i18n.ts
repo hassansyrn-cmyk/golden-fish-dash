@@ -341,6 +341,9 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.bossSummon.angler': 'ANGLERFISH SWARM!',
     'engine.bossSummon.hammerhead': 'HAMMERHEADS CHARGE!',
     'engine.bossSummon.squid': 'REEF SQUIDS RELEASED!',
+    'engine.bossSummon.mine': 'SEA MINES DEPLOYED!',
+    'engine.bossSummon.mixed': 'SHARKS & JELLIES INBOUND!',
+    'engine.bossSummon.all': 'ALL ABYSSAL HAZARDS UNLEASHED!',
     'engine.bossDefeated': 'Abyssal Guardian repelled! +{{coins}} coins · +{{score}} score',
   },
   ar: {
@@ -678,6 +681,9 @@ const translations: Record<AppLanguage, TranslationTable> = {
     'engine.bossSummon.angler': 'سرب سمك الصياد!',
     'engine.bossSummon.hammerhead': 'قروش المطرقة تندفع!',
     'engine.bossSummon.squid': 'حبار الشعاب أُطلق!',
+    'engine.bossSummon.mine': 'ألغام بحرية نُشرت!',
+    'engine.bossSummon.mixed': 'قروش وقناديل تقترب!',
+    'engine.bossSummon.all': 'كل مخاطر الأعماق أُطلقت!',
     'engine.bossDefeated': 'تم صدّ حارس الأعماق! +{{coins}} عملة · +{{score}} نقطة',
   },
 };

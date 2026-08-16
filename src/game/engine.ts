@@ -97,21 +97,7 @@ export interface PredatorShark {
   passed: boolean;
 }
 
-type BossMinionKind = 'reefShark' | 'moonJellyfish' | 'anglerfish' | 'hammerheadShark' | 'reefSquid';
-
-interface BossMinion {
-  id: string;
-  kind: BossMinionKind;
-  x: number;
-  y: number;
-  baseY: number;
-  width: number;
-  height: number;
-  bobPhase: number;
-  bobSpeed: number;
-  bobAmount: number;
-  speedMultiplier: number;
-}
+type BossSummonKind = 'shark' | 'jellyfish' | 'mine';
 
 export interface BubbleBoostRing {
   x: number;
@@ -135,6 +121,7 @@ export interface SeaMine {
   radius: number;
   pulsePhase: number;
   exploded: boolean;
+  speedMultiplier?: number;
 }
 
 export interface Jellyfish {
@@ -146,6 +133,7 @@ export interface Jellyfish {
   bobPhase: number;
   bobSpeed: number;
   bobAmount: number;
+  speedMultiplier?: number;
 }
 
 type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken';
@@ -187,7 +175,7 @@ interface BossConfig {
   rewardCoins: number;
   rewardScore: number;
   patterns: BossAttackPattern[];
-  summonKind?: BossMinionKind;
+  summonPattern?: BossSummonKind[];
   summonLabelKey?: string;
   summonIntervalMs?: number;
   maxSummons?: number;
@@ -226,7 +214,7 @@ export interface EngineCallbacks {
   onPowerUpCollect?: (type: PowerUp['type']) => void;
   onBossStart?: (bossId: BossId) => void;
   onBossAttack?: (weapon: BossShockwave['type']) => void;
-  onBossSummon?: (bossId: BossId, kind: BossMinionKind) => void;
+  onBossSummon?: (bossId: BossId, kind: BossSummonKind) => void;
   onBossDefeated?: () => void;
 }
 
@@ -259,7 +247,6 @@ export interface EngineState {
   // Enhancements
   floatingTexts: FloatingText[];
   sharks: PredatorShark[];
-  bossMinions: BossMinion[];
   boostRings: BubbleBoostRing[];
   chests: TreasureChest[];
   boostUntil: number; // game time until boost ends
@@ -304,7 +291,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
     accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 195, widthRatio: 0.44,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
-    summonKind: 'reefShark', summonLabelKey: 'engine.bossSummon.shark', summonIntervalMs: 6_200, maxSummons: 3,
+    summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
     patterns: [
       { type: 'ink', lanes: [0.26], staggerMs: 0, speedMultiplier: 0.92 },
       { type: 'plasma', lanes: [0.74], staggerMs: 0, speedMultiplier: 1.20 },
@@ -319,7 +306,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
     accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
     battleDurationMs: 27_000, waveIntervalMs: 1_720, rewardCoins: 80, rewardScore: 40,
-    summonKind: 'moonJellyfish', summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 4_800, maxSummons: 4,
+    summonPattern: ['shark'], summonLabelKey: 'engine.bossSummon.shark', summonIntervalMs: 4_900, maxSummons: 3,
     patterns: [
       { type: 'electric', lanes: [0.18, 0.74], staggerMs: 150, speedMultiplier: 1.56 },
       { type: 'electric', lanes: [0.34, 0.64], staggerMs: 260, speedMultiplier: 1.62 },
@@ -333,7 +320,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
     accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
     battleDurationMs: 29_000, waveIntervalMs: 1_920, rewardCoins: 105, rewardScore: 55,
-    summonKind: 'anglerfish', summonLabelKey: 'engine.bossSummon.angler', summonIntervalMs: 4_450, maxSummons: 4,
+    summonPattern: ['mine'], summonLabelKey: 'engine.bossSummon.mine', summonIntervalMs: 4_300, maxSummons: 4,
     patterns: [
       { type: 'bubble', lanes: [0.30, 0.70], staggerMs: 420, speedMultiplier: 0.92 },
       { type: 'plasma', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.70 },
@@ -346,7 +333,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
     accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 220, widthRatio: 0.50,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
-    summonKind: 'hammerheadShark', summonLabelKey: 'engine.bossSummon.hammerhead', summonIntervalMs: 4_100, maxSummons: 5,
+    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_750, maxSummons: 5,
     patterns: [
       { type: 'surge', lanes: [0.26], staggerMs: 0, speedMultiplier: 1.32 },
       { type: 'surge', lanes: [0.72], staggerMs: 0, speedMultiplier: 1.38 },
@@ -360,7 +347,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 218, widthRatio: 0.49,
     battleDurationMs: 33_000, waveIntervalMs: 1_560, rewardCoins: 170, rewardScore: 95,
-    summonKind: 'reefSquid', summonLabelKey: 'engine.bossSummon.squid', summonIntervalMs: 3_850, maxSummons: 5,
+    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 3_250, maxSummons: 7,
     patterns: [
       { type: 'coral', lanes: [0.24], staggerMs: 0, speedMultiplier: 1.22 },
       { type: 'coral', lanes: [0.76], staggerMs: 0, speedMultiplier: 1.28 },
@@ -400,21 +387,6 @@ function environmentForScore(score: number): EnvironmentTheme {
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
 const bossImageCache = new Map<BossId, HTMLImageElement>();
-const bossMinionImageCache = new Map<BossMinionKind, HTMLImageElement>();
-const BOSS_MINION_ASSET_PATHS: Record<BossMinionKind, string> = {
-  reefShark: '/assets/summons/reef-shark.png',
-  moonJellyfish: '/assets/summons/moon-jellyfish.svg',
-  anglerfish: '/assets/summons/anglerfish.svg',
-  hammerheadShark: '/assets/summons/hammerhead-shark.svg',
-  reefSquid: '/assets/summons/reef-squid.svg',
-};
-const BOSS_MINION_DIMENSIONS: Record<BossMinionKind, { width: number; height: number; bobSpeed: number; bobAmount: number; speed: number }> = {
-  reefShark: { width: 64, height: 40, bobSpeed: 0.0048, bobAmount: 6, speed: 1.35 },
-  moonJellyfish: { width: 46, height: 52, bobSpeed: 0.0042, bobAmount: 9, speed: 1.42 },
-  anglerfish: { width: 66, height: 46, bobSpeed: 0.0046, bobAmount: 7, speed: 1.48 },
-  hammerheadShark: { width: 74, height: 42, bobSpeed: 0.0051, bobAmount: 7, speed: 1.56 },
-  reefSquid: { width: 48, height: 58, bobSpeed: 0.0054, bobAmount: 10, speed: 1.52 },
-};
 
 function getHeartDropImage() {
   if (typeof Image === 'undefined') return null;
@@ -436,21 +408,10 @@ function getBossImage(config: BossConfig) {
   return image;
 }
 
-function getBossMinionImage(kind: BossMinionKind) {
-  if (typeof Image === 'undefined') return null;
-  let image = bossMinionImageCache.get(kind);
-  if (!image) {
-    image = new Image();
-    image.src = BOSS_MINION_ASSET_PATHS[kind];
-    bossMinionImageCache.set(kind, image);
-  }
-  return image;
-}
-
-function bossCameraScale(state: EngineState) {
+function bossEncounterScale(state: EngineState) {
   const boss = state.boss;
   if (!boss || boss.phase === 'warning') return 1;
-  const targetScale = 0.88;
+  const targetScale = 0.76;
   if (boss.phase === 'entering') {
     const progress = Math.max(0, Math.min(1, (state.timeMs - boss.entryStartedAt) / BOSS_ENTRY_MS));
     return 1 + (targetScale - 1) * (1 - Math.pow(1 - progress, 3));
@@ -523,7 +484,6 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
 
     floatingTexts: [],
     sharks: [],
-    bossMinions: [],
     boostRings: [],
     chests: [],
     boostUntil: 0,
@@ -754,9 +714,6 @@ function clearDangerousReviveArea(state: EngineState) {
   state.sharks = state.sharks.filter((shark) => {
     return shark.x < fishX - 80 || shark.x > state.width + 100;
   });
-  state.bossMinions = state.bossMinions.filter((minion) => {
-    return minion.x < fishX - 80 || minion.x > state.width + 100;
-  });
   state.seaMines = state.seaMines.filter((mine) => {
     return mine.x < fishX - 80 || mine.x > state.width + 100;
   });
@@ -901,41 +858,67 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
 
   if (
     boss.phase === 'battle'
-    && config.summonKind
+    && config.summonPattern?.length
     && state.timeMs >= boss.battleStartedAt
     && boss.summonedSharks < (config.maxSummons ?? BOSS_MAX_SUMMONED_SHARKS)
     && state.timeMs >= boss.nextSummonAt
   ) {
-    const summonLanes: Record<BossMinionKind, number[]> = {
-      reefShark: [0.22, 0.78, 0.34],
-      moonJellyfish: [0.18, 0.78, 0.38, 0.64],
-      anglerfish: [0.30, 0.70, 0.48, 0.22],
-      hammerheadShark: [0.22, 0.76, 0.42, 0.62, 0.32],
-      reefSquid: [0.18, 0.82, 0.50, 0.30, 0.70],
+    const kind = config.summonPattern[boss.summonedSharks % config.summonPattern.length];
+    const tier = Math.floor(config.milestone / 100);
+    const summonLanes: Record<BossSummonKind, number[]> = {
+      shark: [0.22, 0.78, 0.34, 0.66],
+      jellyfish: [0.18, 0.76, 0.38, 0.64],
+      mine: [0.26, 0.72, 0.42, 0.62, 0.20],
     };
-    const lanes = summonLanes[config.summonKind];
+    const lanes = summonLanes[kind];
     const lane = lanes[boss.summonedSharks % lanes.length];
-    const minionY = state.height * lane;
-    const visual = BOSS_MINION_DIMENSIONS[config.summonKind];
-    state.bossMinions.push({
-      id: `boss_${config.summonKind}_${state.timeMs}`,
-      kind: config.summonKind,
-      x: state.width + visual.width,
-      y: minionY,
-      baseY: minionY,
-      width: visual.width,
-      height: visual.height,
-      bobPhase: boss.summonedSharks * 1.8,
-      bobSpeed: visual.bobSpeed,
-      bobAmount: visual.bobAmount,
-      speedMultiplier: visual.speed,
-    });
+    const summonY = state.height * lane;
+    const speedScale = 0.95 + tier * 0.11;
+
+    if (kind === 'shark') {
+      state.sharks.push({
+        id: `boss_shark_${state.timeMs}`,
+        x: state.width + 110,
+        y: summonY,
+        baseY: summonY,
+        width: 78 + tier * 2,
+        height: 35 + tier,
+        bobPhase: boss.summonedSharks * 1.7,
+        bobSpeed: 0.0038 + tier * 0.00032,
+        bobAmount: 6 + tier,
+        speedMultiplier: speedScale,
+        passed: false,
+      });
+    } else if (kind === 'jellyfish') {
+      state.jellyfish.push({
+        id: `boss_jelly_${state.timeMs}`,
+        x: state.width + 82,
+        y: summonY,
+        baseY: summonY,
+        radius: 11 + tier,
+        bobPhase: boss.summonedSharks * 1.5,
+        bobSpeed: 0.0025 + tier * 0.00028,
+        bobAmount: 7 + tier * 1.5,
+        speedMultiplier: speedScale,
+      });
+    } else {
+      state.seaMines.push({
+        id: `boss_mine_${state.timeMs}`,
+        x: state.width + 94,
+        y: summonY,
+        radius: 13 + tier,
+        pulsePhase: boss.summonedSharks * 1.3,
+        exploded: false,
+        speedMultiplier: 0.82 + tier * 0.10,
+      });
+    }
+
     boss.summonedSharks += 1;
     boss.nextSummonAt += config.summonIntervalMs ?? BOSS_SUMMON_INTERVAL_MS;
     const summonText = translate(config.summonLabelKey ?? 'engine.bossSharks');
-    triggerFloatingText(state, summonText, state.width * 0.62, minionY - 24, config.secondaryAccent, false);
-    callbacks.onFloatingText?.(summonText, state.width * 0.62, minionY - 24, config.secondaryAccent, false);
-    callbacks.onBossSummon?.(config.id, config.summonKind);
+    triggerFloatingText(state, summonText, state.width * 0.62, summonY - 24, config.secondaryAccent, false);
+    callbacks.onFloatingText?.(summonText, state.width * 0.62, summonY - 24, config.secondaryAccent, false);
+    callbacks.onBossSummon?.(config.id, kind);
   }
 
   for (const wave of boss.waves) {
@@ -957,7 +940,9 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
     boss.phase = 'retreating';
     boss.retreatStartedAt = state.timeMs;
     boss.waves = [];
-    state.bossMinions = [];
+    state.sharks = [];
+    state.seaMines = [];
+    state.jellyfish = [];
     boss.lastAttackAt = state.timeMs;
     addBurst(state, boss.x, boss.y, config.secondaryAccent, 34, 3.1);
     callbacks.onShake(3);
@@ -1209,37 +1194,9 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   }
   state.sharks = state.sharks.filter((s) => s.x > -150);
 
-  // Boss minions share a compact, forgiving collision zone and are never mixed
-  // with normal gate hazards while the boss arena is active.
-  for (const minion of state.bossMinions) {
-    minion.x -= (speed + 0.95) * minion.speedMultiplier * dt;
-    minion.bobPhase += minion.bobSpeed * dtMs;
-    minion.y = minion.baseY + Math.sin(minion.bobPhase) * minion.bobAmount;
-
-    if (!invincible && !isFeverActive) {
-      const withinX = fishX + FAIR_FISH_HITBOX_RADIUS > minion.x - minion.width * 0.34
-        && fishX - FAIR_FISH_HITBOX_RADIUS < minion.x + minion.width * 0.34;
-      const withinY = state.fishY + FAIR_FISH_HITBOX_RADIUS > minion.y - minion.height * 0.34
-        && state.fishY - FAIR_FISH_HITBOX_RADIUS < minion.y + minion.height * 0.34;
-      if (withinX && withinY) {
-        if (state.shieldCharges > 0) {
-          state.shieldCharges = Math.max(0, state.shieldCharges - 1);
-          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
-          callbacks.onShake(3);
-          triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
-          addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 20, 2.8);
-        } else {
-          killOrUseLife(state, callbacks);
-          return;
-        }
-      }
-    }
-  }
-  state.bossMinions = state.bossMinions.filter((minion) => minion.x > -140);
-
   // Sea Mine movement and collision
   for (const mine of state.seaMines) {
-    mine.x -= speed * dt;
+    mine.x -= speed * (mine.speedMultiplier ?? 1) * dt;
     mine.pulsePhase += dtMs * 0.0075;
 
     if (!mine.exploded && !invincible && !isFeverActive) {
@@ -1269,7 +1226,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
   // Jellyfish movement and collision
   for (const jelly of state.jellyfish) {
-    jelly.x -= (speed - 0.5) * dt;
+    jelly.x -= (speed - 0.5) * (jelly.speedMultiplier ?? 1) * dt;
     jelly.bobPhase += jelly.bobSpeed * dtMs;
     jelly.y = jelly.baseY + Math.sin(jelly.bobPhase) * jelly.bobAmount;
 
@@ -1776,6 +1733,7 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.save();
   ctx.translate(fishX, state.fishY + swimBob);
   ctx.rotate(state.fishRotation);
+  ctx.scale(bossEncounterScale(state), bossEncounterScale(state));
 
   {
     // The hero skin keeps its clean silhouette; the circular aura is reserved
@@ -2175,28 +2133,6 @@ function bossWeaponPalette(type: BossWeapon) {
   }
 }
 
-function drawBossMinion(ctx: CanvasRenderingContext2D, minion: BossMinion, timeMs: number) {
-  const image = getBossMinionImage(minion.kind);
-  if (!image?.complete || !image.naturalWidth) return;
-
-  const pulse = 0.66 + (Math.sin(timeMs * 0.008 + minion.bobPhase) + 1) * 0.14;
-  const tilt = Math.sin(timeMs * minion.bobSpeed + minion.bobPhase) * 0.10;
-  const glow = minion.kind === 'moonJellyfish' ? '#7bd8ff'
-    : minion.kind === 'anglerfish' ? '#9f76ff'
-      : minion.kind === 'hammerheadShark' ? '#63fff0'
-        : minion.kind === 'reefSquid' ? '#ffad7b' : '#b8f8ff';
-  ctx.save();
-  ctx.translate(minion.x, minion.y);
-  ctx.rotate(tilt);
-  ctx.scale(pulse, pulse);
-  ctx.shadowColor = glow;
-  ctx.shadowBlur = 8 + pulse * 8;
-  ctx.globalAlpha = 0.92;
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(image, -minion.width / 2, -minion.height / 2, minion.width, minion.height);
-  ctx.restore();
-}
-
 function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   const boss = state.boss;
   if (!boss) return;
@@ -2251,9 +2187,10 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
     : boss.phase === 'retreating' ? -0.12 * retreatProgress : 0;
   const rotation = Math.sin(state.timeMs * motionRate) * (config.motion === 'fins' ? 0.05 : 0.028) - attackKick * 0.055 + travelTilt;
   const swell = 1 + Math.sin(state.timeMs * (motionRate * 2.1)) * 0.022 + attackKick * 0.045;
+  const cinematicScale = bossEncounterScale(state);
   ctx.translate(boss.x + attackKick * boss.width * 0.075, boss.y);
   ctx.rotate(rotation);
-  ctx.scale(swell, swell);
+  ctx.scale(swell * cinematicScale, swell * cinematicScale);
   ctx.imageSmoothingEnabled = true;
   const bossImage = getBossImage(config);
   if (bossImage?.complete && bossImage.naturalWidth) {
@@ -3075,18 +3012,9 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     const dy = Math.cos(state.timeMs * 0.052) * state.shakeIntensity * 0.20;
     ctx.translate(dx, dy);
   }
-  const cameraScale = bossCameraScale(state);
-  if (cameraScale < 0.999) {
-    const cameraAnchorX = width * FISH_X_RATIO;
-    const cameraAnchorY = height * 0.5;
-    ctx.translate(cameraAnchorX, cameraAnchorY);
-    ctx.scale(cameraScale, cameraScale);
-    ctx.translate(-cameraAnchorX, -cameraAnchorY);
-  }
   drawBackground(ctx, state);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
   for (const shark of state.sharks) drawShark(ctx, shark, state.timeMs);
-  for (const minion of state.bossMinions) drawBossMinion(ctx, minion, state.timeMs);
   for (const mine of state.seaMines) drawSeaMine(ctx, mine, state.timeMs);
   for (const jelly of state.jellyfish) drawJellyfish(ctx, jelly, state.timeMs);
   drawBossEncounter(ctx, state);

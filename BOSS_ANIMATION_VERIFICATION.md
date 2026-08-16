@@ -19,3 +19,5 @@ The local preview reloaded successfully with the semantic transparent asset bind
 The glow-layer correction triggered the development hot reload and restarted the preview, so the final transparency frame is being recaptured from a fresh stabilized round.
 Stage 200 final visual check passed. The Electric Manta Ray now renders without the rectangular checkerboard or the blue glow panel; it has only a clean subject silhouette with a circular energy halo. Its accelerated electric patterns remain visibly telegraphed across the reserved arena.
 The longer Stage 200 session returned to the menu once preview protection elapsed; no browser runtime error was reported. The visual check was already captured before this expected preview timeout.
+
+- Cinematic-scale verification (Electric Manta, revised): the gameplay background stays full-screen while only the player fish and boss scale down smoothly. The manta remains completely visible, with more readable separation from the fish and no cropped background edges.
