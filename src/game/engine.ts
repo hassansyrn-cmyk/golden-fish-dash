@@ -364,7 +364,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'abyssalRazorback', milestone: 600,
-    spriteSheetPath: '/assets/boss-sprites/abyssal-razorback-idle-sheet.png', spriteColumns: 6, spriteRows: 2, spriteFps: 10, spriteFlipX: true, previewOnly: true,
+    spriteSheetPath: '/assets/boss-sprites/abyssal-razorback-v2-idle-sheet.png', spriteColumns: 6, spriteRows: 2, spriteFps: 10, spriteFlipX: false, previewOnly: true,
     nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
     accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
     battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
