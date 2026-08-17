@@ -301,7 +301,7 @@ const BOSS_MAX_SUMMONED_SHARKS = 3;
 const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100,
-    alphaVideoPath: '/assets/boss-alpha-videos/abyssal-octopus-alpha.mp4', nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
+    alphaVideoPath: '/assets/boss-alpha-videos/test/deep-kraken-alpha-test.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 330, widthRatio: 0.72, artScale: 1.32,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
     summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
@@ -357,22 +357,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'coralKraken', milestone: 500,
-    alphaVideoPath: '/assets/boss-alpha-videos/test/deep-kraken-alpha-test.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
-    accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 218, widthRatio: 0.49,
-    battleDurationMs: 33_000, waveIntervalMs: 1_560, rewardCoins: 170, rewardScore: 95,
-    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 3_250, maxSummons: 7,
-    patterns: [
-      { type: 'coral', lanes: [0.24], staggerMs: 0, speedMultiplier: 1.22 },
-      { type: 'coral', lanes: [0.76], staggerMs: 0, speedMultiplier: 1.28 },
-      { type: 'coral', lanes: [0.30, 0.68], staggerMs: 250, speedMultiplier: 1.30 },
-      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.62 },
-      { type: 'coral', lanes: [0.18, 0.52], staggerMs: 280, speedMultiplier: 1.38 },
-    ],
-  },
-  {
-    id: 'abyssalRazorback', milestone: 600,
-    alphaVideoPath: '/assets/boss-alpha-videos/abyssal-razorback-alpha.mp4', previewOnly: true,
-    nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
+    alphaVideoPath: '/assets/boss-alpha-videos/abyssal-razorback-alpha.mp4', nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
     accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
     battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
     summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_550, maxSummons: 6,
@@ -381,6 +366,21 @@ const BOSS_CONFIGS: BossConfig[] = [
       { type: 'surge', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.64 },
       { type: 'electric', lanes: [0.18, 0.48, 0.80], staggerMs: 210, speedMultiplier: 1.58 },
       { type: 'plasma', lanes: [0.32, 0.68], staggerMs: 260, speedMultiplier: 1.70 },
+    ],
+  },
+  {
+    id: 'abyssalRazorback', milestone: 600,
+    alphaVideoPath: '/assets/boss-alpha-videos/test/final-kraken-130221-alpha.mp4',
+    nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
+    accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 310, widthRatio: 0.64, artScale: 0.72,
+    battleDurationMs: 38_000, waveIntervalMs: 1_380, rewardCoins: 240, rewardScore: 140,
+    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_800, maxSummons: 8,
+    patterns: [
+      { type: 'coral', lanes: [0.22, 0.70], staggerMs: 120, speedMultiplier: 1.46 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.84 },
+      { type: 'coral', lanes: [0.18, 0.48, 0.78], staggerMs: 180, speedMultiplier: 1.56 },
+      { type: 'surge', lanes: [0.30, 0.66], staggerMs: 210, speedMultiplier: 1.68 },
+      { type: 'coral', lanes: [0.24, 0.56, 0.82], staggerMs: 160, speedMultiplier: 1.62 },
     ],
   },
 ];
@@ -428,12 +428,12 @@ const PLAYER_FISH_SPRITE_SHEET_PATHS: Record<SkinId, string> = {
 };
 
 const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
-  abyssalOctopus: '/assets/boss-projectiles/octopus-ink-sheet.png',
+  abyssalOctopus: '/assets/boss-projectiles/kraken-coral-sheet.png',
   electricManta: '/assets/boss-projectiles/manta-electric-sheet.png',
   abyssalAnglerfish: '/assets/boss-projectiles/angler-abyss-sheet.png',
   leviathan: '/assets/boss-projectiles/leviathan-surge-sheet.png',
-  coralKraken: '/assets/boss-projectiles/kraken-coral-sheet.png',
-  abyssalRazorback: '/assets/boss-projectiles/razorback-wave-sheet.png',
+  coralKraken: '/assets/boss-projectiles/razorback-wave-sheet.png',
+  abyssalRazorback: '/assets/boss-projectiles/kraken-coral-sheet.png',
 };
 
 const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
@@ -448,12 +448,12 @@ const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
 };
 
 const BOSS_MINION_ART: Record<BossId, Partial<Record<BossSummonKind, MinionArtId>>> = {
-  abyssalOctopus: { jellyfish: 'inkJelly' },
+  abyssalOctopus: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
   electricManta: { shark: 'voltfinShark' },
   abyssalAnglerfish: { mine: 'lureMine' },
   leviathan: { shark: 'tideSerpent', jellyfish: 'stormJelly' },
-  coralKraken: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
-  abyssalRazorback: { shark: 'riftShark', jellyfish: 'inkJelly' },
+  coralKraken: { shark: 'riftShark', jellyfish: 'inkJelly' },
+  abyssalRazorback: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
 };
 
 interface BossVideoFrame {
