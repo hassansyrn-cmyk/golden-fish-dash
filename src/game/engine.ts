@@ -302,9 +302,9 @@ const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100,
     alphaVideoPath: '/assets/boss-alpha-videos/test/deep-kraken-alpha-test.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
-    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 330, widthRatio: 0.72, artScale: 1.32,
+    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 205, widthRatio: 0.45, artScale: 1.0,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
-    summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
+    summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 5_200, maxSummons: 3,
     patterns: [
       { type: 'ink', lanes: [0.26], staggerMs: 0, speedMultiplier: 0.92 },
       { type: 'plasma', lanes: [0.74], staggerMs: 0, speedMultiplier: 1.20 },
@@ -319,7 +319,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     alphaVideoPath: '/assets/boss-alpha-videos/electric-manta-alpha.mp4', nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
     accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
     battleDurationMs: 27_000, waveIntervalMs: 1_720, rewardCoins: 80, rewardScore: 40,
-    summonPattern: ['shark'], summonLabelKey: 'engine.bossSummon.shark', summonIntervalMs: 4_900, maxSummons: 3,
+    summonPattern: ['shark'], summonLabelKey: 'engine.bossSummon.shark', summonIntervalMs: 4_200, maxSummons: 4,
     patterns: [
       { type: 'electric', lanes: [0.18, 0.74], staggerMs: 150, speedMultiplier: 1.56 },
       { type: 'electric', lanes: [0.34, 0.64], staggerMs: 260, speedMultiplier: 1.62 },
@@ -333,7 +333,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     alphaVideoPath: '/assets/boss-alpha-videos/abyssal-anglerfish-alpha.mp4', nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
     accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
     battleDurationMs: 29_000, waveIntervalMs: 1_920, rewardCoins: 105, rewardScore: 55,
-    summonPattern: ['mine'], summonLabelKey: 'engine.bossSummon.mine', summonIntervalMs: 4_300, maxSummons: 4,
+    summonPattern: ['mine'], summonLabelKey: 'engine.bossSummon.mine', summonIntervalMs: 3_700, maxSummons: 5,
     patterns: [
       { type: 'bubble', lanes: [0.30, 0.70], staggerMs: 420, speedMultiplier: 0.92 },
       { type: 'plasma', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.70 },
@@ -346,7 +346,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     alphaVideoPath: '/assets/boss-alpha-videos/test/water-dragon-alpha-test.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
     accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 360, widthRatio: 0.78, artScale: 0.82,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
-    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_750, maxSummons: 5,
+    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_150, maxSummons: 7,
     patterns: [
       { type: 'surge', lanes: [0.26], staggerMs: 0, speedMultiplier: 1.32 },
       { type: 'surge', lanes: [0.72], staggerMs: 0, speedMultiplier: 1.38 },
@@ -360,7 +360,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     alphaVideoPath: '/assets/boss-alpha-videos/abyssal-razorback-alpha.mp4', nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
     accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
     battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
-    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_550, maxSummons: 6,
+    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 2_950, maxSummons: 8,
     patterns: [
       { type: 'electric', lanes: [0.24, 0.72], staggerMs: 160, speedMultiplier: 1.56 },
       { type: 'surge', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.64 },
@@ -374,7 +374,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 310, widthRatio: 0.64, artScale: 0.72,
     battleDurationMs: 38_000, waveIntervalMs: 1_380, rewardCoins: 240, rewardScore: 140,
-    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_800, maxSummons: 8,
+    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_400, maxSummons: 10,
     patterns: [
       { type: 'coral', lanes: [0.22, 0.70], staggerMs: 120, speedMultiplier: 1.46 },
       { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.84 },
