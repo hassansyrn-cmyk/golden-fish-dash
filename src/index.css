@@ -915,6 +915,13 @@ html, body, #root {
   animation: gfr-pop 0.5s ease-out;
 }
 
+.unlock-fish-preview-art {
+  width: 158px;
+  height: 122px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
 .unlock-fish-name {
   font-weight: 800;
   font-size: 1.1rem;
