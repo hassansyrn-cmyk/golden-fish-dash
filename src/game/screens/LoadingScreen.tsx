@@ -11,8 +11,8 @@ export default function LoadingScreen() {
         <AnimatedFishPreview
           className="loading-fish-sprite"
           src={PLAYER_FISH_SPRITE_SHEET_PATHS.golden}
-          width={132}
-          height={100}
+          width={128}
+          height={128}
           fps={7}
         />
       </div>

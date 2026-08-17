@@ -435,9 +435,9 @@ html, body, #root {
 
 .menu-fish-decor-art {
   width: 152px;
-  height: 108px;
-  margin-top: -4px;
-  margin-bottom: -7px;
+  height: 144px;
+  margin-top: -12px;
+  margin-bottom: -15px;
   filter: drop-shadow(0 0 20px rgba(255, 214, 10, 0.62));
 }
 
@@ -450,8 +450,9 @@ html, body, #root {
 }
 
 .menu-fish-sprite {
-  width: 138px;
-  height: 104px;
+  width: 144px;
+  height: 144px;
+  aspect-ratio: 1 / 1;
 }
 
 .menu-screen {
@@ -759,8 +760,9 @@ html, body, #root {
 }
 
 .loading-fish-sprite {
-  width: 132px;
-  height: 100px;
+  width: 128px;
+  height: 128px;
+  aspect-ratio: 1 / 1;
 }
 
 .modal-overlay {

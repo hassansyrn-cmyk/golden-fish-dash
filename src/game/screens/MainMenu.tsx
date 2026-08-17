@@ -25,8 +25,8 @@ function MenuFish() {
       <AnimatedFishPreview
         className="menu-fish-sprite"
         src={PLAYER_FISH_SPRITE_SHEET_PATHS.golden}
-        width={138}
-        height={104}
+        width={144}
+        height={144}
         fps={7}
       />
     </div>
