@@ -176,6 +176,7 @@ interface BossConfig {
   secondaryAccent: string;
   widthCap: number;
   widthRatio: number;
+  artScale?: number;
   battleDurationMs: number;
   waveIntervalMs: number;
   rewardCoins: number;
@@ -295,7 +296,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100,
     alphaVideoPath: '/assets/boss-alpha-videos/abyssal-octopus-alpha.mp4', nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
-    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 230, widthRatio: 0.52,
+    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 330, widthRatio: 0.72, artScale: 1.32,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
     summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
     patterns: [
@@ -337,7 +338,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'leviathan', milestone: 400,
     alphaVideoPath: '/assets/boss-alpha-videos/leviathan-alpha.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
-    accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 252, widthRatio: 0.57,
+    accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 360, widthRatio: 0.78, artScale: 1.28,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
     summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_750, maxSummons: 5,
     patterns: [
@@ -518,6 +519,10 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
       pixels.data[index + 3] = 255;
     }
     frame.context.putImageData(pixels, 0, 0, 0, 0, frameWidth, frameHeight);
+    // The canvas temporarily holds the stacked alpha matte below the artwork.
+    // Clear it after extracting the top frame so browser interpolation cannot leak
+    // its seam as a thin line beneath the rendered boss.
+    frame.context.clearRect(0, frameHeight, frameWidth, video.videoHeight - frameHeight);
     frame.lastTime = video.currentTime;
   }
 
@@ -855,8 +860,8 @@ function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, conf
   const boss: BossEncounter = {
     config,
     x: state.width + width * 0.72,
-    y: state.height * 0.52,
-    baseY: state.height * 0.52,
+    y: state.height * 0.42,
+    baseY: state.height * 0.42,
     width,
     height: width,
     startedAt: state.timeMs,
@@ -876,7 +881,7 @@ function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, conf
   const warning = translate(config.warningKey);
   triggerFloatingText(state, warning, state.width * 0.5, state.height * 0.25, config.accent, true);
   callbacks.onFloatingText?.(warning, state.width * 0.5, state.height * 0.25, config.accent, true);
-  addBurst(state, state.width * 0.75, state.height * 0.52, config.accent, 28, 3.2);
+    addBurst(state, state.width * 0.72, state.height * 0.42, config.accent, 28, 3.2);
   callbacks.onBossStart?.(config.id);
 }
 
@@ -899,7 +904,9 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
   if (!boss) return false;
 
   const { config } = boss;
-  const targetX = state.width * 0.82;
+  // Keep the encounter close enough that the boss faces the fish directly,
+  // while preserving a clear dodge lane between both characters.
+  const targetX = state.width * 0.64;
   const entryX = state.width + boss.width * 0.72;
   const exitX = state.width + boss.width * 0.95;
   const motionAmplitude = config.motion === 'serpent' ? 22 : config.motion === 'fins' ? 17 : 14;
@@ -2330,7 +2337,7 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.shadowBlur = 16 * pulse;
   const videoFrame = videoReady && bossVideo ? getBossVideoFrame(config, bossVideo) : null;
   if (videoFrame) {
-    const animationSize = boss.width * 1.36;
+    const animationSize = boss.width * 1.36 * (config.artScale ?? 1);
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(videoFrame.canvas, 0, 0, videoFrame.width, videoFrame.height, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
   } else if (spriteReady && spriteSheet) {
@@ -2342,7 +2349,7 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
     const frameHeight = spriteSheet.naturalHeight / rows;
     const sourceX = (frame % columns) * frameWidth;
     const sourceY = Math.floor(frame / columns) * frameHeight;
-    const animationSize = boss.width * 1.38;
+    const animationSize = boss.width * 1.38 * (config.artScale ?? 1);
     ctx.imageSmoothingQuality = 'high';
     ctx.save();
     if (config.spriteFlipX) ctx.scale(-1, 1);
