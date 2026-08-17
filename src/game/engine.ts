@@ -1154,7 +1154,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   const fishX = state.width * FISH_X_RATIO;
 
   state.elapsedSinceSpawn += dtMs;
-  const nextBoss = BOSS_CONFIGS.find((config) => !config.previewOnly && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone);
+  const nextBoss = BOSS_CONFIGS.find((config) => (state.previewMode || !config.previewOnly) && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone);
   if (!state.boss && nextBoss) {
     startBossEncounter(state, callbacks, nextBoss);
   }
