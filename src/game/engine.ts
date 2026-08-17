@@ -83,6 +83,8 @@ export interface Particle {
   size: number;
 }
 
+type MinionArtId = 'inkJelly' | 'voltfinShark' | 'lureMine' | 'tideSerpent' | 'stormJelly' | 'coralHatchling' | 'abyssMine' | 'riftShark';
+
 export interface PredatorShark {
   id: string;
   x: number;
@@ -94,6 +96,7 @@ export interface PredatorShark {
   bobSpeed: number;
   bobAmount: number;
   speedMultiplier?: number;
+  minionArt?: MinionArtId;
   passed: boolean;
 }
 
@@ -122,6 +125,7 @@ export interface SeaMine {
   pulsePhase: number;
   exploded: boolean;
   speedMultiplier?: number;
+  minionArt?: MinionArtId;
 }
 
 export interface Jellyfish {
@@ -134,6 +138,7 @@ export interface Jellyfish {
   bobSpeed: number;
   bobAmount: number;
   speedMultiplier?: number;
+  minionArt?: MinionArtId;
 }
 
 type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken' | 'abyssalRazorback';
@@ -412,6 +417,7 @@ const playerFishSpriteSheetCache = new Map<SkinId, HTMLImageElement>();
 const bossVideoCache = new Map<BossId, HTMLVideoElement>();
 const bossSpriteSheetCache = new Map<BossId, HTMLImageElement>();
 const bossProjectileSheetCache = new Map<BossId, HTMLImageElement>();
+const minionSpriteSheetCache = new Map<MinionArtId, HTMLImageElement>();
 
 const PLAYER_FISH_SPRITE_SHEET_PATHS: Record<SkinId, string> = {
   golden: '/assets/player-fish/golden-hero-swim-sheet.png',
@@ -428,6 +434,26 @@ const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
   leviathan: '/assets/boss-projectiles/leviathan-surge-sheet.png',
   coralKraken: '/assets/boss-projectiles/kraken-coral-sheet.png',
   abyssalRazorback: '/assets/boss-projectiles/razorback-wave-sheet.png',
+};
+
+const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
+  inkJelly: '/assets/minions/ink-jelly-minion.png',
+  voltfinShark: '/assets/minions/voltfin-shark-minion.png',
+  lureMine: '/assets/minions/lure-mine-minion.png',
+  tideSerpent: '/assets/minions/tide-serpent-minion.png',
+  stormJelly: '/assets/minions/storm-jelly-minion.png',
+  coralHatchling: '/assets/minions/coral-hatchling-minion.png',
+  abyssMine: '/assets/minions/abyss-mine-minion.png',
+  riftShark: '/assets/minions/rift-shark-minion.png',
+};
+
+const BOSS_MINION_ART: Record<BossId, Partial<Record<BossSummonKind, MinionArtId>>> = {
+  abyssalOctopus: { jellyfish: 'inkJelly' },
+  electricManta: { shark: 'voltfinShark' },
+  abyssalAnglerfish: { mine: 'lureMine' },
+  leviathan: { shark: 'tideSerpent', jellyfish: 'stormJelly' },
+  coralKraken: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
+  abyssalRazorback: { shark: 'riftShark', jellyfish: 'inkJelly' },
 };
 
 interface BossVideoFrame {
@@ -481,6 +507,29 @@ function getBossProjectileSheet(bossId: BossId) {
     bossProjectileSheetCache.set(bossId, sheet);
   }
   return sheet;
+}
+
+function getMinionSpriteSheet(artId: MinionArtId) {
+  if (typeof Image === 'undefined') return null;
+  let sheet = minionSpriteSheetCache.get(artId);
+  if (!sheet) {
+    sheet = new Image();
+    sheet.decoding = 'async';
+    sheet.src = MINION_SPRITE_SHEET_PATHS[artId];
+    minionSpriteSheetCache.set(artId, sheet);
+  }
+  return sheet;
+}
+
+function drawMinionSprite(ctx: CanvasRenderingContext2D, artId: MinionArtId, timeMs: number, phase: number, size: number) {
+  const sheet = getMinionSpriteSheet(artId);
+  if (!sheet?.complete || !sheet.naturalWidth || !sheet.naturalHeight) return false;
+  const frameWidth = sheet.naturalWidth / 4;
+  const frame = Math.floor(timeMs / 135 + phase) % 4;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(sheet, frame * frameWidth, 0, frameWidth, sheet.naturalHeight, -size / 2, -size / 2, size, size);
+  return true;
 }
 
 function getBossVideo(config: BossConfig) {
@@ -921,6 +970,9 @@ function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, conf
   };
   state.boss = boss;
   getBossProjectileSheet(config.id);
+  Object.values(BOSS_MINION_ART[config.id]).forEach((artId) => {
+    if (artId) getMinionSpriteSheet(artId);
+  });
   startBossVideo(config);
   state.elapsedSinceSpawn = -(BOSS_WARNING_MS + BOSS_ENTRY_MS + config.battleDurationMs + BOSS_RETREAT_MS);
   const warning = translate(config.warningKey);
@@ -1061,6 +1113,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
         bobSpeed: 0.0038 + tier * 0.00032,
         bobAmount: 6 + tier,
         speedMultiplier: speedScale,
+        minionArt: BOSS_MINION_ART[config.id][kind],
         passed: false,
       });
     } else if (kind === 'jellyfish') {
@@ -1074,6 +1127,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
         bobSpeed: 0.0025 + tier * 0.00028,
         bobAmount: 7 + tier * 1.5,
         speedMultiplier: speedScale,
+        minionArt: BOSS_MINION_ART[config.id][kind],
       });
     } else {
       state.seaMines.push({
@@ -1084,6 +1138,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
         pulsePhase: boss.summonedSharks * 1.3,
         exploded: false,
         speedMultiplier: 0.82 + tier * 0.10,
+        minionArt: BOSS_MINION_ART[config.id][kind],
       });
     }
 
@@ -2194,6 +2249,10 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.rotate(Math.sin(timeMs * 0.004 + shark.bobPhase) * 0.045);
 
   const pulse = (Math.sin(timeMs * 0.005) + 1) / 2;
+  if (shark.minionArt && drawMinionSprite(ctx, shark.minionArt, timeMs, shark.bobPhase, shark.width * 1.28)) {
+    ctx.restore();
+    return;
+  }
   const tailSway = Math.sin(timeMs * 0.014 + shark.bobPhase) * 0.17;
   ctx.shadowColor = '#d32f2f';
   ctx.shadowBlur = 15 + pulse * 6;
@@ -2510,6 +2569,10 @@ function drawSeaMine(ctx: CanvasRenderingContext2D, mine: SeaMine, timeMs: numbe
 
   const glowAmount = (Math.sin(mine.pulsePhase + timeMs * 0.01) + 1) / 2;
   ctx.rotate(Math.sin(timeMs * 0.0018 + mine.pulsePhase) * 0.08);
+  if (mine.minionArt && drawMinionSprite(ctx, mine.minionArt, timeMs, mine.pulsePhase, mine.radius * 3.25)) {
+    ctx.restore();
+    return;
+  }
   ctx.shadowColor = '#ff8f00';
   ctx.shadowBlur = 10 + glowAmount * 12;
 
@@ -2581,6 +2644,10 @@ function drawJellyfish(ctx: CanvasRenderingContext2D, jelly: Jellyfish, timeMs: 
   const pulse = (Math.sin(timeMs * 0.004) + 1) / 2;
   const bellSquash = 0.92 + pulse * 0.11;
   ctx.rotate(Math.sin(timeMs * 0.0027 + jelly.bobPhase) * 0.055);
+  if (jelly.minionArt && drawMinionSprite(ctx, jelly.minionArt, timeMs, jelly.bobPhase, jelly.radius * 4.35)) {
+    ctx.restore();
+    return;
+  }
   ctx.shadowColor = '#e040fb';
   ctx.shadowBlur = 12 + pulse * 11;
 
