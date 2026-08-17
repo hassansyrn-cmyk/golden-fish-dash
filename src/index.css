@@ -433,6 +433,21 @@ html, body, #root {
 
 .menu-fish-svg { width: 88px; height: 62px; overflow: visible; }
 
+.menu-fish-decor-art {
+  width: 152px;
+  height: 108px;
+  margin-top: -4px;
+  margin-bottom: -7px;
+  filter: drop-shadow(0 0 20px rgba(255, 214, 10, 0.62));
+}
+
+.menu-fish-sprite {
+  width: 152px;
+  height: 108px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
 .menu-screen {
   padding-top: max(52px, calc(env(safe-area-inset-top) + 32px));
   padding-bottom: 28px;
@@ -632,6 +647,22 @@ html, body, #root {
 .skin-swatch { width: 30px; height: 30px; border-radius: 50%; box-shadow: 0 0 10px rgba(0, 0, 0, 0.3) inset; }
 .skin-lock-req { color: #ffd60a; font-size: 0.6rem; }
 .skin-fish-preview { flex-shrink: 0; }
+
+.skin-fish-preview-art {
+  width: 76px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 2px;
+}
+
+.skin-fish-preview-art img {
+  width: 76px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: auto;
+}
 
 .confirm-row { display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; }
 .privacy-note { font-size: 0.72rem; color: #9fdcf2; max-width: 300px; }
