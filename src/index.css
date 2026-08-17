@@ -441,11 +441,17 @@ html, body, #root {
   filter: drop-shadow(0 0 20px rgba(255, 214, 10, 0.62));
 }
 
-.menu-fish-sprite {
-  width: 152px;
-  height: 108px;
-  object-fit: contain;
+.animated-fish-preview {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-repeat: no-repeat;
+  background-color: transparent;
   image-rendering: auto;
+}
+
+.menu-fish-sprite {
+  width: 138px;
+  height: 104px;
 }
 
 .menu-screen {
@@ -750,6 +756,11 @@ html, body, #root {
   justify-content: center;
   animation: gfr-bob 1.2s ease-in-out infinite;
   filter: drop-shadow(0 0 16px rgba(255, 214, 10, 0.5));
+}
+
+.loading-fish-sprite {
+  width: 132px;
+  height: 100px;
 }
 
 .modal-overlay {

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { getDailyChallenge, getGlobalBestScore, getPersonalBest, getCoins, canClaimDailyReward } from '../storage';
 import { dateKey } from '../constants';
 import { translateDailyChallenge, useI18n } from '../i18n';
-import { PLAYER_FISH_PREVIEW_PATHS } from '../fishAssets';
+import { PLAYER_FISH_SPRITE_SHEET_PATHS } from '../fishAssets';
+import AnimatedFishPreview from '../components/AnimatedFishPreview';
 
 interface Props {
   onPlay: () => void;
@@ -21,7 +22,13 @@ interface Props {
 function MenuFish() {
   return (
     <div className="menu-fish-decor menu-fish-decor-art" aria-hidden="true">
-      <img className="menu-fish-sprite" src={PLAYER_FISH_PREVIEW_PATHS.golden} alt="" />
+      <AnimatedFishPreview
+        className="menu-fish-sprite"
+        src={PLAYER_FISH_SPRITE_SHEET_PATHS.golden}
+        width={138}
+        height={104}
+        fps={7}
+      />
     </div>
   );
 }
