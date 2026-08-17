@@ -295,7 +295,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100,
     alphaVideoPath: '/assets/boss-alpha-videos/abyssal-octopus-alpha.mp4', nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
-    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 195, widthRatio: 0.44,
+    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 230, widthRatio: 0.52,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
     summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
     patterns: [
@@ -337,7 +337,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'leviathan', milestone: 400,
     alphaVideoPath: '/assets/boss-alpha-videos/leviathan-alpha.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
-    accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 220, widthRatio: 0.50,
+    accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 252, widthRatio: 0.57,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
     summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_750, maxSummons: 5,
     patterns: [
@@ -499,7 +499,9 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
       // The boss itself stays fully opaque, preserving the rich original RGB
       // values instead of letting a soft matte darken it over the game world.
       const matte = pixels.data[alphaOffset + index];
-      if (matte <= 18) {
+      // H.264 compression leaves faint low-level matte residue at the bottom edge.
+      // Treat it as transparent to prevent the thin dark line beneath every boss.
+      if (matte <= 48) {
         pixels.data[index] = 0;
         pixels.data[index + 1] = 0;
         pixels.data[index + 2] = 0;
@@ -2313,13 +2315,12 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.scale(swell * cinematicScale, swell * cinematicScale);
   ctx.imageSmoothingEnabled = true;
   const bossVideo = getBossVideo(config);
+  // A looping video resets currentTime to zero for its first frame. Do not hide
+  // that valid frame: the old timing gate made the boss vanish at every loop seam.
   const videoReady = Boolean(
     bossVideo
       && bossVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-      && bossVideo.videoWidth
-      // Hide the decoder's first held frame; the video appears only once it is moving.
-      && bossVideo.currentTime >= 0.12
-      && !bossVideo.paused,
+      && bossVideo.videoWidth,
   );
   const spriteSheet = getBossSpriteSheet(config);
   const spriteReady = Boolean(spriteSheet?.complete && spriteSheet.naturalWidth && spriteSheet.naturalHeight);
