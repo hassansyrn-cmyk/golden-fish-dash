@@ -147,6 +147,7 @@ interface BossShockwave {
   y: number;
   radius: number;
   type: BossWeapon;
+  projectileBossId: BossId;
   speedMultiplier: number;
   phase: 'warning' | 'active';
   activateAt: number;
@@ -409,6 +410,16 @@ let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
 const bossVideoCache = new Map<BossId, HTMLVideoElement>();
 const bossSpriteSheetCache = new Map<BossId, HTMLImageElement>();
+const bossProjectileSheetCache = new Map<BossId, HTMLImageElement>();
+
+const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
+  abyssalOctopus: '/assets/boss-projectiles/octopus-ink-sheet.png',
+  electricManta: '/assets/boss-projectiles/manta-electric-sheet.png',
+  abyssalAnglerfish: '/assets/boss-projectiles/angler-abyss-sheet.png',
+  leviathan: '/assets/boss-projectiles/leviathan-surge-sheet.png',
+  coralKraken: '/assets/boss-projectiles/kraken-coral-sheet.png',
+  abyssalRazorback: '/assets/boss-projectiles/razorback-wave-sheet.png',
+};
 
 interface BossVideoFrame {
   canvas: HTMLCanvasElement;
@@ -437,6 +448,18 @@ function getBossSpriteSheet(config: BossConfig) {
     bossSpriteSheetCache.set(config.id, spriteSheet);
   }
   return spriteSheet;
+}
+
+function getBossProjectileSheet(bossId: BossId) {
+  if (typeof Image === 'undefined') return null;
+  let sheet = bossProjectileSheetCache.get(bossId);
+  if (!sheet) {
+    sheet = new Image();
+    sheet.decoding = 'async';
+    sheet.src = BOSS_PROJECTILE_SHEET_PATHS[bossId];
+    bossProjectileSheetCache.set(bossId, sheet);
+  }
+  return sheet;
 }
 
 function getBossVideo(config: BossConfig) {
@@ -876,6 +899,7 @@ function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, conf
     waves: [],
   };
   state.boss = boss;
+  getBossProjectileSheet(config.id);
   startBossVideo(config);
   state.elapsedSinceSpawn = -(BOSS_WARNING_MS + BOSS_ENTRY_MS + config.battleDurationMs + BOSS_RETREAT_MS);
   const warning = translate(config.warningKey);
@@ -975,6 +999,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
           ? Math.max(18, Math.min(28, state.width * 0.070))
           : Math.max(13, Math.min(20, state.width * 0.052)),
         type: pattern.type,
+        projectileBossId: config.id,
         speedMultiplier: pattern.speedMultiplier,
         phase: 'warning',
         activateAt: state.timeMs + BOSS_WAVE_WARNING_MS + laneIndex * pattern.staggerMs,
@@ -2407,6 +2432,8 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   for (const wave of boss.waves) {
     ctx.save();
     const palette = bossWeaponPalette(wave.type);
+    const projectileSheet = getBossProjectileSheet(wave.projectileBossId);
+    const projectileReady = Boolean(projectileSheet?.complete && projectileSheet.naturalWidth && projectileSheet.naturalHeight);
     if (wave.phase === 'warning') {
       const warningPulse = 0.45 + (Math.sin(state.timeMs * 0.012) + 1) * 0.23;
       ctx.globalAlpha = warningPulse;
@@ -2418,57 +2445,20 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
       ctx.lineTo(boss.x - boss.width * 0.2, wave.y);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = palette.core;
-      ctx.beginPath();
-      ctx.arc(wave.x, wave.y, wave.radius * 0.44, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      const wavePulse = 0.7 + (Math.sin(state.timeMs * 0.016) + 1) * 0.15;
-      const ring = ctx.createRadialGradient(wave.x, wave.y, wave.radius * 0.12, wave.x, wave.y, wave.radius);
-      ring.addColorStop(0, palette.core);
-      ring.addColorStop(0.35, palette.mid);
-      ring.addColorStop(1, palette.outer);
-      ctx.fillStyle = ring;
-      ctx.beginPath();
-      ctx.arc(wave.x, wave.y, wave.radius * wavePulse, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = palette.stroke;
-      if (wave.type === 'electric') {
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(wave.x - wave.radius, wave.y - wave.radius * 0.25);
-        ctx.lineTo(wave.x - wave.radius * 0.2, wave.y + wave.radius * 0.34);
-        ctx.lineTo(wave.x + wave.radius * 0.08, wave.y - wave.radius * 0.18);
-        ctx.lineTo(wave.x + wave.radius, wave.y + wave.radius * 0.18);
-        ctx.stroke();
-      } else if (wave.type === 'surge') {
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.ellipse(wave.x, wave.y, wave.radius * 1.4, wave.radius * 0.48, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (wave.type === 'coral') {
-        ctx.fillStyle = palette.stroke;
-        ctx.beginPath();
-        for (let spike = 0; spike < 6; spike += 1) {
-          const angle = (Math.PI * 2 * spike) / 6 - Math.PI / 2;
-          const radius = spike % 2 === 0 ? wave.radius * 1.22 : wave.radius * 0.54;
-          const pointX = wave.x + Math.cos(angle) * radius;
-          const pointY = wave.y + Math.sin(angle) * radius;
-          if (spike === 0) ctx.moveTo(pointX, pointY); else ctx.lineTo(pointX, pointY);
-        }
-        ctx.closePath();
-        ctx.fill();
-      } else if (wave.type === 'bubble') {
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(wave.x - wave.radius * 0.34, wave.y - wave.radius * 0.28, wave.radius * 0.28, 0, Math.PI * 2);
-        ctx.stroke();
+      if (projectileReady && projectileSheet) {
+        const previewSize = wave.radius * 1.8;
+        ctx.globalAlpha = warningPulse * 0.56;
+        ctx.drawImage(projectileSheet, 0, 0, projectileSheet.naturalWidth, projectileSheet.naturalHeight / 4, wave.x - previewSize / 2, wave.y - previewSize / 2, previewSize, previewSize);
       }
-      ctx.strokeStyle = palette.stroke;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(wave.x, wave.y, wave.radius * 0.76, 0, Math.PI * 2);
-      ctx.stroke();
+    } else if (projectileReady && projectileSheet) {
+      const frameCount = 4;
+      const frame = Math.floor((state.timeMs - wave.activateAt) / 78) % frameCount;
+      const frameHeight = projectileSheet.naturalHeight / frameCount;
+      const projectileSize = wave.radius * 3.15;
+      ctx.globalAlpha = 0.96;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(projectileSheet, 0, frame * frameHeight, projectileSheet.naturalWidth, frameHeight, wave.x - projectileSize / 2, wave.y - projectileSize / 2, projectileSize, projectileSize);
     }
     ctx.restore();
   }
