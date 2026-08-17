@@ -294,7 +294,7 @@ const BOSS_MAX_SUMMONED_SHARKS = 3;
 const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100,
-    spriteSheetPath: '/assets/boss-sprites/abyssal-octopus-sheet.png', spriteColumns: 6, spriteRows: 4, spriteFps: 10, nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
+    spriteSheetPath: '/assets/boss-sprites/abyssal-octopus-model2-sheet.png', spriteColumns: 6, spriteRows: 4, spriteFps: 10, nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
     accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 195, widthRatio: 0.44,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
     summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
