@@ -338,7 +338,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'leviathan', milestone: 400,
-    alphaVideoPath: '/assets/boss-alpha-videos/leviathan-alpha.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
+    alphaVideoPath: '/assets/boss-alpha-videos/test/water-dragon-alpha-test.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
     accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 360, widthRatio: 0.78, artScale: 1.28,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
     summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_750, maxSummons: 5,
@@ -352,7 +352,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'coralKraken', milestone: 500,
-    alphaVideoPath: '/assets/boss-alpha-videos/coral-kraken-alpha.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
+    alphaVideoPath: '/assets/boss-alpha-videos/test/deep-kraken-alpha-test.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 218, widthRatio: 0.49,
     battleDurationMs: 33_000, waveIntervalMs: 1_560, rewardCoins: 170, rewardScore: 95,
     summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 3_250, maxSummons: 7,
