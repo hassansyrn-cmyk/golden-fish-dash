@@ -408,10 +408,18 @@ function environmentForScore(score: number): EnvironmentTheme {
 
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
-let goldenHeroSwimSheet: HTMLImageElement | null = null;
+const playerFishSpriteSheetCache = new Map<SkinId, HTMLImageElement>();
 const bossVideoCache = new Map<BossId, HTMLVideoElement>();
 const bossSpriteSheetCache = new Map<BossId, HTMLImageElement>();
 const bossProjectileSheetCache = new Map<BossId, HTMLImageElement>();
+
+const PLAYER_FISH_SPRITE_SHEET_PATHS: Record<SkinId, string> = {
+  golden: '/assets/player-fish/golden-hero-swim-sheet.png',
+  ruby: '/assets/player-fish/ruby-betta-swim-sheet.png',
+  emerald: '/assets/player-fish/emerald-mandarin-swim-sheet.png',
+  diamond: '/assets/player-fish/diamond-discus-swim-sheet.png',
+  legendary: '/assets/player-fish/legendary-royal-abyss-swim-sheet.png',
+};
 
 const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
   abyssalOctopus: '/assets/boss-projectiles/octopus-ink-sheet.png',
@@ -451,14 +459,16 @@ function getBossSpriteSheet(config: BossConfig) {
   return spriteSheet;
 }
 
-function getGoldenHeroSwimSheet() {
+function getPlayerFishSpriteSheet(skinId: SkinId) {
   if (typeof Image === 'undefined') return null;
-  if (!goldenHeroSwimSheet) {
-    goldenHeroSwimSheet = new Image();
-    goldenHeroSwimSheet.decoding = 'async';
-    goldenHeroSwimSheet.src = '/assets/player-fish/golden-hero-swim-sheet.png';
+  let sheet = playerFishSpriteSheetCache.get(skinId);
+  if (!sheet) {
+    sheet = new Image();
+    sheet.decoding = 'async';
+    sheet.src = PLAYER_FISH_SPRITE_SHEET_PATHS[skinId];
+    playerFishSpriteSheetCache.set(skinId, sheet);
   }
-  return goldenHeroSwimSheet;
+  return sheet;
 }
 
 function getBossProjectileSheet(bossId: BossId) {
@@ -1936,9 +1946,8 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     }
     ctx.restore();
 
-    // The premium hero Sprite Sheet upgrades the default Golden fish while
-    // preserving the selectable Ruby, Emerald, Diamond and Legendary skins.
-    const heroSheet = id === 'golden' ? getGoldenHeroSwimSheet() : null;
+    // Every selectable player fish now uses its own premium 16-frame Sprite Sheet.
+    const heroSheet = getPlayerFishSpriteSheet(id);
     if (heroSheet?.complete && heroSheet.naturalWidth && heroSheet.naturalHeight) {
       const frame = Math.floor(state.timeMs / 74) % 16;
       const sourceWidth = heroSheet.naturalWidth / 4;
