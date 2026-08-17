@@ -167,6 +167,7 @@ interface BossConfig {
   spriteColumns?: number;
   spriteRows?: number;
   spriteFps?: number;
+  spriteFlipX?: boolean;
   previewOnly?: boolean;
   nameKey: string;
   warningKey: string;
@@ -363,7 +364,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'abyssalRazorback', milestone: 600,
-    spriteSheetPath: '/assets/boss-sprites/abyssal-razorback-idle-sheet.png', spriteColumns: 6, spriteRows: 2, spriteFps: 10, previewOnly: true,
+    spriteSheetPath: '/assets/boss-sprites/abyssal-razorback-idle-sheet.png', spriteColumns: 6, spriteRows: 2, spriteFps: 10, spriteFlipX: true, previewOnly: true,
     nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
     accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
     battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
@@ -2342,7 +2343,10 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
     const sourceY = Math.floor(frame / columns) * frameHeight;
     const animationSize = boss.width * 1.38;
     ctx.imageSmoothingQuality = 'high';
+    ctx.save();
+    if (config.spriteFlipX) ctx.scale(-1, 1);
     ctx.drawImage(spriteSheet, sourceX, sourceY, frameWidth, frameHeight, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
+    ctx.restore();
   }
 
   if (videoFrame || spriteReady) {
