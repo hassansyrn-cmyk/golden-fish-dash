@@ -408,6 +408,7 @@ function environmentForScore(score: number): EnvironmentTheme {
 
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
+let goldenHeroSwimSheet: HTMLImageElement | null = null;
 const bossVideoCache = new Map<BossId, HTMLVideoElement>();
 const bossSpriteSheetCache = new Map<BossId, HTMLImageElement>();
 const bossProjectileSheetCache = new Map<BossId, HTMLImageElement>();
@@ -448,6 +449,16 @@ function getBossSpriteSheet(config: BossConfig) {
     bossSpriteSheetCache.set(config.id, spriteSheet);
   }
   return spriteSheet;
+}
+
+function getGoldenHeroSwimSheet() {
+  if (typeof Image === 'undefined') return null;
+  if (!goldenHeroSwimSheet) {
+    goldenHeroSwimSheet = new Image();
+    goldenHeroSwimSheet.decoding = 'async';
+    goldenHeroSwimSheet.src = '/assets/player-fish/golden-hero-swim-sheet.png';
+  }
+  return goldenHeroSwimSheet;
 }
 
 function getBossProjectileSheet(bossId: BossId) {
@@ -1924,6 +1935,25 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       ctx.fill();
     }
     ctx.restore();
+
+    // The premium hero Sprite Sheet upgrades the default Golden fish while
+    // preserving the selectable Ruby, Emerald, Diamond and Legendary skins.
+    const heroSheet = id === 'golden' ? getGoldenHeroSwimSheet() : null;
+    if (heroSheet?.complete && heroSheet.naturalWidth && heroSheet.naturalHeight) {
+      const frame = Math.floor(state.timeMs / 74) % 16;
+      const sourceWidth = heroSheet.naturalWidth / 4;
+      const sourceHeight = heroSheet.naturalHeight / 4;
+      const sourceX = (frame % 4) * sourceWidth;
+      const sourceY = Math.floor(frame / 4) * sourceHeight;
+      const heroSize = r * 3.7;
+      ctx.globalAlpha = 1;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(heroSheet, sourceX, sourceY, sourceWidth, sourceHeight, -heroSize / 2, -heroSize / 2, heroSize, heroSize);
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
 
     // Dynamic Tail with Wag
     ctx.save();
