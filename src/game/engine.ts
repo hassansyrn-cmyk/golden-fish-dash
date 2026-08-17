@@ -294,7 +294,7 @@ const BOSS_MAX_SUMMONED_SHARKS = 3;
 const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100,
-    spriteSheetPath: '/assets/boss-sprites/abyssal-octopus-model2-sheet.png', spriteColumns: 6, spriteRows: 4, spriteFps: 10, nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
+    alphaVideoPath: '/assets/boss-alpha-videos/abyssal-octopus-alpha.mp4', nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'tentacles',
     accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 195, widthRatio: 0.44,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
     summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 6_300, maxSummons: 2,
@@ -309,7 +309,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'electricManta', milestone: 200,
-    spriteSheetPath: '/assets/boss-sprites/electric-manta-sheet.png', spriteColumns: 6, spriteRows: 4, spriteFps: 10, nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
+    alphaVideoPath: '/assets/boss-alpha-videos/electric-manta-alpha.mp4', nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
     accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
     battleDurationMs: 27_000, waveIntervalMs: 1_720, rewardCoins: 80, rewardScore: 40,
     summonPattern: ['shark'], summonLabelKey: 'engine.bossSummon.shark', summonIntervalMs: 4_900, maxSummons: 3,
@@ -323,7 +323,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'abyssalAnglerfish', milestone: 300,
-    spriteSheetPath: '/assets/boss-sprites/abyssal-anglerfish-sheet.png', spriteColumns: 6, spriteRows: 4, spriteFps: 10, nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
+    alphaVideoPath: '/assets/boss-alpha-videos/abyssal-anglerfish-alpha.mp4', nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
     accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
     battleDurationMs: 29_000, waveIntervalMs: 1_920, rewardCoins: 105, rewardScore: 55,
     summonPattern: ['mine'], summonLabelKey: 'engine.bossSummon.mine', summonIntervalMs: 4_300, maxSummons: 4,
@@ -336,7 +336,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'leviathan', milestone: 400,
-    spriteSheetPath: '/assets/boss-sprites/leviathan-sheet.png', spriteColumns: 6, spriteRows: 4, spriteFps: 10, nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
+    alphaVideoPath: '/assets/boss-alpha-videos/leviathan-alpha.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
     accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 220, widthRatio: 0.50,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
     summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_750, maxSummons: 5,
@@ -350,7 +350,7 @@ const BOSS_CONFIGS: BossConfig[] = [
   },
   {
     id: 'coralKraken', milestone: 500,
-    spriteSheetPath: '/assets/boss-sprites/coral-kraken-sheet.png', spriteColumns: 6, spriteRows: 4, spriteFps: 10, nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
+    alphaVideoPath: '/assets/boss-alpha-videos/coral-kraken-alpha.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 218, widthRatio: 0.49,
     battleDurationMs: 33_000, waveIntervalMs: 1_560, rewardCoins: 170, rewardScore: 95,
     summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 3_250, maxSummons: 7,
