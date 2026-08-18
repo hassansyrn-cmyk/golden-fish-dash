@@ -280,6 +280,7 @@ export interface EngineState {
   // Multi-stage boss encounters
   boss: BossEncounter | null;
   defeatedBosses: BossId[];
+  nextBossEligibleScore: number;
   previewMode?: boolean;
 }
 
@@ -301,6 +302,7 @@ const BOSS_WAVE_WARNING_MS = 900;
 const BOSS_WAVE_SPEED = 5.35;
 const BOSS_SUMMON_INTERVAL_MS = 6_200;
 const BOSS_MAX_SUMMONED_SHARKS = 3;
+const BOSS_SCORE_BREATHER = 60;
 
 // Every staged fight reserves the arena, provides a warning window, and keeps
 // one broad vertical escape route in each deterministic attack sequence.
@@ -761,6 +763,7 @@ export function createEngine(width: number, height: number, skin: SkinId, select
     defeatedBosses: bossPreview
       ? BOSS_CONFIGS.filter((config) => config.milestone < previewBoss.milestone).map((config) => config.id)
       : [],
+    nextBossEligibleScore: bossPreview ? startingScore : 0,
     previewMode: bossPreview,
   };
 }
@@ -835,10 +838,10 @@ function spawnObstacle(state: EngineState, score: number) {
   const gapY = clampGapY(state, rawGapY, gap);
   const environment = environmentForScore(score);
   const legendaryMode = score >= 120;
-  // One familiar opening remains, but pipes start a slow, shallow drift after
-  // the first boss so the world feels alive without reducing route safety.
-  const movingGate = score >= 120;
-  const bobAmount = movingGate ? Math.min(13, 6 + Math.floor(score / 100) * 2) : 0;
+  // After 200 points, some gates visibly glide up and down. Their opening size
+  // is never changed, and the slow shared motion keeps the route readable.
+  const movingGate = score >= 200 && Math.random() < 0.58;
+  const bobAmount = movingGate ? Math.min(28, 14 + Math.floor(score / 100) * 2) : 0;
   const isDouble = false;
   state.obstacles.push({
     x: state.width + BASE.obstacleWidth, gapY, baseGapY: gapY, gapSize: gap, passed: false,
@@ -1103,6 +1106,9 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
     state.boss = null;
     if (!state.defeatedBosses.includes(config.id)) state.defeatedBosses.push(config.id);
     state.score += config.rewardScore;
+    // Winning a boss opens a calm score window before the next encounter,
+    // preventing two boss warnings from appearing back-to-back.
+    state.nextBossEligibleScore = state.score + BOSS_SCORE_BREATHER;
     callbacks.onScore(state.score);
     callbacks.onCoinCollect(config.rewardCoins);
     const rewardText = translate('engine.bossDefeated', undefined, { coins: config.rewardCoins, score: config.rewardScore });
@@ -1341,7 +1347,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   applyLateGameSafetySupport(state, callbacks);
 
   state.elapsedSinceSpawn += dtMs;
-  const nextBoss = BOSS_CONFIGS.find((config) => (state.previewMode || !config.previewOnly) && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone);
+  const nextBoss = BOSS_CONFIGS.find((config) => (state.previewMode || !config.previewOnly) && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone && state.score >= state.nextBossEligibleScore);
   if (!state.boss && nextBoss) {
     startBossEncounter(state, callbacks, nextBoss);
   }
@@ -1403,7 +1409,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   for (const obs of state.obstacles) {
     obs.x -= speed * dt;
     if (obs.bobbing) {
-      obs.bobPhase += dtMs * 0.0008;
+      obs.bobPhase += dtMs * 0.00145;
       obs.gapY = clampGapY(state, obs.baseGapY + Math.sin(obs.bobPhase) * obs.bobAmount, obs.gapSize);
     }
     if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
