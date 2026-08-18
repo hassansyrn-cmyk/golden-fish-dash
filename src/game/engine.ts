@@ -392,9 +392,9 @@ const BOSS_CONFIGS: BossConfig[] = [
     summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_150, maxSummons: 12,
     patterns: [
       { type: 'trident', lanes: [0.22, 0.78], staggerMs: 250, speedMultiplier: 1.48 },
-      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.92 },
+      { type: 'surge', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.70 },
       { type: 'trident', lanes: [0.36, 0.68], staggerMs: 290, speedMultiplier: 1.56 },
-      { type: 'electric', lanes: [0.18, 0.50, 0.82], staggerMs: 170, speedMultiplier: 1.58 },
+      { type: 'surge', lanes: [0.24, 0.76], staggerMs: 260, speedMultiplier: 1.62 },
       { type: 'trident', lanes: [0.20, 0.80], staggerMs: 280, speedMultiplier: 1.64 },
     ],
   },
@@ -431,7 +431,7 @@ let heartDropImage: HTMLImageElement | null = null;
 const playerFishSpriteSheetCache = new Map<SkinId, HTMLImageElement>();
 const bossVideoCache = new Map<BossId, HTMLVideoElement>();
 const bossSpriteSheetCache = new Map<BossId, HTMLImageElement>();
-const bossProjectileSheetCache = new Map<BossId, HTMLImageElement>();
+const bossProjectileSheetCache = new Map<string, HTMLImageElement>();
 const minionSpriteSheetCache = new Map<MinionArtId, HTMLImageElement>();
 
 const PLAYER_FISH_SPRITE_SHEET_PATHS: Record<SkinId, string> = {
@@ -452,6 +452,10 @@ const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
   poseidon: '/assets/boss-projectiles/poseidon-trident-sheet.png',
 };
 
+const BOSS_WEAPON_PROJECTILE_SHEET_PATHS: Partial<Record<BossId, Partial<Record<BossWeapon, string>>>> = {
+  poseidon: { surge: '/assets/boss-projectiles/leviathan-surge-sheet.png' },
+};
+
 const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
   inkJelly: '/assets/minions/ink-jelly-minion.png',
   voltfinShark: '/assets/minions/voltfin-shark-minion.png',
@@ -463,15 +467,29 @@ const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
   riftShark: '/assets/minions/rift-shark-minion.png',
 };
 
-const BOSS_MINION_ART: Record<BossId, Partial<Record<BossSummonKind, MinionArtId>>> = {
+type BossMinionArtChoice = MinionArtId | MinionArtId[];
+
+const BOSS_MINION_ART: Record<BossId, Partial<Record<BossSummonKind, BossMinionArtChoice>>> = {
   abyssalOctopus: { jellyfish: 'inkJelly' },
   electricManta: { shark: 'voltfinShark' },
   abyssalAnglerfish: { mine: 'lureMine' },
   leviathan: { shark: 'tideSerpent', jellyfish: 'stormJelly' },
   coralKraken: { shark: 'riftShark', jellyfish: 'inkJelly' },
   abyssalRazorback: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
-  poseidon: { shark: 'tideSerpent', jellyfish: 'stormJelly', mine: 'lureMine' },
+  poseidon: {
+    shark: ['tideSerpent', 'riftShark', 'voltfinShark'],
+    jellyfish: ['stormJelly', 'inkJelly', 'coralHatchling'],
+    mine: ['lureMine', 'abyssMine'],
+  },
 };
+
+function minionArtFor(bossId: BossId, kind: BossSummonKind, summonIndex: number, patternLength: number): MinionArtId | undefined {
+  const choice = BOSS_MINION_ART[bossId][kind];
+  if (!choice) return undefined;
+  if (!Array.isArray(choice)) return choice;
+  const round = Math.floor(summonIndex / Math.max(1, patternLength));
+  return choice[round % choice.length];
+}
 
 interface BossVideoFrame {
   canvas: HTMLCanvasElement;
@@ -514,14 +532,15 @@ function getPlayerFishSpriteSheet(skinId: SkinId) {
   return sheet;
 }
 
-function getBossProjectileSheet(bossId: BossId) {
+function getBossProjectileSheet(bossId: BossId, weaponType?: BossWeapon) {
   if (typeof Image === 'undefined') return null;
-  let sheet = bossProjectileSheetCache.get(bossId);
+  const path = BOSS_WEAPON_PROJECTILE_SHEET_PATHS[bossId]?.[weaponType ?? 'ink'] ?? BOSS_PROJECTILE_SHEET_PATHS[bossId];
+  let sheet = bossProjectileSheetCache.get(path);
   if (!sheet) {
     sheet = new Image();
     sheet.decoding = 'async';
-    sheet.src = BOSS_PROJECTILE_SHEET_PATHS[bossId];
-    bossProjectileSheetCache.set(bossId, sheet);
+    sheet.src = path;
+    bossProjectileSheetCache.set(path, sheet);
   }
   return sheet;
 }
@@ -987,8 +1006,11 @@ function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, conf
   };
   state.boss = boss;
   getBossProjectileSheet(config.id);
-  Object.values(BOSS_MINION_ART[config.id]).forEach((artId) => {
-    if (artId) getMinionSpriteSheet(artId);
+  Object.values(BOSS_MINION_ART[config.id]).forEach((artChoice) => {
+    const artIds = Array.isArray(artChoice) ? artChoice : [artChoice];
+    artIds.forEach((artId) => {
+      if (artId) getMinionSpriteSheet(artId);
+    });
   });
   startBossVideo(config);
   state.elapsedSinceSpawn = -(BOSS_WARNING_MS + BOSS_ENTRY_MS + config.battleDurationMs + BOSS_RETREAT_MS);
@@ -1130,7 +1152,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
         bobSpeed: 0.0038 + tier * 0.00032,
         bobAmount: 6 + tier,
         speedMultiplier: speedScale,
-        minionArt: BOSS_MINION_ART[config.id][kind],
+        minionArt: minionArtFor(config.id, kind, boss.summonedSharks, config.summonPattern.length),
         passed: false,
       });
     } else if (kind === 'jellyfish') {
@@ -1144,7 +1166,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
         bobSpeed: 0.0025 + tier * 0.00028,
         bobAmount: 7 + tier * 1.5,
         speedMultiplier: speedScale,
-        minionArt: BOSS_MINION_ART[config.id][kind],
+        minionArt: minionArtFor(config.id, kind, boss.summonedSharks, config.summonPattern.length),
       });
     } else {
       state.seaMines.push({
@@ -1155,7 +1177,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
         pulsePhase: boss.summonedSharks * 1.3,
         exploded: false,
         speedMultiplier: 0.82 + tier * 0.10,
-        minionArt: BOSS_MINION_ART[config.id][kind],
+        minionArt: minionArtFor(config.id, kind, boss.summonedSharks, config.summonPattern.length),
       });
     }
 
@@ -2548,7 +2570,7 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   for (const wave of boss.waves) {
     ctx.save();
     const palette = bossWeaponPalette(wave.type);
-    const projectileSheet = getBossProjectileSheet(wave.projectileBossId);
+    const projectileSheet = getBossProjectileSheet(wave.projectileBossId, wave.type);
     const projectileReady = Boolean(projectileSheet?.complete && projectileSheet.naturalWidth && projectileSheet.naturalHeight);
     if (wave.phase === 'warning') {
       const warningPulse = 0.45 + (Math.sin(state.timeMs * 0.012) + 1) * 0.23;
