@@ -141,7 +141,7 @@ export interface Jellyfish {
   minionArt?: MinionArtId;
 }
 
-type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken' | 'abyssalRazorback';
+type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken' | 'abyssalRazorback' | 'poseidon';
 type BossWeapon = 'ink' | 'plasma' | 'electric' | 'bubble' | 'surge' | 'coral';
 type BossMotion = 'tentacles' | 'fins' | 'lure' | 'serpent' | 'coralTentacles';
 type BossPhase = 'warning' | 'entering' | 'battle' | 'retreating';
@@ -383,6 +383,21 @@ const BOSS_CONFIGS: BossConfig[] = [
       { type: 'coral', lanes: [0.24, 0.56, 0.82], staggerMs: 160, speedMultiplier: 1.62 },
     ],
   },
+  {
+    id: 'poseidon', milestone: 700,
+    alphaVideoPath: '/assets/boss-alpha-videos/test/poseidon-alpha.mp4',
+    nameKey: 'engine.bossName.poseidon', warningKey: 'engine.bossWarning.poseidon', motion: 'serpent',
+    accent: '#35ecff', secondaryAccent: '#ffd067', widthCap: 290, widthRatio: 0.60, artScale: 0.76,
+    battleDurationMs: 42_000, waveIntervalMs: 1_200, rewardCoins: 320, rewardScore: 190,
+    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_150, maxSummons: 12,
+    patterns: [
+      { type: 'surge', lanes: [0.20, 0.76], staggerMs: 150, speedMultiplier: 1.52 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.92 },
+      { type: 'surge', lanes: [0.32, 0.68], staggerMs: 230, speedMultiplier: 1.62 },
+      { type: 'electric', lanes: [0.18, 0.50, 0.82], staggerMs: 170, speedMultiplier: 1.58 },
+      { type: 'surge', lanes: [0.26, 0.56], staggerMs: 210, speedMultiplier: 1.72 },
+    ],
+  },
 ];
 // The artwork intentionally extends beyond the gameplay body. A smaller,
 // circular contact zone makes collisions match what players can see.
@@ -434,6 +449,7 @@ const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
   leviathan: '/assets/boss-projectiles/leviathan-surge-sheet.png',
   coralKraken: '/assets/boss-projectiles/razorback-wave-sheet.png',
   abyssalRazorback: '/assets/boss-projectiles/kraken-coral-sheet.png',
+  poseidon: '/assets/boss-projectiles/leviathan-surge-sheet.png',
 };
 
 const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
@@ -454,6 +470,7 @@ const BOSS_MINION_ART: Record<BossId, Partial<Record<BossSummonKind, MinionArtId
   leviathan: { shark: 'tideSerpent', jellyfish: 'stormJelly' },
   coralKraken: { shark: 'riftShark', jellyfish: 'inkJelly' },
   abyssalRazorback: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
+  poseidon: { shark: 'tideSerpent', jellyfish: 'stormJelly', mine: 'lureMine' },
 };
 
 interface BossVideoFrame {

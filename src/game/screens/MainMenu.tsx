@@ -62,6 +62,7 @@ export default function MainMenu({
     { milestone: 400, nameKey: 'engine.bossName.leviathan' },
     { milestone: 500, nameKey: 'engine.bossName.razorback' },
     { milestone: 600, nameKey: 'engine.bossName.kraken' },
+    { milestone: 700, nameKey: 'engine.bossName.poseidon' },
   ] as const;
 
   useEffect(() => {
