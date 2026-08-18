@@ -308,7 +308,7 @@ const BOSS_SCORE_BREATHER = 60;
 const BOSS_CONFIGS: BossConfig[] = [
   {
     id: 'abyssalOctopus', milestone: 100,
-    alphaVideoPath: '/assets/boss-alpha-videos/test/deep-kraken-alpha-test.mp4', nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
+    alphaVideoPath: '/assets/boss-alpha-videos/test/deep-kraken-alpha-test.mp4', nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'coralTentacles',
     accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 205, widthRatio: 0.45, artScale: 1.0,
     battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
     summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 5_200, maxSummons: 3,
