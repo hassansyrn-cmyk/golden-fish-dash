@@ -57,12 +57,11 @@ export default function MainMenu({
   const [showBossTest, setShowBossTest] = useState(false);
   const bossTests = [
     { milestone: 100, nameKey: 'engine.bossName.kraken' },
-    { milestone: 200, nameKey: 'engine.bossName.manta' },
-    { milestone: 300, nameKey: 'engine.bossName.anglerfish' },
-    { milestone: 400, nameKey: 'engine.bossName.leviathan' },
-    { milestone: 500, nameKey: 'engine.bossName.razorback' },
-    { milestone: 600, nameKey: 'engine.bossName.kraken' },
-    { milestone: 700, nameKey: 'engine.bossName.poseidon' },
+    { milestone: 250, nameKey: 'engine.bossName.manta' },
+    { milestone: 400, nameKey: 'engine.bossName.anglerfish' },
+    { milestone: 600, nameKey: 'engine.bossName.leviathan' },
+    { milestone: 800, nameKey: 'engine.bossName.kraken' },
+    { milestone: 1000, nameKey: 'engine.bossName.poseidon' },
   ] as const;
 
   useEffect(() => {

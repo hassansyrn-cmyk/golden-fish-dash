@@ -323,7 +323,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     ],
   },
   {
-    id: 'electricManta', milestone: 200,
+    id: 'electricManta', milestone: 250,
     alphaVideoPath: '/assets/boss-alpha-videos/electric-manta-alpha.mp4', nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
     accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
     battleDurationMs: 27_000, waveIntervalMs: 1_720, rewardCoins: 80, rewardScore: 40,
@@ -337,7 +337,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     ],
   },
   {
-    id: 'abyssalAnglerfish', milestone: 300,
+    id: 'abyssalAnglerfish', milestone: 400,
     alphaVideoPath: '/assets/boss-alpha-videos/abyssal-anglerfish-alpha.mp4', nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
     accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
     battleDurationMs: 29_000, waveIntervalMs: 1_920, rewardCoins: 105, rewardScore: 55,
@@ -350,7 +350,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     ],
   },
   {
-    id: 'leviathan', milestone: 400,
+    id: 'leviathan', milestone: 600,
     alphaVideoPath: '/assets/boss-alpha-videos/test/water-dragon-alpha-test.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
     accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 360, widthRatio: 0.78, artScale: 0.82,
     battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
@@ -364,7 +364,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     ],
   },
   {
-    id: 'coralKraken', milestone: 500,
+    id: 'coralKraken', milestone: 500, previewOnly: true,
     alphaVideoPath: '/assets/boss-alpha-videos/abyssal-razorback-alpha.mp4', nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
     accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
     battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
@@ -377,7 +377,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     ],
   },
   {
-    id: 'abyssalRazorback', milestone: 600,
+    id: 'abyssalRazorback', milestone: 800,
     alphaVideoPath: '/assets/boss-alpha-videos/test/final-kraken-130221-alpha.mp4',
     nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
     accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 310, widthRatio: 0.64, artScale: 0.72,
@@ -392,7 +392,7 @@ const BOSS_CONFIGS: BossConfig[] = [
     ],
   },
   {
-    id: 'poseidon', milestone: 700,
+    id: 'poseidon', milestone: 1000,
     alphaVideoPath: '/assets/boss-alpha-videos/test/poseidon-alpha.mp4',
     nameKey: 'engine.bossName.poseidon', warningKey: 'engine.bossWarning.poseidon', motion: 'serpent',
     accent: '#35ecff', secondaryAccent: '#ffd067', widthCap: 290, widthRatio: 0.60, artScale: 0.76,
@@ -669,7 +669,9 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
 function bossEncounterScale(state: EngineState) {
   const boss = state.boss;
   if (!boss || boss.phase === 'warning') return 1;
-  const targetScale = 0.76;
+  // This scales only the player character during a boss encounter. The
+  // background remains full-screen, creating a clean pull-back camera effect.
+  const targetScale = 0.64;
   if (boss.phase === 'entering') {
     const progress = Math.max(0, Math.min(1, (state.timeMs - boss.entryStartedAt) / BOSS_ENTRY_MS));
     return 1 + (targetScale - 1) * (1 - Math.pow(1 - progress, 3));
@@ -1008,7 +1010,9 @@ function clearDangerousReviveArea(state: EngineState) {
 
 function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, config: BossConfig) {
   clearDangerousReviveArea(state);
-  const width = Math.min(config.widthCap, state.width * config.widthRatio);
+  // Keep the full background canvas untouched and reduce only the boss actor
+  // so the encounter reads as a wider, more cinematic arena.
+  const width = Math.min(config.widthCap, state.width * config.widthRatio) * 0.78;
   const entryStartedAt = state.timeMs + BOSS_WARNING_MS;
   const battleStartedAt = entryStartedAt + BOSS_ENTRY_MS;
   const boss: BossEncounter = {
@@ -1065,9 +1069,10 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
   if (!boss) return false;
 
   const { config } = boss;
-  // Keep the encounter close enough that the boss faces the fish directly,
-  // while preserving a clear dodge lane between both characters.
-  const targetX = state.width * 0.64;
+  // Pull the combatants apart inside the unchanged full-screen background.
+  // The boss remains directly opposite the fish, but the arena now has a
+  // wider cinematic gap for clearer attacks and less visual crowding.
+  const targetX = state.width * 0.75;
   const entryX = state.width + boss.width * 0.72;
   const exitX = state.width + boss.width * 0.95;
   const motionAmplitude = config.motion === 'serpent' ? 22 : config.motion === 'fins' ? 17 : 14;
