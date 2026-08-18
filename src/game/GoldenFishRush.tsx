@@ -121,7 +121,9 @@ const ShieldIcon = ({ full }: { full: boolean }) => (
 
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
+const LATE_GAME_VISIBLE_EXTRA_LIVES = 3;
 const MAX_VISIBLE_SHIELDS = 2;
+const LATE_GAME_VISIBLE_SHIELDS = 3;
 export default function GoldenFishRush() {
   const { t } = useI18n();
   const [screen, setScreen] = useState<ScreenName>('loading');
@@ -315,8 +317,10 @@ export default function GoldenFishRush() {
     setNewUnlocks(null);
   }, []);
 
-  const visibleLives = Math.max(0, Math.min(lives, MAX_VISIBLE_EXTRA_LIVES));
-  const visibleShields = Math.max(0, Math.min(shieldCharges, MAX_VISIBLE_SHIELDS));
+  const maxVisibleLives = score >= 300 ? LATE_GAME_VISIBLE_EXTRA_LIVES : MAX_VISIBLE_EXTRA_LIVES;
+  const maxVisibleShields = score >= 300 ? LATE_GAME_VISIBLE_SHIELDS : MAX_VISIBLE_SHIELDS;
+  const visibleLives = Math.max(0, Math.min(lives, maxVisibleLives));
+  const visibleShields = Math.max(0, Math.min(shieldCharges, maxVisibleShields));
   const activePowerUps = [
     { id: 'magnet', icon: '🧲', label: t('hud.magnet'), remainingMs: magnetRemainingMs, color: '#ffb74d' },
     { id: 'fever', icon: '✦', label: t('hud.fever'), remainingMs: feverRemainingMs, color: '#f48fb1' },
@@ -393,7 +397,7 @@ export default function GoldenFishRush() {
           <div className="hud">
             <div className="hud-resource-stack">
               <div className="hud-lives" aria-label={`Extra lives: ${visibleLives}`}>
-                {Array.from({ length: MAX_VISIBLE_EXTRA_LIVES }).map((_, index) => {
+                {Array.from({ length: maxVisibleLives }).map((_, index) => {
                   const isFull = index < visibleLives;
                   return (
                     <span
@@ -406,8 +410,8 @@ export default function GoldenFishRush() {
                 })}
               </div>
 
-              <div className="hud-shields" aria-label={`Shield charges: ${visibleShields} of ${MAX_VISIBLE_SHIELDS}`}>
-                {Array.from({ length: MAX_VISIBLE_SHIELDS }).map((_, index) => {
+              <div className="hud-shields" aria-label={`Shield charges: ${visibleShields} of ${maxVisibleShields}`}>
+                {Array.from({ length: maxVisibleShields }).map((_, index) => {
                   const isFull = index < visibleShields;
                   return (
                     <span key={index} className={isFull ? 'hud-shield-wrapper hud-shield-full' : 'hud-shield-wrapper hud-shield-empty'}>

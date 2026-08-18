@@ -31,6 +31,7 @@ interface EnvironmentTheme {
 export interface Obstacle {
   x: number;
   gapY: number;
+  baseGapY: number;
   gapSize: number;
   passed: boolean;
   bobbing: boolean;
@@ -253,6 +254,7 @@ export interface EngineState {
   legendaryPulse: number;
   lives: number;
   maxLives: number;
+  lateGameSafetyGranted: boolean;
   shieldCharges: number;
   magnetUntil: number;
   gemBoostActive: boolean;
@@ -283,6 +285,10 @@ export interface EngineState {
 
 const FISH_X_RATIO = 0.28;
 const MAX_EXTRA_LIVES = 2;
+const LATE_GAME_MAX_EXTRA_LIVES = 3;
+const MAX_SHIELD_CHARGES = 2;
+const LATE_GAME_MAX_SHIELD_CHARGES = 3;
+const LATE_GAME_SUPPORT_SCORE = 300;
 const GEM_SPAWN_CHANCE = 0.09;
 const DROP_RUSH_DURATION_MS = 20_000;
 const MAGNET_DURATION_MS = 12_000;
@@ -733,7 +739,7 @@ export function createEngine(width: number, height: number, skin: SkinId, select
     width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: startingScore, running: true,
     invincibleUntil: bossPreview ? 25_000 : 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
-    lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
+    lives: 0, maxLives: MAX_EXTRA_LIVES, lateGameSafetyGranted: false, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
 
     floatingTexts: [],
     sharks: [],
@@ -759,16 +765,14 @@ export function createEngine(width: number, height: number, skin: SkinId, select
   };
 }
 
-export function difficultyForScore(score: number, timeMs: number = 0) {
+export function difficultyForScore(score: number, _timeMs: number = 0) {
   // Constant speed of 3.0 as requested to prevent the game from becoming too fast / impossible.
   const speed = 3.0;
 
+  // The pipe opening stays constant throughout a run. Later difficulty comes
+  // from readable moving gates and varied minions, never from a shrinking route.
+  const gap = BASE.baseGap + 30;
   const speedSteps = Math.floor(score / 12);
-
-  // The minimum opening remains deliberately generous even in late runs.
-  // Difficulty comes from visual variety and route choice, not tiny corridors.
-  const baseGapVal = BASE.baseGap + 30 - speedSteps * 2 - Math.floor(timeMs / 45000) * 3;
-  const gap = Math.max(146, baseGapVal);
 
   const baseSpawnInterval = Math.max(1200, BASE.spawnInterval + 180 - speedSteps * 25);
   // Spawn interval is fairly balanced
@@ -813,6 +817,17 @@ function safeHazardLane(gapY: number, gapSize: number, hazardHalfHeight: number)
   return gapY + (Math.random() < 0.5 ? -offset : offset);
 }
 
+const AMBIENT_MINION_ART: Record<BossSummonKind, MinionArtId[]> = {
+  shark: ['voltfinShark', 'riftShark', 'tideSerpent'],
+  jellyfish: ['inkJelly', 'stormJelly', 'coralHatchling'],
+  mine: ['lureMine', 'abyssMine'],
+};
+
+function ambientMinionArtFor(kind: BossSummonKind, score: number): MinionArtId {
+  const candidates = AMBIENT_MINION_ART[kind];
+  return candidates[Math.floor(score / 100) % candidates.length];
+}
+
 function spawnObstacle(state: EngineState, score: number) {
   const { gap, diffMultiplier } = difficultyForScore(score, state.timeMs);
   const margin = Math.max(95, gap * 0.48);
@@ -820,13 +835,15 @@ function spawnObstacle(state: EngineState, score: number) {
   const gapY = clampGapY(state, rawGapY, gap);
   const environment = environmentForScore(score);
   const legendaryMode = score >= 120;
-  // Moving and split gates created surprise deaths in late runs. Gates remain
-  // stable, single-opening obstacles; later environments carry the variety.
+  // One familiar opening remains, but pipes start a slow, shallow drift after
+  // the first boss so the world feels alive without reducing route safety.
+  const movingGate = score >= 120;
+  const bobAmount = movingGate ? Math.min(13, 6 + Math.floor(score / 100) * 2) : 0;
   const isDouble = false;
   state.obstacles.push({
-    x: state.width + BASE.obstacleWidth, gapY, gapSize: gap, passed: false,
-    bobbing: false, bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 0, glowing: legendaryMode, isDouble, environment: environment.id,
+    x: state.width + BASE.obstacleWidth, gapY, baseGapY: gapY, gapSize: gap, passed: false,
+    bobbing: movingGate, bobPhase: Math.random() * Math.PI * 2,
+    bobAmount, glowing: legendaryMode, isDouble, environment: environment.id,
   });
 
   // Drop Rush is awarded by the turquoise ring. It makes collectable drops
@@ -873,10 +890,12 @@ function spawnObstacle(state: EngineState, score: number) {
     });
   }
 
-  // Only one additional hazard can accompany a pipe gate. Its center is
-  // anchored inside the gap and the opposite half remains deliberately clear.
-  const hasActiveHazard = state.sharks.length + state.seaMines.length + state.jellyfish.length > 0;
-  if (!hasActiveHazard) {
+  // Ambient minions grow gradually after the first boss. The cap preserves a
+  // clear escape lane and avoids stacking hazards in every pipe opening.
+  const activeHazardCount = state.sharks.length + state.seaMines.length + state.jellyfish.length;
+  const ambientMinionLimit = score >= 600 ? 3 : score >= 300 ? 2 : 1;
+  const hazardLimit = score >= 120 ? ambientMinionLimit : 1;
+  if (activeHazardCount < hazardLimit) {
     const hazardRoll = Math.random();
 
     // Shark enemy after score >= 20. It uses a short vertical bob, so the
@@ -893,6 +912,7 @@ function spawnObstacle(state: EngineState, score: number) {
         bobPhase: Math.random() * Math.PI * 2,
         bobSpeed: 0.003 + Math.random() * 0.002,
         bobAmount: 8 + Math.random() * 5,
+        minionArt: score >= 120 ? ambientMinionArtFor('shark', score) : undefined,
         passed: false,
       });
     // Sea mine after score >= 10. Keep it away from the centerline so it
@@ -905,6 +925,7 @@ function spawnObstacle(state: EngineState, score: number) {
         radius: 14,
         pulsePhase: Math.random() * Math.PI * 2,
         exploded: false,
+        minionArt: score >= 120 ? ambientMinionArtFor('mine', score) : undefined,
       });
     // Jellyfish after score >= 15. Vertical movement is intentionally subtle
     // to keep the protected half of the pipe gap navigable.
@@ -919,6 +940,7 @@ function spawnObstacle(state: EngineState, score: number) {
         bobPhase: Math.random() * Math.PI * 2,
         bobSpeed: 0.002 + Math.random() * 0.0015,
         bobAmount: 8 + Math.random() * 5,
+        minionArt: score >= 120 ? ambientMinionArtFor('jellyfish', score) : undefined,
       });
     }
   }
@@ -1264,6 +1286,20 @@ function announceEnvironmentTransition(state: EngineState, callbacks: EngineCall
   callbacks.onFloatingText?.(`Entered ${theme.label}`, state.width * 0.5, state.height * 0.30, theme.accent, true);
 }
 
+function applyLateGameSafetySupport(state: EngineState, callbacks: EngineCallbacks) {
+  if (state.lateGameSafetyGranted || state.score < LATE_GAME_SUPPORT_SCORE) return;
+  state.lateGameSafetyGranted = true;
+  state.maxLives = LATE_GAME_MAX_EXTRA_LIVES;
+  state.lives = Math.min(state.maxLives, state.lives + 1);
+  state.shieldCharges = Math.min(LATE_GAME_MAX_SHIELD_CHARGES, state.shieldCharges + 1);
+  const message = translate('engine.lateGameSupport');
+  triggerFloatingText(state, message, state.width * 0.5, state.height * 0.30, '#ffe082', true);
+  callbacks.onFloatingText?.(message, state.width * 0.5, state.height * 0.30, '#ffe082', true);
+  callbacks.onLifeChange?.(state.lives);
+  callbacks.onShake(2);
+  addBurst(state, state.width * 0.5, state.height * 0.36, '#ffe082', 22, 2.5);
+}
+
 export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCallbacks, settings: { vibration: boolean }) {
   if (!state.running) return;
   const dt = Math.min(2.2, dtMs / 16.67);
@@ -1302,6 +1338,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   const isHourglassActive = state.hourglassUntil > state.timeMs;
   const speed = isHourglassActive ? baseSpeed * 0.6 : baseSpeed;
   const fishX = state.width * FISH_X_RATIO;
+  applyLateGameSafetySupport(state, callbacks);
 
   state.elapsedSinceSpawn += dtMs;
   const nextBoss = BOSS_CONFIGS.find((config) => (state.previewMode || !config.previewOnly) && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone);
@@ -1366,9 +1403,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   for (const obs of state.obstacles) {
     obs.x -= speed * dt;
     if (obs.bobbing) {
-      obs.bobPhase += dtMs * 0.002;
-      obs.gapY += Math.sin(obs.bobPhase) * 1.18 * dt;
-      obs.gapY = clampGapY(state, obs.gapY, obs.gapSize);
+      obs.bobPhase += dtMs * 0.0008;
+      obs.gapY = clampGapY(state, obs.baseGapY + Math.sin(obs.bobPhase) * obs.bobAmount, obs.gapSize);
     }
     if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
       obs.passed = true;
@@ -1615,7 +1651,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         pu.collected = true;
         callbacks.onPowerUpCollect?.(pu.type);
         if (pu.type === 'shield') {
-          state.shieldCharges = Math.min(2, state.shieldCharges + 1);
+          const shieldCapacity = state.score >= LATE_GAME_SUPPORT_SCORE ? LATE_GAME_MAX_SHIELD_CHARGES : MAX_SHIELD_CHARGES;
+          state.shieldCharges = Math.min(shieldCapacity, state.shieldCharges + 1);
           callbacks.onShake?.(1); // Light non-distracting shake
           triggerFloatingText(state, translate('engine.shield'), pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
@@ -1983,6 +2020,68 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   if (theme.id === 'temple') ctx.restore();
 }
 
+function drawFishPowerUpIndicators(ctx: CanvasRenderingContext2D, state: EngineState, r: number, isFever: boolean) {
+  if (state.shieldCharges > 0) {
+    const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.22 + shieldPulse * 0.18;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.65, 0, Math.PI * 2);
+    ctx.fillStyle = '#4fc3f7';
+    ctx.fill();
+    ctx.globalAlpha = 0.65 + shieldPulse * 0.25;
+    ctx.strokeStyle = '#e3f2fd';
+    ctx.lineWidth = 3.5 + shieldPulse * 1.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (state.magnetUntil > state.timeMs || isFever) {
+    const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
+    ctx.save();
+    ctx.shadowColor = isFever ? '#e040fb' : '#ff6d00';
+    ctx.shadowBlur = isFever ? 44 : 32 + magPulse * 14;
+    ctx.globalAlpha = 0.4 + magPulse * 0.25;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (isFever ? 1.85 : 1.45), 0, Math.PI * 2);
+    ctx.strokeStyle = isFever ? '#e040fb' : '#ff9500';
+    ctx.lineWidth = isFever ? 4.0 : 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (state.boostUntil > state.timeMs) {
+    const rushPulse = (Math.sin(state.timeMs * 0.010) + 1) / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.45 + rushPulse * 0.25;
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 14 + rushPulse * 10;
+    ctx.strokeStyle = '#fff3a6';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([3, 4]);
+    ctx.lineDashOffset = -state.timeMs * 0.018;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.85, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0, 25, 48, 0.82)';
+    ctx.beginPath();
+    ctx.roundRect(-31, -r * 2.65, 62, 14, 7);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#fff3a6';
+    ctx.font = '700 7px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const secondsLeft = Math.max(1, Math.ceil((state.boostUntil - state.timeMs) / 1000));
+    ctx.fillText(translate('engine.dropRush', undefined, { seconds: secondsLeft }), 0, -r * 2.65 + 7);
+    ctx.restore();
+  }
+}
+
 function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: number, invincible: boolean) {
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const isFever = state.feverUntil > state.timeMs;
@@ -2053,6 +2152,7 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(heroSheet, sourceX, sourceY, sourceWidth, sourceHeight, -heroSize / 2, -heroSize / 2, heroSize, heroSize);
+      drawFishPowerUpIndicators(ctx, state, r, isFever);
       ctx.restore();
       ctx.restore();
       return;

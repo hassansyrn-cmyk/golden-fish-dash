@@ -78,7 +78,7 @@ const EMPTY_HUD_STATE: HudState = {
 
 function readHudState(engine: EngineState): HudState {
   return {
-    shieldCharges: Math.max(0, Math.min(2, engine.shieldCharges)),
+    shieldCharges: Math.max(0, Math.min(engine.score >= 300 ? 3 : 2, engine.shieldCharges)),
     magnetRemainingMs: Math.max(0, engine.magnetUntil - engine.timeMs),
     feverRemainingMs: Math.max(0, engine.feverUntil - engine.timeMs),
     hourglassRemainingMs: Math.max(0, engine.hourglassUntil - engine.timeMs),
