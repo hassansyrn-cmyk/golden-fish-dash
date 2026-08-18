@@ -142,7 +142,7 @@ export interface Jellyfish {
 }
 
 type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken' | 'abyssalRazorback' | 'poseidon';
-type BossWeapon = 'ink' | 'plasma' | 'electric' | 'bubble' | 'surge' | 'coral';
+type BossWeapon = 'ink' | 'plasma' | 'electric' | 'bubble' | 'surge' | 'coral' | 'trident';
 type BossMotion = 'tentacles' | 'fins' | 'lure' | 'serpent' | 'coralTentacles';
 type BossPhase = 'warning' | 'entering' | 'battle' | 'retreating';
 
@@ -391,11 +391,11 @@ const BOSS_CONFIGS: BossConfig[] = [
     battleDurationMs: 42_000, waveIntervalMs: 1_200, rewardCoins: 320, rewardScore: 190,
     summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_150, maxSummons: 12,
     patterns: [
-      { type: 'surge', lanes: [0.20, 0.76], staggerMs: 150, speedMultiplier: 1.52 },
+      { type: 'trident', lanes: [0.22, 0.78], staggerMs: 250, speedMultiplier: 1.48 },
       { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.92 },
-      { type: 'surge', lanes: [0.32, 0.68], staggerMs: 230, speedMultiplier: 1.62 },
+      { type: 'trident', lanes: [0.36, 0.68], staggerMs: 290, speedMultiplier: 1.56 },
       { type: 'electric', lanes: [0.18, 0.50, 0.82], staggerMs: 170, speedMultiplier: 1.58 },
-      { type: 'surge', lanes: [0.26, 0.56], staggerMs: 210, speedMultiplier: 1.72 },
+      { type: 'trident', lanes: [0.20, 0.80], staggerMs: 280, speedMultiplier: 1.64 },
     ],
   },
 ];
@@ -449,7 +449,7 @@ const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
   leviathan: '/assets/boss-projectiles/leviathan-surge-sheet.png',
   coralKraken: '/assets/boss-projectiles/razorback-wave-sheet.png',
   abyssalRazorback: '/assets/boss-projectiles/kraken-coral-sheet.png',
-  poseidon: '/assets/boss-projectiles/leviathan-surge-sheet.png',
+  poseidon: '/assets/boss-projectiles/poseidon-trident-sheet.png',
 };
 
 const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
@@ -1080,7 +1080,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
     const pattern = config.patterns[sequenceIndex % config.patterns.length];
     boss.lastAttackAt = state.timeMs;
     pattern.lanes.forEach((laneRatio, laneIndex) => {
-      const isHeavy = pattern.type === 'ink' || pattern.type === 'bubble' || pattern.type === 'coral';
+      const isHeavy = pattern.type === 'ink' || pattern.type === 'bubble' || pattern.type === 'coral' || pattern.type === 'trident';
       boss.waves.push({
         id: `${pattern.type}_bolt_${state.timeMs}_${laneIndex}`,
         x: boss.x - boss.width * 0.42,
@@ -2398,6 +2398,7 @@ function bossWeaponPalette(type: BossWeapon) {
     case 'surge': return { warning: '#78fff0', core: 'rgba(230, 255, 252, 0.98)', mid: 'rgba(58, 236, 208, 0.82)', outer: 'rgba(34, 122, 255, 0)', stroke: '#a6fff4' };
     case 'coral': return { warning: '#ffbc75', core: 'rgba(255, 245, 214, 0.98)', mid: 'rgba(255, 126, 80, 0.82)', outer: 'rgba(255, 77, 58, 0)', stroke: '#ffe0a1' };
     case 'plasma': return { warning: '#78f4ff', core: 'rgba(231, 255, 255, 0.98)', mid: 'rgba(73, 238, 255, 0.86)', outer: 'rgba(45, 135, 255, 0)', stroke: '#9ff7ff' };
+    case 'trident': return { warning: '#ffe183', core: 'rgba(255, 250, 222, 0.98)', mid: 'rgba(255, 193, 67, 0.88)', outer: 'rgba(38, 224, 255, 0)', stroke: '#ffe89a' };
     default: return { warning: '#e7a8ff', core: 'rgba(244, 220, 255, 0.94)', mid: 'rgba(169, 83, 255, 0.76)', outer: 'rgba(49, 145, 255, 0)', stroke: '#e8b8ff' };
   }
 }
@@ -2561,19 +2562,26 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
       ctx.stroke();
       ctx.setLineDash([]);
       if (projectileReady && projectileSheet) {
+        const horizontalFrames = projectileSheet.naturalWidth > projectileSheet.naturalHeight;
+        const sourceWidth = horizontalFrames ? projectileSheet.naturalWidth / 4 : projectileSheet.naturalWidth;
+        const sourceHeight = horizontalFrames ? projectileSheet.naturalHeight : projectileSheet.naturalHeight / 4;
         const previewSize = wave.radius * 1.8;
         ctx.globalAlpha = warningPulse * 0.56;
-        ctx.drawImage(projectileSheet, 0, 0, projectileSheet.naturalWidth, projectileSheet.naturalHeight / 4, wave.x - previewSize / 2, wave.y - previewSize / 2, previewSize, previewSize);
+        ctx.drawImage(projectileSheet, 0, 0, sourceWidth, sourceHeight, wave.x - previewSize / 2, wave.y - previewSize / 2, previewSize, previewSize);
       }
     } else if (projectileReady && projectileSheet) {
       const frameCount = 4;
       const frame = Math.floor((state.timeMs - wave.activateAt) / 78) % frameCount;
-      const frameHeight = projectileSheet.naturalHeight / frameCount;
+      const horizontalFrames = projectileSheet.naturalWidth > projectileSheet.naturalHeight;
+      const sourceWidth = horizontalFrames ? projectileSheet.naturalWidth / frameCount : projectileSheet.naturalWidth;
+      const sourceHeight = horizontalFrames ? projectileSheet.naturalHeight : projectileSheet.naturalHeight / frameCount;
+      const sourceX = horizontalFrames ? frame * sourceWidth : 0;
+      const sourceY = horizontalFrames ? 0 : frame * sourceHeight;
       const projectileSize = wave.radius * 3.15;
       ctx.globalAlpha = 0.96;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(projectileSheet, 0, frame * frameHeight, projectileSheet.naturalWidth, frameHeight, wave.x - projectileSize / 2, wave.y - projectileSize / 2, projectileSize, projectileSize);
+      ctx.drawImage(projectileSheet, sourceX, sourceY, sourceWidth, sourceHeight, wave.x - projectileSize / 2, wave.y - projectileSize / 2, projectileSize, projectileSize);
     }
     ctx.restore();
   }
