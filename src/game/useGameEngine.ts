@@ -31,7 +31,6 @@ interface UseGameEngineOptions {
   active: boolean;
   paused: boolean;
   skin: SkinId;
-  bossPreviewMilestone?: number;
   onGameOver: (finalScore: number) => void;
 }
 
@@ -108,7 +107,7 @@ function sizeCanvasForDisplay(canvas: HTMLCanvasElement, width: number, height: 
   context?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 }
 
-export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMilestone, onGameOver }: UseGameEngineOptions) {
+export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
@@ -150,14 +149,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMile
 
     sizeCanvasForDisplay(canvas, width, height);
 
-    const engine = createEngine(width, height, skin, bossPreviewMilestone);
-
-    const isBossPreview = Boolean(bossPreviewMilestone);
+    const engine = createEngine(width, height, skin);
     stateRef.current = engine;
 
-    // The temporary boss test must not consume player items or alter progress.
-    if (!isBossPreview) {
-      // Apply upgrade levels directly to starting engine configurations.
+    // Apply upgrade levels directly to starting engine configurations.
       const shieldLvl = getUpgradeLevel('shield');
       const magnetLvl = getUpgradeLevel('magnet');
       const gemLvl = getUpgradeLevel('gemBoost');
@@ -183,10 +178,9 @@ export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMile
         if (inv.magnet > 0) consumeShopItem('magnet');
         engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
       }
-      if (inv.gemBoost > 0 || gemLvl > 0) {
-        if (inv.gemBoost > 0) consumeShopItem('gemBoost');
-        engine.gemBoostActive = true;
-      }
+    if (inv.gemBoost > 0 || gemLvl > 0) {
+      if (inv.gemBoost > 0) consumeShopItem('gemBoost');
+      engine.gemBoostActive = true;
     }
 
     roundCoinsRef.current = 0;
@@ -200,7 +194,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMile
     setMiniChallenge(null);
     miniChallengeRef.current = null;
     lastHudRefreshRef.current = 0;
-  }, [canvasRef, skin, bossPreviewMilestone]);
+  }, [canvasRef, skin]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
     const state = stateRef.current;
@@ -248,10 +242,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMile
     if (!active) return;
 
     setup();
-    if (!bossPreviewMilestone) {
-      incrementRoundsPlayed();
-      unlockAchievement('first_flight');
-    }
+    incrementRoundsPlayed();
+    unlockAchievement('first_flight');
 
     let mounted = true;
     lastTimeRef.current = performance.now();
@@ -567,7 +559,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMile
 
       window.removeEventListener('resize', handleResize);
     };
-  }, [active, setup, canvasRef, bossPreviewMilestone]);
+  }, [active, setup, canvasRef]);
 
   const doJump = useCallback(() => {
     const state = stateRef.current;

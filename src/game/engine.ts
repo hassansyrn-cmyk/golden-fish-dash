@@ -281,7 +281,6 @@ export interface EngineState {
   boss: BossEncounter | null;
   defeatedBosses: BossId[];
   nextBossEligibleScore: number;
-  previewMode?: boolean;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -718,19 +717,7 @@ function drawWaterTexture(ctx: CanvasRenderingContext2D, state: EngineState) {
 // Skin perks therefore improve real collection rewards instead of an invisible duration.
 const getInvincibilityDuration = (_state: EngineState) => HIT_INVINCIBILITY_MS;
 
-export function createEngine(width: number, height: number, skin: SkinId, selectedBossPreview?: number): EngineState {
-  // The menu's temporary Boss Test panel can select a production-safe preview.
-  // The query parameter remains available only for local development checks.
-  const queryBossPreview = import.meta.env.DEV
-    && typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).has('bossPreview');
-  const queryBossScore = queryBossPreview && typeof window !== 'undefined'
-    ? Number(new URLSearchParams(window.location.search).get('bossPreview'))
-    : 0;
-  const bossPreviewScore = selectedBossPreview ?? queryBossScore;
-  const bossPreview = Boolean(selectedBossPreview || queryBossPreview);
-  const previewBoss = BOSS_CONFIGS.find((config) => config.milestone === bossPreviewScore) ?? BOSS_CONFIGS[0];
-  const startingScore = bossPreview ? previewBoss.milestone : 0;
+export function createEngine(width: number, height: number, skin: SkinId): EngineState {
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({
     x: Math.random() * width,
     y: Math.random() * height,
@@ -739,8 +726,8 @@ export function createEngine(width: number, height: number, skin: SkinId, select
     drift: (Math.random() - 0.5) * 0.45,
   }));
   return {
-    width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: startingScore, running: true,
-    invincibleUntil: bossPreview ? 25_000 : 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
+    width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: 0, running: true,
+    invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
     lives: 0, maxLives: MAX_EXTRA_LIVES, lateGameSafetyGranted: false, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
 
@@ -761,11 +748,8 @@ export function createEngine(width: number, height: number, skin: SkinId, select
     elapsedSinceFeverCoinSpawn: 0,
     hourglassUntil: 0,
     boss: null,
-    defeatedBosses: bossPreview
-      ? BOSS_CONFIGS.filter((config) => config.milestone < previewBoss.milestone).map((config) => config.id)
-      : [],
-    nextBossEligibleScore: bossPreview ? startingScore : 0,
-    previewMode: bossPreview,
+    defeatedBosses: [],
+    nextBossEligibleScore: 0,
   };
 }
 
@@ -1246,7 +1230,7 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
   }
   boss.waves = boss.waves.filter((wave) => wave.phase === 'warning' || wave.x > -80);
 
-  if (!state.previewMode && boss.phase === 'battle' && state.timeMs >= boss.battleStartedAt + config.battleDurationMs) {
+  if (boss.phase === 'battle' && state.timeMs >= boss.battleStartedAt + config.battleDurationMs) {
     boss.phase = 'retreating';
     boss.retreatStartedAt = state.timeMs;
     boss.waves = [];
@@ -1327,14 +1311,11 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
   state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
   state.fishY += state.fishVY * dt;
-  if (state.previewMode) {
-    state.fishY = state.height * 0.5;
-    state.fishVY = 0;
-  }
+
   state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
   const groundY = state.height - 8;
   const ceilingY = 8;
-  const invincible = Boolean(state.previewMode) || state.timeMs < state.invincibleUntil;
+  const invincible = state.timeMs < state.invincibleUntil;
   if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
     state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
     if (!invincible) { killOrUseLife(state, callbacks); return; }
@@ -1361,7 +1342,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   applyLateGameSafetySupport(state, callbacks);
 
   state.elapsedSinceSpawn += dtMs;
-  const nextBoss = BOSS_CONFIGS.find((config) => (state.previewMode || !config.previewOnly) && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone && state.score >= state.nextBossEligibleScore);
+  const nextBoss = BOSS_CONFIGS.find((config) => !config.previewOnly && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone && state.score >= state.nextBossEligibleScore);
   if (!state.boss && nextBoss) {
     startBossEncounter(state, callbacks, nextBoss);
   }
@@ -3472,7 +3453,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   for (const chest of state.chests) drawTreasureChest(ctx, chest, state.timeMs);
 
   const fishX = width * FISH_X_RATIO;
-  const invincible = Boolean(state.previewMode) || state.timeMs < state.invincibleUntil;
+  const invincible = state.timeMs < state.invincibleUntil;
   drawFish(ctx, state, fishX, invincible);
   for (const particle of state.particles) drawParticle(ctx, particle);
 
