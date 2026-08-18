@@ -714,13 +714,9 @@ function drawWaterTexture(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.restore();
 }
 
-const getInvincibilityDuration = (state: EngineState) => {
-  const base = HIT_INVINCIBILITY_MS;
-  if (state.skin === 'poseidonsHeir') return Math.round(base * 1.55);
-  if (state.skin === 'solar') return Math.round(base * 1.40);
-  if (state.skin === 'ruby') return Math.round(base * 1.30);
-  return base;
-};
+// A shield absorbs one hit and grants the same brief recovery window to every skin.
+// Skin perks therefore improve real collection rewards instead of an invisible duration.
+const getInvincibilityDuration = (_state: EngineState) => HIT_INVINCIBILITY_MS;
 
 export function createEngine(width: number, height: number, skin: SkinId, selectedBossPreview?: number): EngineState {
   // The menu's temporary Boss Test panel can select a production-safe preview.
@@ -859,8 +855,10 @@ function spawnObstacle(state: EngineState, score: number) {
   const isFever = state.feverUntil > state.timeMs;
   const isDropRushActive = state.boostUntil > state.timeMs;
   const coinChance = isDropRushActive ? 0.92 : 0.68;
-  const powerUpChance = isDropRushActive ? 0.18 : 0.09;
-  const chestChance = isDropRushActive ? 0.055 : 0.025;
+  let powerUpChance = isDropRushActive ? 0.18 : 0.09;
+  let chestChance = isDropRushActive ? 0.055 : 0.025;
+  if (state.skin === 'solar') powerUpChance *= 1.35;
+  if (state.skin === 'ruby') chestChance *= 1.30;
   if (!isFever && Math.random() < coinChance) {
     state.coins.push({
       x: state.width + BASE.obstacleWidth + 44, y: gapY + (Math.random() - 0.5) * (gap * 0.32),

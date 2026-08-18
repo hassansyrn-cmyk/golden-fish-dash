@@ -59,7 +59,7 @@ export const SKINS: SkinDef[] = [
       fin: '#780000',
       glow: '#ff4d6d',
     },
-    ability: '+30% Shield / Invincibility Duration',
+    ability: '+30% Treasure Chest Chance',
   },
   {
     id: 'emerald',
@@ -119,7 +119,7 @@ export const SKINS: SkinDef[] = [
       fin: '#ffd54f',
       glow: '#ffcc80',
     },
-    ability: '+40% Shield Duration & 25s Drop Rush',
+    ability: '+35% Power-Up Drops & 25s Drop Rush',
   },
   {
     id: 'poseidonsHeir',

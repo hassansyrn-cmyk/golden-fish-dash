@@ -877,6 +877,18 @@ html, body, #root {
 .footer-links a { color: #4f7d92; text-decoration: none; }
 .footer-links a:hover { text-decoration: underline; }
 
+/* Long mobile screens must own vertical pan gestures because gameplay globally disables them. */
+.settings-screen,
+.unlock-screen {
+  justify-content: flex-start;
+  align-content: flex-start;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-top: max(52px, calc(env(safe-area-inset-top) + 28px));
+  padding-bottom: max(112px, calc(env(safe-area-inset-bottom) + 88px));
+}
+
 /* Unlock celebration */
 .unlock-screen {
   gap: 16px;
