@@ -428,7 +428,7 @@ const PLAYER_FISH_SPRITE_SHEET_PATHS: Record<SkinId, string> = {
 };
 
 const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
-  abyssalOctopus: '/assets/boss-projectiles/kraken-coral-sheet.png',
+  abyssalOctopus: '/assets/boss-projectiles/octopus-ink-sheet.png',
   electricManta: '/assets/boss-projectiles/manta-electric-sheet.png',
   abyssalAnglerfish: '/assets/boss-projectiles/angler-abyss-sheet.png',
   leviathan: '/assets/boss-projectiles/leviathan-surge-sheet.png',
@@ -448,7 +448,7 @@ const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
 };
 
 const BOSS_MINION_ART: Record<BossId, Partial<Record<BossSummonKind, MinionArtId>>> = {
-  abyssalOctopus: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
+  abyssalOctopus: { jellyfish: 'inkJelly' },
   electricManta: { shark: 'voltfinShark' },
   abyssalAnglerfish: { mine: 'lureMine' },
   leviathan: { shark: 'tideSerpent', jellyfish: 'stormJelly' },
