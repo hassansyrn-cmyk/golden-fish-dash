@@ -107,14 +107,17 @@ export default function SettingsScreen({ onBack }: Props) {
 
       <div className="skin-grid">
         {SKINS.map((skin) => {
-          const isUnlocked = unlocked.includes(skin.id) || best >= skin.unlockScore;
+          const isUnlocked = unlocked.includes(skin.id)
+            || (skin.unlockMethod !== 'poseidon' && best >= skin.unlockScore);
           const isSelected = selected === skin.id;
           const progressText =
             skin.unlockScore === 0
               ? t('settings.starterFish')
               : isUnlocked
                 ? t('settings.unlocked')
-                : t('settings.scoreUnlock', { score: skin.unlockScore });
+                : skin.unlockMethod === 'poseidon'
+                  ? t('settings.poseidonReward')
+                  : t('settings.scoreUnlock', { score: skin.unlockScore });
 
           return (
             <button

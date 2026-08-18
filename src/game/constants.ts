@@ -97,6 +97,43 @@ export const SKINS: SkinDef[] = [
     },
     ability: '20% Lucky Spin Discount & 15% Free Starting Shield',
   },
+  {
+    id: 'sapphire',
+    name: 'Sapphire Crown Koi',
+    unlockScore: 350,
+    colors: {
+      body: '#1565c0',
+      belly: '#e3f2fd',
+      fin: '#00e5ff',
+      glow: '#80d8ff',
+    },
+    ability: '+35% Coin Value & Wider Magnet Range',
+  },
+  {
+    id: 'solar',
+    name: 'Solar Empress Lionfish',
+    unlockScore: 650,
+    colors: {
+      body: '#ff7043',
+      belly: '#fff3e0',
+      fin: '#ffd54f',
+      glow: '#ffcc80',
+    },
+    ability: '+40% Shield Duration & 25s Drop Rush',
+  },
+  {
+    id: 'poseidonsHeir',
+    name: "Poseidon's Heir",
+    unlockScore: 1000,
+    unlockMethod: 'poseidon',
+    colors: {
+      body: '#0d47a1',
+      belly: '#e3f2fd',
+      fin: '#00e5ff',
+      glow: '#ffd740',
+    },
+    ability: 'Royal Tide: +50% Coins, Guardian Shield & Supreme Magnet',
+  },
 ];
 
 export const ACHIEVEMENTS: AchievementDef[] = [

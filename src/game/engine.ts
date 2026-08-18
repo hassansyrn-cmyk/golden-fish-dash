@@ -229,7 +229,7 @@ export interface EngineCallbacks {
   onBossStart?: (bossId: BossId) => void;
   onBossAttack?: (weapon: BossShockwave['type']) => void;
   onBossSummon?: (bossId: BossId, kind: BossSummonKind) => void;
-  onBossDefeated?: () => void;
+  onBossDefeated?: (bossId: BossId) => boolean | void;
 }
 
 export interface EngineState {
@@ -448,6 +448,9 @@ const PLAYER_FISH_SPRITE_SHEET_PATHS: Record<SkinId, string> = {
   emerald: '/assets/player-fish/emerald-mandarin-swim-sheet.png',
   diamond: '/assets/player-fish/diamond-discus-swim-sheet.png',
   legendary: '/assets/player-fish/legendary-royal-abyss-swim-sheet.png',
+  sapphire: '/assets/player-fish/sapphire-crown-koi-swim-sheet.png',
+  solar: '/assets/player-fish/solar-empress-lionfish-swim-sheet.png',
+  poseidonsHeir: '/assets/player-fish/poseidons-heir-swim-sheet.png',
 };
 
 const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
@@ -713,9 +716,9 @@ function drawWaterTexture(ctx: CanvasRenderingContext2D, state: EngineState) {
 
 const getInvincibilityDuration = (state: EngineState) => {
   const base = HIT_INVINCIBILITY_MS;
-  if (state.skin === 'ruby') {
-    return Math.round(base * 1.30); // Betta skin: +30% duration
-  }
+  if (state.skin === 'poseidonsHeir') return Math.round(base * 1.55);
+  if (state.skin === 'solar') return Math.round(base * 1.40);
+  if (state.skin === 'ruby') return Math.round(base * 1.30);
   return base;
 };
 
@@ -866,7 +869,9 @@ function spawnObstacle(state: EngineState, score: number) {
   }
   // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive, or Discus skin ability)
   let gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
-  if (state.skin === 'diamond') {
+  if (state.skin === 'poseidonsHeir') {
+    gemChance *= 1.65; // Legendary reward: +65% Heart drop chance
+  } else if (state.skin === 'diamond') {
     gemChance *= 1.30; // Discus skin: +30% Extra Life drop chance
   }
   if (isDropRushActive) {
@@ -1122,7 +1127,13 @@ function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCa
     addBurst(state, rewardX, rewardY, '#ffe082', 38, 3.9);
     addBurst(state, rewardX, rewardY, config.accent, 30, 3.4);
     callbacks.onShake(3);
-    callbacks.onBossDefeated?.();
+    const unlockedBossReward = callbacks.onBossDefeated?.(config.id);
+    if (config.id === 'poseidon' && unlockedBossReward) {
+      const unlockText = translate('engine.poseidonsHeirUnlocked');
+      triggerFloatingText(state, unlockText, state.width * 0.5, state.height * 0.34, '#ffd740', true);
+      callbacks.onFloatingText?.(unlockText, state.width * 0.5, state.height * 0.34, '#ffd740', true);
+      addBurst(state, state.width * 0.5, state.height * 0.40, '#35ecff', 34, 3.6);
+    }
     state.elapsedSinceSpawn = -900;
     return false;
   }
@@ -1397,8 +1408,16 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   // The magnet attracts every reward object, never enemies or obstacles.
   // Fever retains its stronger vacuum behavior while the normal magnet is more generous.
   const hasMagnet = state.magnetUntil > state.timeMs || isFeverActive;
-  const magnetRange = isFeverActive ? 220 : hasMagnet ? 175 : 0;
-  const magnetPull = isFeverActive ? 0.35 : 0.28;
+  const magnetRange = isFeverActive
+    ? 220
+    : hasMagnet
+      ? state.skin === 'poseidonsHeir'
+        ? 270
+        : state.skin === 'sapphire'
+          ? 230
+          : 175
+      : 0;
+  const magnetPull = isFeverActive ? 0.35 : state.skin === 'poseidonsHeir' ? 0.42 : state.skin === 'sapphire' ? 0.34 : 0.28;
   const pullCollectable = (collectable: { x: number; y: number; collected: boolean }) => {
     if (!hasMagnet || collectable.collected) return;
     const dx = collectable.x - fishX;
@@ -1603,6 +1622,12 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           comboText = '⭐ COMBO x2 ⭐';
         }
 
+        if (state.skin === 'poseidonsHeir') {
+          finalAmount = Math.ceil(finalAmount * 1.50);
+        } else if (state.skin === 'sapphire') {
+          finalAmount = Math.ceil(finalAmount * 1.35);
+        }
+
         state.score += finalAmount;
         callbacks.onScore(state.score);
         callbacks.onCoinCollect(finalAmount);
@@ -1668,7 +1693,14 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           triggerFloatingText(state, translate('engine.shield'), pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
         } else if (pu.type === 'magnet') {
-          const duration = state.skin === 'emerald' ? MAGNET_DURATION_MS * 1.25 : MAGNET_DURATION_MS;
+          const durationMultiplier = state.skin === 'poseidonsHeir'
+            ? 1.75
+            : state.skin === 'sapphire'
+              ? 1.40
+              : state.skin === 'emerald'
+                ? 1.25
+                : 1;
+          const duration = MAGNET_DURATION_MS * durationMultiplier;
           state.magnetUntil = state.timeMs + duration;
           triggerFloatingText(state, translate('engine.magnet', undefined, { seconds: Math.round(duration / 1000) }), pu.x, pu.y - 15, '#ffa726', true);
           addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
@@ -1698,8 +1730,13 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = ring.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + ring.radius) {
         ring.collected = true;
-        state.boostUntil = state.timeMs + DROP_RUSH_DURATION_MS;
-        triggerFloatingText(state, translate('engine.dropRush', undefined, { seconds: 20 }), ring.x, ring.y - 15, '#ffd54f', true);
+        const dropRushDuration = state.skin === 'poseidonsHeir'
+          ? 30_000
+          : state.skin === 'solar'
+            ? 25_000
+            : DROP_RUSH_DURATION_MS;
+        state.boostUntil = state.timeMs + dropRushDuration;
+        triggerFloatingText(state, translate('engine.dropRush', undefined, { seconds: Math.round(dropRushDuration / 1000) }), ring.x, ring.y - 15, '#ffd54f', true);
         callbacks.onShake(1); // Very minor shake
         addBurst(state, ring.x, ring.y, '#00e5ff', 18, 2);
         addBurst(state, ring.x, ring.y, '#ffd54f', 12, 2.4);

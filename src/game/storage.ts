@@ -83,11 +83,21 @@ export function setSelectedSkin(skin: SkinId) {
 export function refreshUnlockedSkins(bestScore: number): SkinId[] {
   const unlocked = new Set(getUnlockedSkins());
   for (const skin of SKINS) {
-    if (bestScore >= skin.unlockScore) unlocked.add(skin.id);
+    if (skin.unlockMethod !== 'poseidon' && bestScore >= skin.unlockScore) {
+      unlocked.add(skin.id);
+    }
   }
   const result = Array.from(unlocked);
   writeJSON(STORAGE_KEYS.unlockedSkins, result);
   return result;
+}
+
+export function unlockSkin(skin: SkinId): boolean {
+  const unlocked = new Set(getUnlockedSkins());
+  if (unlocked.has(skin)) return false;
+  unlocked.add(skin);
+  writeJSON(STORAGE_KEYS.unlockedSkins, Array.from(unlocked));
+  return true;
 }
 
 // ---- Achievements ----

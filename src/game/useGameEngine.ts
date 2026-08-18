@@ -13,6 +13,7 @@ import {
   incrementMissionProgress,
   addXP,
   getUpgradeLevel,
+  unlockSkin,
 } from './storage';
 import {
   FISH_X_RATIO,
@@ -170,6 +171,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMile
 
       if (skin === 'legendary' && engine.shieldCharges === 0 && Math.random() < 0.15) {
         engine.shieldCharges = 1;
+      }
+
+      // Poseidon's Heir always begins protected, while preserving purchased
+      // shields and the normal two-slot early-game capacity.
+      if (skin === 'poseidonsHeir') {
+        engine.shieldCharges = Math.min(2, engine.shieldCharges + 1);
       }
 
       if (inv.magnet > 0 || magnetLvl > 0) {
@@ -482,10 +489,17 @@ export function useGameEngine({ canvasRef, active, paused, skin, bossPreviewMile
                 safeVibrate([35, 22, 40], settings.vibration);
               },
 
-              onBossDefeated: () => {
+              onBossDefeated: (bossId) => {
                 audioManager.stopBossMusic();
                 audioManager.playSound('bossDefeated', settings.sound);
                 safeVibrate([30, 28, 45, 25, 65], settings.vibration);
+
+                const unlockedNow = bossId === 'poseidon' && unlockSkin('poseidonsHeir');
+                if (unlockedNow) {
+                  audioManager.playSound('achievement', settings.sound);
+                  safeVibrate([40, 35, 60, 35, 85], settings.vibration);
+                }
+                return unlockedNow;
               },
             },
             { vibration: settings.vibration },

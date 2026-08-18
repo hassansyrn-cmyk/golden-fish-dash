@@ -40,7 +40,7 @@ function encouragement(
     return t('gameover.encourageClose', { points: best - finalScore });
   }
 
-  const nextSkin = SKINS.find((skin) => skin.unlockScore > finalScore);
+  const nextSkin = SKINS.find((skin) => skin.unlockMethod !== 'poseidon' && skin.unlockScore > finalScore);
 
   if (nextSkin) {
     return t('gameover.encourageUnlock', { points: nextSkin.unlockScore - finalScore, fish: nextSkin.name });
