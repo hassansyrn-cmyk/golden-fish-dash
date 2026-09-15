@@ -11,6 +11,7 @@ import {
 } from '../storage';
 import type { AppLanguage, Settings, SkinId } from '../types';
 import { translateSkin, useI18n } from '../i18n';
+import { audioManager } from '../managers/AudioManager';
 
 interface Props {
   onBack: () => void;
@@ -154,6 +155,9 @@ export default function SettingsScreen({ onBack }: Props) {
     const next = { ...settings, [key]: !settings[key] };
     setLocalSettings(next);
     setSettings(next);
+    if (key === 'music') {
+      audioManager.setMusicEnabled(next.music);
+    }
   }
 
   function chooseLanguage(nextLanguage: AppLanguage) {

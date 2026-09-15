@@ -231,6 +231,8 @@ export default function GoldenFishRush() {
     feverRemainingMs,
     hourglassRemainingMs,
     dropRushRemainingMs,
+    torpedoRemainingMs,
+    bossWarning,
     miniChallenge,
     doJump,
     reviveAt,
@@ -318,6 +320,7 @@ export default function GoldenFishRush() {
     { id: 'magnet', icon: '🧲', label: t('hud.magnet'), remainingMs: magnetRemainingMs, color: '#ffb74d' },
     { id: 'fever', icon: '✦', label: t('hud.fever'), remainingMs: feverRemainingMs, color: '#f48fb1' },
     { id: 'slow', icon: '⌛', label: t('hud.slow'), remainingMs: hourglassRemainingMs, color: '#80deea' },
+    { id: 'torpedo', icon: '🚀', label: t('hud.torpedo'), remainingMs: torpedoRemainingMs, color: '#00e5ff' },
     { id: 'drop-rush', icon: '✦', label: t('hud.dropRush'), remainingMs: dropRushRemainingMs, color: '#fff176' },
   ].filter((powerUp) => powerUp.remainingMs > 0);
   const handleOpenShop = useCallback(() => {
@@ -453,6 +456,23 @@ export default function GoldenFishRush() {
                 ⏸
               </button>
             )}
+          </div>
+        )}
+
+        {bossWarning && screen === 'playing' && (
+          <div className="boss-warning-overlay" style={{
+            position: 'absolute', top: 0, left: 0, right: 0,
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            padding: '6px 0',
+            background: 'linear-gradient(180deg, rgba(183,28,28,0.45) 0%, rgba(183,28,28,0) 100%)',
+            pointerEvents: 'none', zIndex: 15,
+            animation: 'bossFlash 0.6s ease-in-out infinite alternate',
+          }}>
+            <span style={{
+              color: '#ff1744', fontWeight: 900, fontSize: '13px',
+              textShadow: '0 0 12px rgba(255,23,68,0.8), 0 0 4px rgba(0,0,0,0.6)',
+              letterSpacing: '2px',
+            }}>{bossWarning}</span>
           </div>
         )}
 

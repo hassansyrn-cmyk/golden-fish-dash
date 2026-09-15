@@ -9,7 +9,10 @@ import {
   getMissions,
   claimMissionReward,
   addCoins,
+  spendCoins,
+  addShopItem,
   getUnlockedSkins,
+  unlockSkin,
 } from '../storage';
 import type { ShopItemId, MissionDef, SkinId } from '../types';
 import { audioManager } from '../managers/AudioManager';
@@ -193,9 +196,8 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
       return;
     }
 
-    // Deduct coins
-    const balance = coins - cost;
-    localStorage.setItem('gfr_coins', JSON.stringify(balance));
+    // Deduct coins using official storage helper
+    const balance = spendCoins(cost);
     setCoins(balance);
 
     // Roll rewards
@@ -210,26 +212,18 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         rewardText = t('shop.wonCoins', { coins: rewardCoins });
       } else if (roll < 0.6) {
         const amt = Math.random() < 0.5 ? 1 : 2;
-        const inv = getShopInventory();
-        inv.shield = (inv.shield ?? 0) + amt;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('shield', amt);
         rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.shield.name') });
       } else if (roll < 0.8) {
         const amt = Math.random() < 0.5 ? 1 : 2;
-        const inv = getShopInventory();
-        inv.magnet = (inv.magnet ?? 0) + amt;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('magnet', amt);
         rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.magnet.name') });
       } else if (roll < 0.95) {
         const amt = Math.random() < 0.5 ? 1 : 2;
-        const inv = getShopInventory();
-        inv.gemBoost = (inv.gemBoost ?? 0) + amt;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('gemBoost', amt);
         rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.gemBoost.name') });
       } else {
-        const inv = getShopInventory();
-        inv.continueToken = (inv.continueToken ?? 0) + 1;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('continueToken', 1);
         rewardText = t('shop.wonItem', { count: 1, item: t('shop.item.continueToken.name') });
       }
     } else if (tier === 'silver') {
@@ -240,27 +234,19 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         rewardText = t('shop.wonCoins', { coins: rewardCoins });
       } else if (roll < 0.55) {
         const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
-        const inv = getShopInventory();
-        inv.shield = (inv.shield ?? 0) + amt;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('shield', amt);
         rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.shield.name') });
       } else if (roll < 0.75) {
         const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
-        const inv = getShopInventory();
-        inv.magnet = (inv.magnet ?? 0) + amt;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('magnet', amt);
         rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.magnet.name') });
       } else if (roll < 0.9) {
         const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
-        const inv = getShopInventory();
-        inv.gemBoost = (inv.gemBoost ?? 0) + amt;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('gemBoost', amt);
         rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.gemBoost.name') });
       } else {
         const amt = 1 + Math.floor(Math.random() * 3); // 1 to 3
-        const inv = getShopInventory();
-        inv.continueToken = (inv.continueToken ?? 0) + amt;
-        localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+        addShopItem('continueToken', amt);
         rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.continueToken.name') });
       }
     } else {
@@ -272,15 +258,12 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
         if (unlockedSkins.includes('legendary')) {
           // Compensation rewards
           addCoins(600);
-          const inv = getShopInventory();
-          inv.shield = (inv.shield ?? 0) + 2;
-          inv.continueToken = (inv.continueToken ?? 0) + 1;
-          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          addShopItem('shield', 2);
+          addShopItem('continueToken', 1);
           rewardText = t('shop.duplicateLegendary');
         } else {
           // Unlock skin
-          const updated = [...unlockedSkins, 'legendary' as SkinId];
-          localStorage.setItem('gfr_unlocked_skins', JSON.stringify(updated));
+          unlockSkin('legendary');
           rewardText = t('shop.legendaryUnlock');
           if (onNewUnlocks) {
             onNewUnlocks(['legendary']);
@@ -295,27 +278,19 @@ export default function ShopScreen({ onBack, onNewUnlocks }: Props) {
           rewardText = t('shop.wonCoins', { coins: rewardCoins });
         } else if (roll < 0.5) {
           const amt = 5 + Math.floor(Math.random() * 6); // 5 to 10
-          const inv = getShopInventory();
-          inv.shield = (inv.shield ?? 0) + amt;
-          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          addShopItem('shield', amt);
           rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.shield.name') });
         } else if (roll < 0.7) {
           const amt = 3 + Math.floor(Math.random() * 6); // 3 to 8
-          const inv = getShopInventory();
-          inv.magnet = (inv.magnet ?? 0) + amt;
-          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          addShopItem('magnet', amt);
           rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.magnet.name') });
         } else if (roll < 0.88) {
           const amt = 3 + Math.floor(Math.random() * 6); // 3 to 8
-          const inv = getShopInventory();
-          inv.gemBoost = (inv.gemBoost ?? 0) + amt;
-          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          addShopItem('gemBoost', amt);
           rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.gemBoost.name') });
         } else {
           const amt = 2 + Math.floor(Math.random() * 4); // 2 to 5
-          const inv = getShopInventory();
-          inv.continueToken = (inv.continueToken ?? 0) + amt;
-          localStorage.setItem('gfr_shop_inventory', JSON.stringify(inv));
+          addShopItem('continueToken', amt);
           rewardText = t('shop.wonItem', { count: amt, item: t('shop.item.continueToken.name') });
         }
       }

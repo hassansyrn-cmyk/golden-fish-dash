@@ -39,6 +39,8 @@ interface HudState {
   feverRemainingMs: number;
   hourglassRemainingMs: number;
   dropRushRemainingMs: number;
+  torpedoRemainingMs: number;
+  bossWarning: string | null;
 }
 
 type MiniChallengeKind = 'coins' | 'combo';
@@ -73,15 +75,26 @@ const EMPTY_HUD_STATE: HudState = {
   feverRemainingMs: 0,
   hourglassRemainingMs: 0,
   dropRushRemainingMs: 0,
+  torpedoRemainingMs: 0,
+  bossWarning: null,
 };
 
 function readHudState(engine: EngineState): HudState {
+  const boss = engine.bossEvent;
+  let bossWarning: string | null = null;
+  if (boss?.active && boss.timerMs < boss.warningMs) {
+    bossWarning = boss.type === 'kraken' ? '⚠ KRAKEN INCOMING'
+      : boss.type === 'megashark' ? '⚠ MEGA SHARK'
+      : boss.type === 'current' ? '⚠ OCEAN CURRENT' : null;
+  }
   return {
     shieldCharges: Math.max(0, Math.min(2, engine.shieldCharges)),
     magnetRemainingMs: Math.max(0, engine.magnetUntil - engine.timeMs),
     feverRemainingMs: Math.max(0, engine.feverUntil - engine.timeMs),
     hourglassRemainingMs: Math.max(0, engine.hourglassUntil - engine.timeMs),
     dropRushRemainingMs: Math.max(0, engine.boostUntil - engine.timeMs),
+    torpedoRemainingMs: Math.max(0, engine.torpedoUntil - engine.timeMs),
+    bossWarning,
   };
 }
 
@@ -191,6 +204,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setMiniChallenge(null);
     miniChallengeRef.current = null;
     lastHudRefreshRef.current = 0;
+
+    const settings = getSettings();
+    audioManager.setMusicEnabled(settings.music);
+    if (settings.music) {
+      audioManager.startMusic();
+    }
   }, [canvasRef, skin]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
@@ -424,6 +443,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
                 incrementMissionProgress('m_rounds', 1);
 
+                audioManager.stopMusic();
+
                 onGameOverRef.current(finalScore);
               },
 
@@ -468,6 +489,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
           if (now - lastHudRefreshRef.current >= 100) {
             lastHudRefreshRef.current = now;
             setHudState(readHudState(state));
+
+            audioManager.setBiomeMood(
+              state.score,
+              state.feverUntil > state.timeMs,
+              Boolean(state.bossEvent?.active)
+            );
 
             const challenge = miniChallengeRef.current;
             if (challenge?.status === 'active') {
@@ -520,6 +547,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     return () => {
       mounted = false;
+      audioManager.stopMusic();
 
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
@@ -528,6 +556,16 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       window.removeEventListener('resize', handleResize);
     };
   }, [active, setup, canvasRef]);
+
+  useEffect(() => {
+    const settings = getSettings();
+    if (active && !paused && settings.music) {
+      audioManager.setMusicEnabled(true);
+      audioManager.startMusic();
+    } else {
+      audioManager.stopMusic();
+    }
+  }, [active, paused]);
 
   const doJump = useCallback(() => {
     const state = stateRef.current;
@@ -551,6 +589,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     feverRemainingMs: hudState.feverRemainingMs,
     hourglassRemainingMs: hudState.hourglassRemainingMs,
     dropRushRemainingMs: hudState.dropRushRemainingMs,
+    torpedoRemainingMs: hudState.torpedoRemainingMs,
+    bossWarning: hudState.bossWarning,
     miniChallenge,
     doJump,
     reviveAt,

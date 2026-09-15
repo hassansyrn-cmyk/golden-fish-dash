@@ -7,8 +7,10 @@
 // -----------------------------------------------------------------------
 
 import { BASE, SKINS } from './constants';
-import type { SkinId, FloatingText } from './types';
+import type { SkinId, FloatingText, BossEventState } from './types';
 import { translate } from './i18n';
+import { vfxManager, drawProceduralCaustics, drawSurfaceWaterLine } from './vfx';
+import { audioManager } from './managers/AudioManager';
 
 type EnvironmentId = 'lagoon' | 'coral' | 'kelp' | 'ruins' | 'volcanic' | 'temple' | 'abyss' | 'crystal' | 'moonlit' | 'sunkenCity' | 'aurora' | 'crownReef' | 'eternalTemple';
 
@@ -59,7 +61,7 @@ export interface Gem {
 export interface PowerUp {
   x: number;
   y: number;
-  type: 'shield' | 'magnet' | 'fever' | 'hourglass';
+  type: 'shield' | 'magnet' | 'fever' | 'hourglass' | 'torpedo';
   collected: boolean;
   pulse: number;
 }
@@ -143,6 +145,8 @@ export interface EngineCallbacks {
   onNearMiss?: () => void;
   onFeverStart?: () => void;
   onPowerUpCollect?: (type: PowerUp['type']) => void;
+  onBossWarning?: (type: string, message: string) => void;
+  onBossEventEnd?: () => void;
 }
 
 export interface EngineState {
@@ -188,6 +192,12 @@ export interface EngineState {
   feverUntil: number;
   elapsedSinceFeverCoinSpawn: number;
   hourglassUntil: number;
+
+  // Phase 3 AAA Enhancements
+  torpedoUntil: number;
+  squashY: number;
+  currentGaze: { x: number; y: number };
+  bossEvent: BossEventState | null;
 }
 
 const FISH_X_RATIO = 0.28;
@@ -302,6 +312,12 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     feverUntil: 0,
     elapsedSinceFeverCoinSpawn: 0,
     hourglassUntil: 0,
+
+    // Phase 3 AAA Enhancements
+    torpedoUntil: 0,
+    squashY: 1.0,
+    currentGaze: { x: 1.0, y: 0 },
+    bossEvent: null,
   };
 }
 
@@ -327,6 +343,9 @@ export function difficultyForScore(score: number, timeMs: number = 0) {
 export function jump(state: EngineState, settings: { vibration: boolean }) {
   if (!state.running) return;
   state.fishVY = BASE.jumpVelocity;
+  state.squashY = 0.72; // Juicy vertical squash & horizontal elongation
+  vfxManager.emitCavitation(state.width * FISH_X_RATIO - 14, state.fishY, 3.5);
+
   for (let i = 0; i < 6; i++) {
     state.particles.push({
       x: state.width * FISH_X_RATIO, y: state.fishY + BASE.fishRadius * 0.6,
@@ -405,10 +424,11 @@ function spawnObstacle(state: EngineState, score: number) {
   // Power-up spawn (shield, magnet, Fever mode Star, or Hourglass!)
   if (Math.random() < powerUpChance) {
     const roll = Math.random();
-    const type: 'shield' | 'magnet' | 'fever' | 'hourglass' =
-      roll < 0.25 ? 'shield' :
-      roll < 0.50 ? 'magnet' :
-      roll < 0.75 ? 'fever' : 'hourglass';
+    const type: 'shield' | 'magnet' | 'fever' | 'hourglass' | 'torpedo' =
+      roll < 0.22 ? 'shield' :
+      roll < 0.44 ? 'magnet' :
+      roll < 0.64 ? 'fever' :
+      roll < 0.82 ? 'hourglass' : 'torpedo';
     const puY = gapY + (Math.random() - 0.5) * (gap * 0.25);
     state.powerUps.push({
       x: state.width + BASE.obstacleWidth + 125,
@@ -576,13 +596,22 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   if (!state.running) return;
   const dt = Math.min(2.2, dtMs / 16.67);
   state.timeMs += dtMs;
+  vfxManager.update(dtMs);
+  state.squashY += (1.0 - (state.squashY || 1.0)) * 0.16 * dt;
+
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
   state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
   state.fishY += state.fishVY * dt;
   state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
   const groundY = state.height - 8;
   const ceilingY = 8;
-  const invincible = state.timeMs < state.invincibleUntil;
+  const isTorpedoActive = state.torpedoUntil > state.timeMs;
+  const invincible = (state.timeMs < state.invincibleUntil) || isTorpedoActive;
+
+  if (state.fishY - BASE.fishRadius <= ceilingY + 8) {
+    vfxManager.triggerSurfaceSplash(state.width * FISH_X_RATIO, ceilingY);
+  }
+
   if (state.fishY + BASE.fishRadius >= groundY || state.fishY - BASE.fishRadius <= ceilingY) {
     state.fishY = Math.max(ceilingY + BASE.fishRadius, Math.min(groundY - BASE.fishRadius, state.fishY));
     if (!invincible) { killOrUseLife(state, callbacks); return; }
@@ -604,8 +633,81 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
   const { speed: baseSpeed, spawnInterval } = difficultyForScore(state.score, state.timeMs);
   const isHourglassActive = state.hourglassUntil > state.timeMs;
-  const speed = isHourglassActive ? baseSpeed * 0.6 : baseSpeed;
+  const speed = isTorpedoActive ? baseSpeed * 1.55 : isHourglassActive ? baseSpeed * 0.6 : baseSpeed;
   const fishX = state.width * FISH_X_RATIO;
+
+  // Cavitation bubble emission
+  if (isTorpedoActive) {
+    vfxManager.emitCavitation(fishX - 20, state.fishY, 8, true, '#00e5ff');
+  } else if (Math.abs(state.fishVY) > 3.5) {
+    vfxManager.emitCavitation(fishX - 16, state.fishY, Math.abs(state.fishVY));
+  }
+
+  // Eye gaze tracking
+  const nextObs = state.obstacles.find((o) => o.x > fishX);
+  if (nextObs) {
+    const dx = nextObs.x - fishX;
+    const dy = nextObs.gapY - state.fishY;
+    const dist = Math.hypot(dx, dy) || 1;
+    state.currentGaze = { x: (dx / dist) * 1.5, y: (dy / dist) * 1.5 };
+  } else {
+    state.currentGaze = { x: 1.0, y: 0 };
+  }
+
+  // Boss Event Milestone trigger (every 40 points)
+  const isBossMilestone = state.score > 0 && state.score % 40 === 35;
+  if (isBossMilestone && !state.bossEvent && state.running) {
+    const roll = Math.random();
+    const type: 'kraken' | 'megashark' | 'current' = roll < 0.38 ? 'kraken' : roll < 0.75 ? 'megashark' : 'current';
+    const laneY = (Math.random() < 0.5 ? 0.3 : 0.7) * state.height;
+    state.bossEvent = {
+      type,
+      active: true,
+      timerMs: 0,
+      durationMs: 6500,
+      laneY,
+      laneHeight: state.height * 0.44,
+      warningMs: 2200,
+      progress: 0,
+    };
+    callbacks.onBossWarning?.(type, type === 'kraken' ? '⚠️ KRAKEN TENTACLE SWEEP!' : type === 'megashark' ? '⚠️ MEGASHARK CHARGE!' : '⚠️ TIDAL CURRENT!');
+    callbacks.onShake(5);
+  }
+
+  if (state.bossEvent?.active) {
+    state.bossEvent.timerMs += dtMs;
+    state.bossEvent.progress = state.bossEvent.timerMs / state.bossEvent.durationMs;
+
+    if (state.bossEvent.type === 'current') {
+      const driftDir = state.bossEvent.laneY < state.height * 0.5 ? -1 : 1;
+      state.fishVY += driftDir * 0.16 * dt;
+    }
+
+    if (state.bossEvent.timerMs > state.bossEvent.warningMs && !invincible && !isTorpedoActive) {
+      const halfH = state.bossEvent.laneHeight / 2;
+      const inLane = state.fishY >= state.bossEvent.laneY - halfH && state.fishY <= state.bossEvent.laneY + halfH;
+      if (inLane && (state.bossEvent.type === 'kraken' || state.bossEvent.type === 'megashark')) {
+        if (state.shieldCharges > 0) {
+          state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
+          callbacks.onShake(4);
+          vfxManager.triggerShockwave(fishX, state.fishY, '#80d8ff', 160, 6);
+          triggerFloatingText(state, 'Shield Deflect!', fishX, state.fishY - 30, '#80d8ff', true);
+        } else {
+          killOrUseLife(state, callbacks);
+          return;
+        }
+      }
+    }
+
+    if (state.bossEvent.timerMs >= state.bossEvent.durationMs) {
+      state.bossEvent = null;
+      state.score += 5;
+      callbacks.onScore(state.score);
+      triggerFloatingText(state, '✦ HAZARD SURVIVED! +5', fishX, state.height * 0.35, '#ffd54f', true);
+      callbacks.onBossEventEnd?.();
+    }
+  }
 
   state.elapsedSinceSpawn += dtMs;
   // Keep enough horizontal breathing room between pipe gates. The timer stays
@@ -696,6 +798,19 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       }
     }
 
+    if (isTorpedoActive) {
+      const withinX = fishX + FAIR_FISH_HITBOX_RADIUS > obs.x - BASE.obstacleWidth / 2 && fishX - FAIR_FISH_HITBOX_RADIUS < obs.x + BASE.obstacleWidth / 2;
+      if (withinX && !obs.passed) {
+        obs.passed = true;
+        obs.gapSize = state.height; // smash obstacle opening!
+        state.score += 2;
+        callbacks.onScore(state.score);
+        vfxManager.triggerShockwave(obs.x, state.fishY, '#00e5ff', 120, 6);
+        addBurst(state, obs.x, state.fishY, '#00e5ff', 18, 3);
+        addBurst(state, obs.x, state.fishY, '#ffd54f', 12, 2.5);
+      }
+    }
+
     if (!invincible && !isFeverActive) {
       const withinX = fishX + FAIR_FISH_HITBOX_RADIUS > obs.x - BASE.obstacleWidth / 2 && fishX - FAIR_FISH_HITBOX_RADIUS < obs.x + BASE.obstacleWidth / 2;
       if (withinX) {
@@ -718,6 +833,12 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
             callbacks.onShake(3); // Screen shake is very light & minor
             triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
             addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
+            vfxManager.triggerShockwave(fishX, state.fishY, 'rgba(0, 229, 255, 0.95)', 170, 6.0);
+            audioManager.playSound('shockwave', true);
+            // Deflection shockwave clears nearby sea mines
+            state.seaMines.forEach((m) => {
+              if (Math.hypot(m.x - fishX, m.y - state.fishY) < 170) m.exploded = true;
+            });
           } else {
             killOrUseLife(state, callbacks);
             return;
@@ -739,6 +860,16 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       shark.passed = true;
     }
 
+    if (isTorpedoActive) {
+      const withinX = fishX + FAIR_FISH_HITBOX_RADIUS > shark.x - shark.width * 0.42 && fishX - FAIR_FISH_HITBOX_RADIUS < shark.x + shark.width * 0.42;
+      const withinY = state.fishY + FAIR_FISH_HITBOX_RADIUS > shark.y - shark.height * 0.40 && state.fishY - FAIR_FISH_HITBOX_RADIUS < shark.y + shark.height * 0.40;
+      if (withinX && withinY && !shark.passed) {
+        shark.passed = true;
+        addBurst(state, shark.x, shark.y, '#ff1744', 24, 3);
+        vfxManager.triggerShockwave(shark.x, shark.y, '#00e5ff', 110, 5);
+      }
+    }
+
     // Collision with Shark
     if (!invincible && !isFeverActive) {
       const withinX = fishX + FAIR_FISH_HITBOX_RADIUS > shark.x - shark.width * 0.42 && fishX - FAIR_FISH_HITBOX_RADIUS < shark.x + shark.width * 0.42;
@@ -747,9 +878,11 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
           state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
-          callbacks.onShake(3); // Light non-distracting screen shake
+          callbacks.onShake(3);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
           addBurst(state, fishX, state.fishY, 'rgba(100, 210, 255, 0.95)', 25, 3);
+          vfxManager.triggerShockwave(fishX, state.fishY, 'rgba(0, 229, 255, 0.95)', 170, 6.0);
+          audioManager.playSound('shockwave', true);
         } else {
           killOrUseLife(state, callbacks);
           return;
@@ -775,11 +908,13 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         callbacks.onRedFlash?.();
         addBurst(state, mine.x, mine.y, '#ff3d00', 30, 4);
         addBurst(state, mine.x, mine.y, '#ffc107', 20, 2.5);
+        vfxManager.triggerShockwave(mine.x, mine.y, '#ff3d00', 140, 5.5);
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
           state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
+          audioManager.playSound('shockwave', true);
         } else {
           killOrUseLife(state, callbacks);
           return;
@@ -805,11 +940,13 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         callbacks.onRedFlash?.();
         addBurst(state, jelly.x, jelly.y, '#e040fb', 22, 3);
         addBurst(state, jelly.x, jelly.y, '#00e5ff', 15, 2);
+        audioManager.playSound('zap', true);
 
         if (state.shieldCharges > 0) {
           state.shieldCharges = Math.max(0, state.shieldCharges - 1);
           state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
           triggerFloatingText(state, 'Shield Block!', fishX, state.fishY - 30, '#80d8ff', true);
+          vfxManager.triggerShockwave(fishX, state.fishY, '#80d8ff', 150, 5.5);
         } else {
           killOrUseLife(state, callbacks);
           return;
@@ -839,6 +976,9 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           state.coinStreakCount = 1;
         }
         state.lastCoinCollectedTime = now;
+
+        // Pentatonic ascending chime feedback!
+        audioManager.playCoinChime(state.coinStreakCount, true);
 
         let comboText = '';
         if (state.coinStreakCount >= 30) {
@@ -931,6 +1071,13 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
           callbacks.onShake?.(1); // Light non-distracting shake
           triggerFloatingText(state, translate('engine.slowMo'), pu.x, pu.y - 15, '#00e5ff', true);
           addBurst(state, pu.x, pu.y, 'rgba(0, 229, 255, 0.95)', 20, 3);
+        } else if (pu.type === 'torpedo') {
+          state.torpedoUntil = state.timeMs + 4000;
+          callbacks.onShake?.(3);
+          triggerFloatingText(state, '🚀 TORPEDO DASH!', pu.x, pu.y - 15, '#00e5ff', true);
+          addBurst(state, pu.x, pu.y, '#00e5ff', 25, 3.5);
+          vfxManager.triggerShockwave(pu.x, pu.y, '#00e5ff', 140, 5.5);
+          audioManager.playSound('torpedo', true);
         }
       }
     }
@@ -1087,6 +1234,8 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
   drawWaterTexture(ctx, state);
+  drawProceduralCaustics(ctx, width, height, state.timeMs, theme.speck);
+  drawSurfaceWaterLine(ctx, width, state.timeMs);
 
   if (!isFever && theme.id === 'temple') {
     const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
@@ -1299,6 +1448,26 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.translate(fishX, state.fishY + swimBob);
   ctx.rotate(state.fishRotation);
 
+  const squash = Math.max(0.65, Math.min(1.4, state.squashY || 1.0));
+  const stretch = 1.0 / Math.sqrt(squash);
+  ctx.scale(stretch, squash);
+
+  if (state.torpedoUntil > state.timeMs) {
+    ctx.save();
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 24;
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(r * 1.8, 0);
+    ctx.lineTo(-r * 2.2, -r * 1.3);
+    ctx.lineTo(-r * 1.5, 0);
+    ctx.lineTo(-r * 2.2, r * 1.3);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   {
     // The hero skin keeps its clean silhouette; the circular aura is reserved
     // for the temporary Fever power-up so it always communicates a state.
@@ -1462,16 +1631,19 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
 
     // Expressive glossy eye, cheek and gill line give the fish a characterful
     // face without making it visually noisy at mobile scale.
+    const gazeX = state.currentGaze ? state.currentGaze.x : 0.8;
+    const gazeY = state.currentGaze ? state.currentGaze.y : 0;
+
     ctx.beginPath();
     ctx.arc(r * 0.56, -r * 0.16, 5.3, 0, Math.PI * 2);
     ctx.fillStyle = '#fffdf3';
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(r * 0.72, -r * 0.14, 3.35, 0, Math.PI * 2);
+    ctx.arc(r * 0.70 + gazeX * 0.8, -r * 0.14 + gazeY * 0.7, 3.35, 0, Math.PI * 2);
     ctx.fillStyle = isFever ? '#7c4dff' : '#125d82';
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(r * 0.86, -r * 0.12, 1.75, 0, Math.PI * 2);
+    ctx.arc(r * 0.76 + gazeX * 0.9, -r * 0.12 + gazeY * 0.8, 1.75, 0, Math.PI * 2);
     ctx.fillStyle = '#081923';
     ctx.fill();
     ctx.beginPath();
@@ -2240,6 +2412,81 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
     ctx.stroke();
 
     ctx.restore();
+
+  } else if (pu.type === 'torpedo') {
+    // Sleek cyan/silver rocket torpedo with thruster glow
+    ctx.save();
+    const pulse = (Math.sin(timeMs * 0.012) + 1) / 2;
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 18 + pulse * 10;
+
+    // Thruster exhaust trail (behind the torpedo)
+    const exhaustGrad = ctx.createLinearGradient(-28, 0, -12, 0);
+    exhaustGrad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+    exhaustGrad.addColorStop(0.4, 'rgba(0, 229, 255, 0.3)');
+    exhaustGrad.addColorStop(1, 'rgba(255, 167, 38, 0.7)');
+    ctx.fillStyle = exhaustGrad;
+    ctx.beginPath();
+    ctx.moveTo(-12, -3 - pulse * 1.5);
+    ctx.lineTo(-28 - pulse * 6, 0);
+    ctx.lineTo(-12, 3 + pulse * 1.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Torpedo body (elongated oval)
+    const bodyGrad = ctx.createLinearGradient(0, -7, 0, 7);
+    bodyGrad.addColorStop(0, '#e0f7fa');
+    bodyGrad.addColorStop(0.3, '#80deea');
+    bodyGrad.addColorStop(0.7, '#00acc1');
+    bodyGrad.addColorStop(1, '#006064');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nose cone (sharp front)
+    const noseGrad = ctx.createLinearGradient(14, -4, 20, 4);
+    noseGrad.addColorStop(0, '#b2ebf2');
+    noseGrad.addColorStop(1, '#00838f');
+    ctx.fillStyle = noseGrad;
+    ctx.beginPath();
+    ctx.moveTo(14, -4);
+    ctx.quadraticCurveTo(22, 0, 14, 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Tail fins
+    ctx.fillStyle = '#cfd8dc';
+    ctx.beginPath();
+    ctx.moveTo(-12, -2);
+    ctx.lineTo(-16, -8);
+    ctx.lineTo(-10, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-12, 2);
+    ctx.lineTo(-16, 8);
+    ctx.lineTo(-10, 3);
+    ctx.closePath();
+    ctx.fill();
+
+    // Gloss highlight
+    ctx.beginPath();
+    ctx.ellipse(2, -2.5, 8, 1.8, -0.1, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.fill();
+
+    // Thruster glow at back
+    ctx.beginPath();
+    ctx.arc(-12, 0, 3 + pulse * 1.5, 0, Math.PI * 2);
+    const thrusterGrad = ctx.createRadialGradient(-12, 0, 0, -12, 0, 3 + pulse * 1.5);
+    thrusterGrad.addColorStop(0, '#fff9c4');
+    thrusterGrad.addColorStop(0.5, '#ffa726');
+    thrusterGrad.addColorStop(1, 'rgba(255, 87, 34, 0)');
+    ctx.fillStyle = thrusterGrad;
+    ctx.fill();
+
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -2371,6 +2618,175 @@ function drawFloatingText(ctx: CanvasRenderingContext2D, text: FloatingText, tim
   ctx.restore();
 }
 
+function drawBossEvent(ctx: CanvasRenderingContext2D, state: EngineState) {
+  const boss = state.bossEvent;
+  if (!boss || !boss.active) return;
+
+  const { width, height } = state;
+  const t = state.timeMs;
+  const progress = boss.progress;
+  const isWarning = boss.timerMs < boss.warningMs;
+
+  // Warning phase: animated danger stripes at top & bottom
+  if (isWarning) {
+    ctx.save();
+    const flash = (Math.sin(t * 0.015) + 1) / 2;
+    ctx.globalAlpha = 0.3 + flash * 0.35;
+
+    // Top warning stripe
+    const stripeH = 8;
+    const stripeGrad = ctx.createLinearGradient(0, 0, width, 0);
+    for (let i = 0; i < 20; i++) {
+      const color = i % 2 === 0 ? '#ff1744' : '#ffab00';
+      stripeGrad.addColorStop(i / 20, color);
+    }
+    ctx.fillStyle = stripeGrad;
+    ctx.fillRect(0, 0, width, stripeH);
+    ctx.fillRect(0, height - stripeH, width, stripeH);
+
+    // ⚠ WARNING text
+    ctx.globalAlpha = 0.7 + flash * 0.3;
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ff1744';
+    ctx.shadowColor = '#ff1744';
+    ctx.shadowBlur = 12;
+    const label = boss.type === 'kraken' ? '⚠ KRAKEN INCOMING ⚠'
+      : boss.type === 'megashark' ? '⚠ MEGA SHARK ⚠'
+      : '⚠ OCEAN CURRENT ⚠';
+    ctx.fillText(label, width / 2, 22);
+    ctx.restore();
+    return;
+  }
+
+  // Active boss event rendering
+  ctx.save();
+
+  if (boss.type === 'kraken') {
+    // Kraken tentacle wave across the danger lane
+    const tentacleCount = 5;
+    const laneTop = boss.laneY - boss.laneHeight / 2;
+    const laneBottom = boss.laneY + boss.laneHeight / 2;
+
+    // Danger zone tint
+    ctx.globalAlpha = 0.12 + Math.sin(t * 0.008) * 0.06;
+    ctx.fillStyle = '#4a148c';
+    ctx.fillRect(0, laneTop, width, boss.laneHeight);
+
+    // Tentacles
+    ctx.globalAlpha = 0.65;
+    for (let i = 0; i < tentacleCount; i++) {
+      const x = width + 30 - (progress * (width + 100)) + i * 55;
+      if (x < -60 || x > width + 60) continue;
+
+      const waveY = Math.sin(t * 0.004 + i * 1.3) * 18;
+      ctx.strokeStyle = '#7c4dff';
+      ctx.lineWidth = 6 - i * 0.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, laneBottom + 10);
+      ctx.bezierCurveTo(
+        x - 15, boss.laneY + waveY,
+        x + 20, boss.laneY - waveY * 0.7,
+        x + 8, laneTop - 8
+      );
+      ctx.stroke();
+
+      // Suction cups
+      ctx.fillStyle = '#ce93d8';
+      for (let j = 0; j < 4; j++) {
+        const cy = laneTop + (boss.laneHeight * (j + 1)) / 5 + waveY * 0.3;
+        ctx.beginPath();
+        ctx.arc(x + Math.sin(j * 0.8) * 3, cy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+  } else if (boss.type === 'megashark') {
+    // Giant shark silhouette charging from the right
+    const laneTop = boss.laneY - boss.laneHeight / 2;
+    
+    // Danger zone
+    ctx.globalAlpha = 0.1 + Math.sin(t * 0.006) * 0.05;
+    ctx.fillStyle = '#b71c1c';
+    ctx.fillRect(0, laneTop, width, boss.laneHeight);
+
+    // Shark silhouette
+    ctx.globalAlpha = 0.55;
+    const sharkX = width + 80 - progress * (width + 200);
+    const sharkY = boss.laneY + Math.sin(t * 0.003) * 8;
+    const sharkLen = 90;
+    const sharkH = 30;
+
+    const sharkGrad = ctx.createLinearGradient(sharkX - sharkLen / 2, 0, sharkX + sharkLen / 2, 0);
+    sharkGrad.addColorStop(0, '#37474f');
+    sharkGrad.addColorStop(0.5, '#263238');
+    sharkGrad.addColorStop(1, '#37474f');
+    ctx.fillStyle = sharkGrad;
+
+    ctx.beginPath();
+    ctx.moveTo(sharkX + sharkLen / 2, sharkY);
+    ctx.quadraticCurveTo(sharkX + sharkLen * 0.3, sharkY - sharkH / 2, sharkX, sharkY - sharkH * 0.3);
+    ctx.quadraticCurveTo(sharkX - sharkLen * 0.3, sharkY - sharkH * 0.1, sharkX - sharkLen / 2, sharkY);
+    ctx.quadraticCurveTo(sharkX - sharkLen * 0.3, sharkY + sharkH * 0.1, sharkX, sharkY + sharkH * 0.3);
+    ctx.quadraticCurveTo(sharkX + sharkLen * 0.3, sharkY + sharkH / 2, sharkX + sharkLen / 2, sharkY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Dorsal fin
+    ctx.beginPath();
+    ctx.moveTo(sharkX + 10, sharkY - sharkH * 0.3);
+    ctx.lineTo(sharkX + 5, sharkY - sharkH * 0.8);
+    ctx.lineTo(sharkX - 15, sharkY - sharkH * 0.2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Glowing red eye
+    ctx.fillStyle = '#ff1744';
+    ctx.shadowColor = '#ff1744';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(sharkX + sharkLen * 0.35, sharkY - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+  } else if (boss.type === 'current') {
+    // Ocean current drift lines
+    ctx.globalAlpha = 0.25 + Math.sin(t * 0.005) * 0.1;
+    const streamCount = 12;
+    ctx.strokeStyle = '#00bcd4';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 8]);
+
+    for (let i = 0; i < streamCount; i++) {
+      const y = (height / streamCount) * i + 10;
+      const drift = (t * 0.15 + i * 40) % (width + 100) - 50;
+      ctx.beginPath();
+      ctx.moveTo(drift, y);
+      ctx.bezierCurveTo(
+        drift + width * 0.25, y + Math.sin(t * 0.002 + i) * 15,
+        drift + width * 0.5, y - Math.sin(t * 0.003 + i) * 10,
+        drift + width * 0.75, y
+      );
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Boss progress bar at top
+  ctx.globalAlpha = 0.8;
+  const barW = width * 0.5;
+  const barH = 4;
+  const barX = (width - barW) / 2;
+  const barY = 12;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = boss.type === 'kraken' ? '#7c4dff' : boss.type === 'megashark' ? '#ff1744' : '#00bcd4';
+  ctx.fillRect(barX, barY, barW * Math.min(1, progress), barH);
+
+  ctx.restore();
+}
+
 export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) {
   const { width, height } = state;
   ctx.clearRect(0, 0, width, height);
@@ -2402,6 +2818,12 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     drawFloatingText(ctx, text, state.timeMs);
   }
 
+  // Boss event rendering layer (over entities, under UI overlays)
+  drawBossEvent(ctx, state);
+
+  // VFX overlay: shockwaves, caustic rings, cavitation bubbles
+  vfxManager.render(ctx);
+
   ctx.restore();
 
   if (state.isRedFlashing) {
@@ -2419,6 +2841,30 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     vignette.addColorStop(1, 'rgba(0, 229, 255, 0.18)');
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  // Torpedo active: cyan speed-line vignette
+  if (state.torpedoUntil > state.timeMs) {
+    ctx.save();
+    const torpVignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.35, width / 2, height / 2, Math.max(width, height) * 0.65);
+    torpVignette.addColorStop(0, 'rgba(0, 229, 255, 0)');
+    torpVignette.addColorStop(1, 'rgba(0, 229, 255, 0.14)');
+    ctx.fillStyle = torpVignette;
+    ctx.fillRect(0, 0, width, height);
+
+    // Speed lines
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 1.5;
+    const lineCount = 8;
+    for (let i = 0; i < lineCount; i++) {
+      const ly = (height / lineCount) * i + ((state.timeMs * 0.3 + i * 50) % height);
+      ctx.beginPath();
+      ctx.moveTo(0, ly % height);
+      ctx.lineTo(width * 0.3, (ly + 2) % height);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 }

@@ -61,11 +61,25 @@ export type ScreenName =
   | 'dailyRewards'
   | 'luckySpin';
 
-export type PowerUpType = 'shield' | 'magnet';
+export type PowerUpType = 'shield' | 'magnet' | 'fever' | 'hourglass' | 'torpedo';
+
+export type BossEventType = 'kraken' | 'megashark' | 'current' | null;
+
+export interface BossEventState {
+  type: BossEventType;
+  active: boolean;
+  timerMs: number;
+  durationMs: number;
+  laneY: number;
+  laneHeight: number;
+  warningMs: number;
+  progress: number;
+}
 
 export interface PowerUpState {
   shieldCharges: number;
   magnetUntil: number; // timestamp when magnet expires, 0 if inactive
+  torpedoUntil?: number;
 }
 
 export type ShopItemId = 'shield' | 'magnet' | 'gemBoost' | 'continueToken';

@@ -90,6 +90,14 @@ export function refreshUnlockedSkins(bestScore: number): SkinId[] {
   return result;
 }
 
+export function unlockSkin(skin: SkinId): boolean {
+  const unlocked = new Set(getUnlockedSkins());
+  if (unlocked.has(skin)) return false;
+  unlocked.add(skin);
+  writeJSON(STORAGE_KEYS.unlockedSkins, Array.from(unlocked));
+  return true;
+}
+
 // ---- Achievements ----
 export function getUnlockedAchievements(): string[] {
   return readJSON<string[]>(STORAGE_KEYS.achievements, []);
@@ -211,8 +219,8 @@ export function consumeShopItem(itemId: ShopItemId): boolean {
   return true;
 }
 
-// Helper to add free shop item (used by daily rewards)
-function addShopItem(itemId: ShopItemId, count: number = 1): ShopInventory {
+// Helper to add free shop item (used by daily rewards and shop chests)
+export function addShopItem(itemId: ShopItemId, count: number = 1): ShopInventory {
   const inv = getShopInventory();
   const newInv: ShopInventory = { ...inv, [itemId]: (inv[itemId] ?? 0) + count };
   saveShopInventory(newInv);
