@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
   getCoins,
-  getShopInventory,
   buyShopItem,
   getShopItemCount,
   getUpgradeLevel,
