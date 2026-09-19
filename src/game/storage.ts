@@ -9,10 +9,10 @@ import {
   ACHIEVEMENTS,
   DAILY_CHALLENGE_POOL,
   SAMPLE_GLOBAL_SCORES,
+  SKINS,
   STORAGE_KEYS,
   dateKey,
 } from './constants';
-import { CHARACTERS } from './ocean/characters';
 import { CHAPTERS } from './ocean/chapters';
 import type {
   DailyChallengeState,
@@ -91,12 +91,24 @@ export function setSelectedSkin(skin: SkinId) {
 }
 export function refreshUnlockedSkins(bestScore: number): SkinId[] {
   const unlocked = new Set(getUnlockedSkins());
-  for (const character of CHARACTERS) {
-    if (bestScore >= character.unlockScore) unlocked.add(character.id);
+  // Score-based unlocks use the SKINS table (production source of truth);
+  // 'poseidon' skins only unlock via the Poseidon encounter.
+  for (const skin of SKINS) {
+    if (skin.unlockMethod !== 'poseidon' && bestScore >= skin.unlockScore) {
+      unlocked.add(skin.id);
+    }
   }
   const result = Array.from(unlocked);
   writeJSON(STORAGE_KEYS.unlockedSkins, result);
   return result;
+}
+
+export function unlockSkin(skin: SkinId): boolean {
+  const unlocked = new Set(getUnlockedSkins());
+  if (unlocked.has(skin)) return false;
+  unlocked.add(skin);
+  writeJSON(STORAGE_KEYS.unlockedSkins, Array.from(unlocked));
+  return true;
 }
 
 // ---- Achievements ----

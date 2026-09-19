@@ -433,6 +433,28 @@ html, body, #root {
 
 .menu-fish-svg { width: 88px; height: 62px; overflow: visible; }
 
+.menu-fish-decor-art {
+  width: 152px;
+  height: 144px;
+  margin-top: -12px;
+  margin-bottom: -15px;
+  filter: drop-shadow(0 0 20px rgba(255, 214, 10, 0.62));
+}
+
+.animated-fish-preview {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-repeat: no-repeat;
+  background-color: transparent;
+  image-rendering: auto;
+}
+
+.menu-fish-sprite {
+  width: 144px;
+  height: 144px;
+  aspect-ratio: 1 / 1;
+}
+
 .menu-screen {
   padding-top: max(52px, calc(env(safe-area-inset-top) + 32px));
   padding-bottom: 28px;
@@ -633,6 +655,22 @@ html, body, #root {
 .skin-lock-req { color: #ffd60a; font-size: 0.6rem; }
 .skin-fish-preview { flex-shrink: 0; }
 
+.skin-fish-preview-art {
+  width: 76px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 2px;
+}
+
+.skin-fish-preview-art img {
+  width: 76px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
 .confirm-row { display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; }
 .privacy-note { font-size: 0.72rem; color: #9fdcf2; max-width: 300px; }
 
@@ -719,6 +757,12 @@ html, body, #root {
   justify-content: center;
   animation: gfr-bob 1.2s ease-in-out infinite;
   filter: drop-shadow(0 0 16px rgba(255, 214, 10, 0.5));
+}
+
+.loading-fish-sprite {
+  width: 128px;
+  height: 128px;
+  aspect-ratio: 1 / 1;
 }
 
 .modal-overlay {
@@ -833,6 +877,18 @@ html, body, #root {
 .footer-links a { color: #4f7d92; text-decoration: none; }
 .footer-links a:hover { text-decoration: underline; }
 
+/* Long mobile screens must own vertical pan gestures because gameplay globally disables them. */
+.settings-screen,
+.unlock-screen {
+  justify-content: flex-start;
+  align-content: flex-start;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-top: max(52px, calc(env(safe-area-inset-top) + 28px));
+  padding-bottom: max(112px, calc(env(safe-area-inset-bottom) + 88px));
+}
+
 /* Unlock celebration */
 .unlock-screen {
   gap: 16px;
@@ -869,6 +925,13 @@ html, body, #root {
   border-radius: 18px;
   padding: 16px 18px;
   animation: gfr-pop 0.5s ease-out;
+}
+
+.unlock-fish-preview-art {
+  width: 158px;
+  height: 122px;
+  object-fit: contain;
+  image-rendering: auto;
 }
 
 .unlock-fish-name {

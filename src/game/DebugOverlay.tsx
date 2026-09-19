@@ -42,12 +42,14 @@ export default function DebugOverlay() {
           state.sharks.length + state.seaMines.length + state.jellyfish.length + state.plankton.length +
           state.sunPearls.length + state.barriers.length + state.currents.length + state.companions.length,
         biome: state.chapter.id,
-        pattern: state.currentPatternId,
+        pattern: state.spectacle ? 'finale' : 'procedural',
         audio: typeof window !== 'undefined' && 'AudioContext' in window ? 'webaudio' : 'silent',
         score: state.score,
         combo: state.combo.count,
         surge: state.surge.activeUntil > state.timeMs ? 'active' : `${Math.round(state.surge.charge)}%`,
-        boss: state.boss ? `${state.boss.kind} p${state.boss.phase} ${state.boss.pearlsCollected}/${state.boss.pearlTarget}` : '—',
+        boss: state.boss
+          ? `${state.boss.config.id} ${state.boss.phase}${state.spectacle ? ' +finale' : ''}`
+          : state.spectacle ? 'finale' : '—',
         particles: state.particles.length,
       });
     };

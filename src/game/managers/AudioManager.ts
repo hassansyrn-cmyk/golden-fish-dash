@@ -40,7 +40,12 @@ export type SoundName =
   | 'lore'
   | 'current'
   | 'growthUp'
-  | 'uiTap';
+  | 'uiTap'
+  // Production video-boss encounter sounds:
+  | 'bossWarning'
+  | 'bossAttack'
+  | 'bossSummon'
+  | 'bossDefeated';
 
 export type BusName = 'music' | 'ambience' | 'sfx' | 'ui';
 export type MusicState = 'intro' | 'explore' | 'danger' | 'surge' | 'boss';
@@ -70,11 +75,15 @@ class AudioManager {
   private musicLayer: { osc: OscillatorNode[]; gain: GainNode; timer: ReturnType<typeof setInterval> | null } | null = null;
   private duckUntil = 0;
   private musicStep = 0;
+  /** Production boss danger loop (HTMLAudio; volume follows the music bus). */
+  private bossMusic: HTMLAudioElement | null = null;
+  private bossMusicActive = false;
   private readonly lastPlayedAt = new Map<SoundName, number>();
   private readonly cooldownMs: Partial<Record<SoundName, number>> = {
     jump: 45, coin: 58, gem: 110, hit: 170, back: 140, pearl: 70, plankton: 90,
     rescue: 200, coralBreak: 240, treasure: 300, comboTier: 260, surge: 500,
     chapter: 900, bossRoar: 1500, eel: 400, mineWarn: 500, current: 260, growthUp: 500, uiTap: 90,
+    bossAttack: 180, bossSummon: 650,
   };
   private coinChainIndex = 0;
   private lastCoinAt = 0;
@@ -380,6 +389,30 @@ class AudioManager {
         setTimeout(() => T(880, 260, 'sine', 0.4), 300);
         break;
 
+      case 'bossWarning':
+        this.duck(500);
+        T(148, 280, 'sawtooth', 0.7);
+        setTimeout(() => T(196, 270, 'sawtooth', 0.6), 170);
+        setTimeout(() => T(294, 360, 'triangle', 0.56), 350);
+        break;
+
+      case 'bossAttack':
+        T(230, 140, 'sawtooth', 0.52);
+        setTimeout(() => T(150, 190, 'triangle', 0.5), 55);
+        break;
+
+      case 'bossSummon':
+        T(125, 250, 'sine', 0.64);
+        setTimeout(() => T(250, 180, 'triangle', 0.48), 140);
+        break;
+
+      case 'bossDefeated':
+        T(440, 90, 'triangle', 0.68);
+        setTimeout(() => T(660, 105, 'triangle', 0.6), 76);
+        setTimeout(() => T(990, 130, 'sine', 0.52), 168);
+        this.duck(400);
+        break;
+
       case 'bossRoar':
         this.duck(900);
         T(90, 500, 'sawtooth', 0.3, 'sfx', 45);
@@ -548,6 +581,42 @@ class AudioManager {
       if (ctx) layer.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
       if (layer.timer) clearInterval(layer.timer);
     } catch { /* ignore */ }
+  }
+
+  // ------------------------------------------------------------------
+  // Production boss danger loop (keeps working with the bus volumes).
+  // ------------------------------------------------------------------
+  public startBossMusic(enabled: boolean) {
+    if (!enabled || typeof Audio === 'undefined') return;
+    try {
+      if (!this.bossMusic) {
+        this.bossMusic = new Audio('/audio/boss-danger-loop.mp3');
+        this.bossMusic.loop = true;
+        this.bossMusic.preload = 'auto';
+      }
+      this.bossMusicActive = true;
+      this.bossMusic.volume = Math.min(1, 0.2 * this.busLevels.master * this.busLevels.music);
+      void this.bossMusic.play().catch(() => undefined);
+    } catch {
+      // A browser or WebView may block media playback until the first user gesture.
+    }
+  }
+
+  public pauseBossMusic() {
+    if (this.bossMusicActive) this.bossMusic?.pause();
+  }
+
+  public resumeBossMusic() {
+    if (this.bossMusicActive && this.bossMusic?.paused) {
+      void this.bossMusic.play().catch(() => undefined);
+    }
+  }
+
+  public stopBossMusic() {
+    this.bossMusicActive = false;
+    if (!this.bossMusic) return;
+    this.bossMusic.pause();
+    this.bossMusic.currentTime = 0;
   }
 
   /** Called on visibility resume / user gesture; safe no-op elsewhere. */

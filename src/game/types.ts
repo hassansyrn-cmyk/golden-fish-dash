@@ -1,12 +1,14 @@
 // Shared type definitions for Golden Fish Rush
 
-// Ocean Legends added three new heroes to the legacy five skins.
-export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary' | 'mako' | 'ember' | 'nyx';
+// Ocean Legends heroes (mako/ember/nyx) coexist with the production premium
+// skins (sapphire/solar/poseidonsHeir) on one 11-skin roster.
+export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary' | 'mako' | 'ember' | 'nyx' | 'sapphire' | 'solar' | 'poseidonsHeir';
 
 export interface SkinDef {
   id: SkinId;
   name: string;
   unlockScore: number;
+  unlockMethod?: 'score' | 'poseidon';
   colors: { body: string; belly: string; fin: string; glow: string };
   ability: string;
 }

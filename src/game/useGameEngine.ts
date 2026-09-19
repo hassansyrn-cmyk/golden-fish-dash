@@ -17,6 +17,7 @@ import {
   addXP,
   getUpgradeLevel,
   getChapterProgress,
+  unlockSkin,
 } from './storage';
 import {
   FISH_X_RATIO,
@@ -41,7 +42,7 @@ interface UseGameEngineOptions {
   demo: boolean;
   onGameOver: (finalScore: number) => void;
   onChapterTransition?: (chapterIndex: number, chapterId: string) => void;
-  onSetPieceStart?: (kind: string, nameKey: string) => void;
+  onSpectacleStart?: (nameKey: string) => void;
 }
 
 interface HudState {
@@ -61,8 +62,7 @@ interface HudState {
   chapterId: string;
   bossActive: boolean;
   bossKind: string | null;
-  bossPearls: number;
-  bossTarget: number;
+  bossPhase: string | null;
   bossRemainingMs: number;
 }
 
@@ -119,15 +119,17 @@ const EMPTY_HUD_STATE: HudState = {
   chapterId: 'sunlitLagoon',
   bossActive: false,
   bossKind: null,
-  bossPearls: 0,
-  bossTarget: 0,
+  bossPhase: null,
   bossRemainingMs: 0,
 };
 
 function readHudState(engine: EngineState): HudState {
   const boss = engine.boss;
+  const bossRemainingMs = boss
+    ? Math.max(0, boss.config.battleDurationMs - (engine.timeMs - boss.battleStartedAt))
+    : 0;
   return {
-    shieldCharges: Math.max(0, Math.min(2, engine.shieldCharges)),
+    shieldCharges: Math.max(0, Math.min(engine.score >= 300 ? 3 : 2, engine.shieldCharges)),
     magnetRemainingMs: Math.max(0, engine.magnetUntil - engine.timeMs),
     feverRemainingMs: Math.max(0, engine.feverUntil - engine.timeMs),
     hourglassRemainingMs: Math.max(0, engine.hourglassUntil - engine.timeMs),
@@ -141,11 +143,10 @@ function readHudState(engine: EngineState): HudState {
     growthStage: engine.growth.stage,
     chapterIndex: engine.chapter.index,
     chapterId: engine.chapter.id,
-    bossActive: !!boss && !boss.ended,
-    bossKind: boss ? boss.kind : null,
-    bossPearls: boss ? boss.pearlsCollected : 0,
-    bossTarget: boss ? boss.pearlTarget : 0,
-    bossRemainingMs: boss ? Math.max(0, boss.durationMs - (engine.timeMs - boss.startedAtMs)) : 0,
+    bossActive: boss !== null,
+    bossKind: boss ? boss.config.id : null,
+    bossPhase: boss ? boss.phase : null,
+    bossRemainingMs,
   };
 }
 
@@ -170,7 +171,7 @@ function sizeCanvasForDisplay(canvas: HTMLCanvasElement, width: number, height: 
   context?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 }
 
-export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo, onGameOver, onChapterTransition, onSetPieceStart }: UseGameEngineOptions) {
+export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo, onGameOver, onChapterTransition, onSpectacleStart }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
@@ -191,15 +192,22 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
+  useEffect(() => {
+    if (paused) audioManager.pauseBossMusic();
+    else audioManager.resumeBossMusic();
+  }, [paused]);
+
+  useEffect(() => () => audioManager.stopBossMusic(), []);
+
   const onGameOverRef = useRef(onGameOver);
   const onChapterTransitionRef = useRef(onChapterTransition);
-  const onSetPieceStartRef = useRef(onSetPieceStart);
+  const onSpectacleStartRef = useRef(onSpectacleStart);
 
   useEffect(() => {
     onGameOverRef.current = onGameOver;
     onChapterTransitionRef.current = onChapterTransition;
-    onSetPieceStartRef.current = onSetPieceStart;
-  }, [onGameOver, onChapterTransition, onSetPieceStart]);
+    onSpectacleStartRef.current = onSpectacleStart;
+  }, [onGameOver, onChapterTransition, onSpectacleStart]);
 
   const setup = useCallback(() => {
     const canvas = canvasRef.current;
@@ -225,11 +233,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
       },
     });
 
-    // Apply upgrade levels directly to starting engine configurations
+    // Apply upgrade levels directly to starting engine configurations.
     const shieldLvl = getUpgradeLevel('shield');
     const magnetLvl = getUpgradeLevel('magnet');
     const gemLvl = getUpgradeLevel('gemBoost');
-
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
@@ -242,11 +249,17 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
       incrementMissionProgress('m_shield', 1);
     }
 
-    // Free starting shield chance (Reef Regent character ability).
+    // Free starting shield chance (Reef Regent character ability) — seeded.
     if (skin === 'legendary' && engine.shieldCharges === 0 && !noBoostModifier) {
       if (engine.rng.chance(0.15)) {
         engine.shieldCharges = 1;
       }
+    }
+
+    // Poseidon's Heir always begins protected, while preserving purchased
+    // shields and the normal two-slot early-game capacity.
+    if (skin === 'poseidonsHeir') {
+      engine.shieldCharges = Math.min(2, engine.shieldCharges + 1);
     }
 
     if (!noBoostModifier && (inv.magnet > 0 || magnetLvl > 0)) {
@@ -467,6 +480,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
                 const finalScore = state.score;
                 const best = getPersonalBest();
 
+                audioManager.stopBossMusic();
                 audioManager.playSound('gameover', settings.sound);
                 safeVibrate([80, 50, 120], settings.vibration);
 
@@ -518,7 +532,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
                 const improvedChapters = recordRunChapters(
                   state.runStats.chaptersVisited,
                   finalScore,
-                  state.runStats.setPiecesCleared,
+                  state.runStats.spectaclesCleared,
                 );
                 recordRunTotals({
                   surges: state.runStats.surges,
@@ -623,20 +637,19 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
                 onChapterTransitionRef.current?.(chapterIndex, chapterId);
               },
 
-              onSetPieceStart: (kind, nameKey) => {
-                audioManager.playSound(kind === 'spectacle' ? 'chapter' : 'bossRoar', settings.sound);
+              onSpectacleStart: (nameKey) => {
+                audioManager.playSound('chapter', settings.sound);
                 safeVibrate([50, 40, 90], settings.vibration);
-                onSetPieceStartRef.current?.(kind, nameKey);
+                onSpectacleStartRef.current?.(nameKey);
               },
 
-              onSetPieceEnd: (kind, succeeded) => {
+              onSpectacleEnd: (succeeded) => {
                 if (succeeded) {
                   audioManager.playSound('bossEnd', settings.sound);
                   safeVibrate([30, 25, 30, 25, 60], settings.vibration);
                 } else {
                   audioManager.playSound('milestone', settings.sound);
                 }
-                void kind;
               },
 
               onLoreFound: (loreId) => {
@@ -645,13 +658,37 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
                 void loreId;
               },
 
-              onCurrentPush: () => {
-                audioManager.playSound('current', settings.sound);
-              },
-
               onBarrierBreak: () => {
                 audioManager.playSound('coralBreak', settings.sound);
                 safeVibrate(30, settings.vibration);
+              },
+
+              onBossStart: () => {
+                audioManager.playSound('bossWarning', settings.sound);
+                audioManager.startBossMusic(settings.sound);
+                safeVibrate([90, 50, 120], settings.vibration);
+              },
+
+              onBossAttack: () => {
+                audioManager.playSound('bossAttack', settings.sound);
+              },
+
+              onBossSummon: () => {
+                audioManager.playSound('bossSummon', settings.sound);
+                safeVibrate([35, 22, 40], settings.vibration);
+              },
+
+              onBossDefeated: (bossId) => {
+                audioManager.stopBossMusic();
+                audioManager.playSound('bossDefeated', settings.sound);
+                safeVibrate([30, 28, 45, 25, 65], settings.vibration);
+
+                const unlockedNow = bossId === 'poseidon' && unlockSkin('poseidonsHeir');
+                if (unlockedNow) {
+                  audioManager.playSound('achievement', settings.sound);
+                  safeVibrate([40, 35, 60, 35, 85], settings.vibration);
+                }
+                return unlockedNow;
               },
             },
             { vibration: settings.vibration },
@@ -782,8 +819,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo
     chapterId: hudState.chapterId,
     bossActive: hudState.bossActive,
     bossKind: hudState.bossKind,
-    bossPearls: hudState.bossPearls,
-    bossTarget: hudState.bossTarget,
+    bossPhase: hudState.bossPhase,
     bossRemainingMs: hudState.bossRemainingMs,
     miniChallenge,
     runSummary,

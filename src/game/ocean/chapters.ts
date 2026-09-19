@@ -82,7 +82,7 @@ export const CHAPTERS: ChapterDef[] = [
     identityKey: 'chapter.coralCarnival.identity', minScore: 15, themeIds: ['coral'],
     difficultyRange: [1, 3], audioTheme: 'coral',
     lighting: { fog: 0.08, accent: '#ffd39a', dark: false },
-    setPiece: { kind: 'guardian', atScore: 34, nameKey: 'setpiece.reefGuardian' },
+    setPiece: { kind: 'spectacle', atScore: 34, nameKey: 'setpiece.coralJubilee' },
     lore: [LORE_POOL[1], LORE_POOL[9]], missions: mkMissions(1),
   },
   {
@@ -98,7 +98,7 @@ export const CHAPTERS: ChapterDef[] = [
     identityKey: 'chapter.sunkenRuins.identity', minScore: 60, themeIds: ['ruins', 'sunkenCity', 'moonlit'],
     difficultyRange: [2, 4], audioTheme: 'ruins',
     lighting: { fog: 0.18, accent: '#aeb6ff', dark: false },
-    setPiece: { kind: 'leviathan', atScore: 92, nameKey: 'setpiece.trenchLeviathan' },
+    setPiece: { kind: 'spectacle', atScore: 92, nameKey: 'setpiece.ruinsHomecoming' },
     lore: [LORE_POOL[3], LORE_POOL[11]], missions: mkMissions(3),
   },
   {
@@ -114,7 +114,7 @@ export const CHAPTERS: ChapterDef[] = [
     identityKey: 'chapter.crystalGrotto.identity', minScore: 140, themeIds: ['crystal', 'temple'],
     difficultyRange: [3, 4], audioTheme: 'crystal',
     lighting: { fog: 0.12, accent: '#a8ffff', dark: false },
-    setPiece: { kind: 'guardian', atScore: 195, nameKey: 'setpiece.reefGuardian' },
+    setPiece: { kind: 'spectacle', atScore: 195, nameKey: 'setpiece.prismRefrain' },
     lore: [LORE_POOL[5]], missions: mkMissions(5),
   },
   {
@@ -122,7 +122,7 @@ export const CHAPTERS: ChapterDef[] = [
     identityKey: 'chapter.auroraTrench.identity', minScore: 200, themeIds: ['aurora', 'abyss'],
     difficultyRange: [4, 5], audioTheme: 'trench',
     lighting: { fog: 0.3, accent: '#d7b9ff', dark: true },
-    setPiece: { kind: 'leviathan', atScore: 295, nameKey: 'setpiece.trenchLeviathan' },
+    setPiece: { kind: 'spectacle', atScore: 295, nameKey: 'setpiece.trenchSerenade' },
     lore: [LORE_POOL[6]], missions: mkMissions(6),
   },
   {
@@ -130,7 +130,7 @@ export const CHAPTERS: ChapterDef[] = [
     identityKey: 'chapter.crownReef.identity', minScore: 300, themeIds: ['crownReef', 'eternalTemple'],
     difficultyRange: [4, 5], audioTheme: 'crown',
     lighting: { fog: 0.1, accent: '#ffe3a0', dark: false },
-    setPiece: { kind: 'crownFinale', atScore: 420, nameKey: 'setpiece.crownFinale' },
+    setPiece: { kind: 'spectacle', atScore: 420, nameKey: 'setpiece.coronation' },
     lore: [LORE_POOL[7]], missions: mkMissions(7),
   },
 ];
