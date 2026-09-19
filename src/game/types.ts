@@ -1,6 +1,7 @@
 // Shared type definitions for Golden Fish Rush
 
-export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary';
+// Ocean Legends added three new heroes to the legacy five skins.
+export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary' | 'mako' | 'ember' | 'nyx';
 
 export interface SkinDef {
   id: SkinId;
@@ -44,6 +45,15 @@ export interface Settings {
   music: boolean;
   vibration: boolean;
   language: AppLanguage;
+  // Ocean Legends accessibility & control options (optional for old saves).
+  reducedMotion?: boolean;
+  reducedFlashes?: boolean;
+  highContrast?: boolean;
+  colorblindShapes?: boolean;
+  steerMode?: boolean;
+  masterVolume?: number;
+  musicVolume?: number;
+  sfxVolume?: number;
 }
 
 export type ScreenName =
@@ -59,7 +69,10 @@ export type ScreenName =
   | 'settings'
   | 'shop'
   | 'dailyRewards'
-  | 'luckySpin';
+  | 'luckySpin'
+  | 'chapterMap'
+  | 'gallery'
+  | 'collection';
 
 export type PowerUpType = 'shield' | 'magnet';
 

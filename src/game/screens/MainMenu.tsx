@@ -11,6 +11,9 @@ interface Props {
   onShop: () => void;
   onDailyRewards: () => void;
   onLuckySpin: () => void;
+  onChapterMap: () => void;
+  onGallery: () => void;
+  onCollection: () => void;
 }
 
 /**
@@ -64,6 +67,25 @@ function MenuFish() {
   );
 }
 
+/**
+ * Animated home reef backdrop: swaying kelp, rising bubbles and a school of
+ * small fish circling behind the menu. Pure CSS animation, no canvas cost.
+ */
+function HomeReef() {
+  return (
+    <div className="home-reef" aria-hidden="true">
+      <div className="home-reef-kelp home-reef-kelp-1" />
+      <div className="home-reef-kelp home-reef-kelp-2" />
+      <div className="home-reef-kelp home-reef-kelp-3" />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <span key={i} className="home-reef-bubble" style={{ left: `${8 + i * 15}%`, animationDelay: `${i * 1.3}s` }} />
+      ))}
+      <span className="home-reef-fish home-reef-fish-1">🐠</span>
+      <span className="home-reef-fish home-reef-fish-2">🐟</span>
+    </div>
+  );
+}
+
 import { getLevel, getXP } from '../storage';
 
 export default function MainMenu({
@@ -74,6 +96,9 @@ export default function MainMenu({
   onShop,
   onDailyRewards,
   onLuckySpin,
+  onChapterMap,
+  onGallery,
+  onCollection,
 }: Props) {
   const { language, setLanguage, t } = useI18n();
   const [best, setBest] = useState(0);
@@ -113,11 +138,12 @@ export default function MainMenu({
       >
         {language === 'en' ? 'ع' : 'EN'}
       </button>
+      <HomeReef />
       <MenuFish />
       <h1 className="game-title">
         Golden <span className="game-title-accent">Fish Dash</span>
       </h1>
-      <p className="menu-tagline">{t('menu.tagline')}</p>
+      <p className="menu-tagline">{t('menu.taglineOcean')}</p>
 
       {/* Player Progression Level & XP Bar */}
       <div className="menu-level-container" style={{ width: '100%', maxWidth: '280px', margin: '-10px auto 14px auto', padding: '0 12px' }}>
@@ -165,8 +191,18 @@ export default function MainMenu({
       </div>
 
       <div className="menu-buttons">
-        <button className="btn btn-primary" onClick={onPlay}>
-          {t('menu.play')}
+        <button className="btn btn-primary btn-dive-cta" onClick={onPlay}>
+          🌊 {t('menu.dive')}
+        </button>
+
+        <button className="btn btn-secondary" onClick={onChapterMap}>
+          🗺️ {t('menu.chapterMap')}
+        </button>
+        <button className="btn btn-secondary" onClick={onGallery}>
+          🐠 {t('menu.gallery')}
+        </button>
+        <button className="btn btn-secondary" onClick={onCollection}>
+          📖 {t('menu.collection')}
         </button>
 
         {/* Daily Rewards button - noticeable when available */}

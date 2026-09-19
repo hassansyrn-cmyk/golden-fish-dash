@@ -31,3 +31,22 @@ A visual reference was requested through the built-in image generator for this p
 **Direction:** A clear player route through hand-painted underwater environments that evolve from bright lagoon water to coral reef, kelp forest, twilight ruins, volcanic vents, and bioluminescent temple waters. Gate silhouettes stay simple and readable; the environment carries the color and material variation through coral, stone, vines, runes, and subtle light specks.
 
 **Generation prompt:** Premium portrait 2D underwater arcade scene with a golden-and-turquoise player fish, cyan rune stone pillars, violet coral, deep cobalt water, distant ruins, and a visibly safe center corridor. Generated on 2026-08-15 for this branch.
+
+---
+
+# Ocean Legends asset additions (2026-09)
+
+All Ocean Legends visuals remain **Canvas-native vector drawing** driven by data modules —
+no new binary assets were required, so the repo stays light and the Android CI build is
+unaffected.
+
+| Asset | Implementation | Provenance |
+|---|---|---|
+| 8 character silhouettes (fin styles: forked/veil/crescent/spiked/veil/lure + crown dorsal + anglerfish lure) | `drawFish` in `src/game/engine.ts`, profiles in `src/game/ocean/characters.ts` | Original code |
+| Reef Guardian (manta), Trench Leviathan (serpent), Crown sea-dragon boss art | `drawBoss` in `src/game/engine.ts` | Original code |
+| Sun pearls, plankton, coral barriers, current zones, lore tablets, companion fish | `drawSunPearl` / `drawPlankton` / `drawCoralBarrier` / `drawCurrentZone` / `drawLoreDrop` / `drawCompanion` | Original code |
+| Home reef menu backdrop (kelp, bubbles, swimming fish) | Pure CSS in `src/index.css` (`home-reef-*`) | Original code |
+| Audio (ambience beds, adaptive music, material SFX) | Synthesized WebAudio in `src/game/managers/AudioManager.ts` | Original code |
+
+Character gallery portraits reuse the same silhouette geometry as the engine renderer so
+the gallery always matches in-game appearance.

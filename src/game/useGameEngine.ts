@@ -7,12 +7,16 @@ import {
   getSettings,
   getShopInventory,
   incrementRoundsPlayed,
+  markLoreFound,
+  recordRunChapters,
+  recordRunTotals,
   setPersonalBest,
   unlockAchievement,
   updateDailyChallengeProgress,
   incrementMissionProgress,
   addXP,
   getUpgradeLevel,
+  getChapterProgress,
 } from './storage';
 import {
   FISH_X_RATIO,
@@ -22,15 +26,22 @@ import {
   stepEngine,
 } from './engine';
 import type { EngineState } from './engine';
+import type { RunStats } from './engine';
 import type { SkinId } from './types';
 import { audioManager } from './managers/AudioManager';
+import { seedFromQuery } from './ocean/rng';
+import { parseLaunchFlags, type RunModifiers } from './ocean/runConfig';
 
 interface UseGameEngineOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   active: boolean;
   paused: boolean;
   skin: SkinId;
+  modifiers: RunModifiers;
+  demo: boolean;
   onGameOver: (finalScore: number) => void;
+  onChapterTransition?: (chapterIndex: number, chapterId: string) => void;
+  onSetPieceStart?: (kind: string, nameKey: string) => void;
 }
 
 interface HudState {
@@ -39,6 +50,20 @@ interface HudState {
   feverRemainingMs: number;
   hourglassRemainingMs: number;
   dropRushRemainingMs: number;
+  comboCount: number;
+  comboTier: number;
+  comboMeter: number;
+  surgeCharge: number;
+  surgeActive: boolean;
+  schoolCount: number;
+  growthStage: number;
+  chapterIndex: number;
+  chapterId: string;
+  bossActive: boolean;
+  bossKind: string | null;
+  bossPearls: number;
+  bossTarget: number;
+  bossRemainingMs: number;
 }
 
 type MiniChallengeKind = 'coins' | 'combo';
@@ -62,6 +87,16 @@ export interface MiniChallengeState extends MiniChallengeTemplate {
   resolvedAt?: number;
 }
 
+export interface RunSummary {
+  score: number;
+  roundCoins: number;
+  stats: RunStats;
+  chaptersVisited: number[];
+  improvedChapters: string[];
+  medalBefore: Record<string, number>;
+  seed: string;
+}
+
 const MINI_CHALLENGE_TEMPLATES: MiniChallengeTemplate[] = [
   { id: 'coin-sprint', label: 'COIN SPRINT', objective: 'Collect coins', kind: 'coins', target: 8, durationMs: 15_000, rewardCoins: 25 },
   { id: 'combo-rush', label: 'COMBO RUSH', objective: 'Build a combo', kind: 'combo', target: 8, durationMs: 16_000, rewardCoins: 30 },
@@ -73,15 +108,44 @@ const EMPTY_HUD_STATE: HudState = {
   feverRemainingMs: 0,
   hourglassRemainingMs: 0,
   dropRushRemainingMs: 0,
+  comboCount: 0,
+  comboTier: 0,
+  comboMeter: 0,
+  surgeCharge: 0,
+  surgeActive: false,
+  schoolCount: 0,
+  growthStage: 0,
+  chapterIndex: 0,
+  chapterId: 'sunlitLagoon',
+  bossActive: false,
+  bossKind: null,
+  bossPearls: 0,
+  bossTarget: 0,
+  bossRemainingMs: 0,
 };
 
 function readHudState(engine: EngineState): HudState {
+  const boss = engine.boss;
   return {
     shieldCharges: Math.max(0, Math.min(2, engine.shieldCharges)),
     magnetRemainingMs: Math.max(0, engine.magnetUntil - engine.timeMs),
     feverRemainingMs: Math.max(0, engine.feverUntil - engine.timeMs),
     hourglassRemainingMs: Math.max(0, engine.hourglassUntil - engine.timeMs),
     dropRushRemainingMs: Math.max(0, engine.boostUntil - engine.timeMs),
+    comboCount: engine.combo.count,
+    comboTier: engine.combo.count >= 6 ? 1 + Math.min(3, Math.floor(engine.combo.count / 10)) : 0,
+    comboMeter: engine.combo.meter,
+    surgeCharge: engine.surge.charge,
+    surgeActive: engine.surge.activeUntil > engine.timeMs,
+    schoolCount: engine.companions.filter((c) => c.rescued).length,
+    growthStage: engine.growth.stage,
+    chapterIndex: engine.chapter.index,
+    chapterId: engine.chapter.id,
+    bossActive: !!boss && !boss.ended,
+    bossKind: boss ? boss.kind : null,
+    bossPearls: boss ? boss.pearlsCollected : 0,
+    bossTarget: boss ? boss.pearlTarget : 0,
+    bossRemainingMs: boss ? Math.max(0, boss.durationMs - (engine.timeMs - boss.startedAtMs)) : 0,
   };
 }
 
@@ -106,13 +170,14 @@ function sizeCanvasForDisplay(canvas: HTMLCanvasElement, width: number, height: 
   context?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 }
 
-export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: UseGameEngineOptions) {
+export function useGameEngine({ canvasRef, active, paused, skin, modifiers, demo, onGameOver, onChapterTransition, onSetPieceStart }: UseGameEngineOptions) {
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(() => getCoins());
   const [roundCoins, setRoundCoins] = useState(0);
   const [lives, setLives] = useState(0);
   const [hudState, setHudState] = useState<HudState>(EMPTY_HUD_STATE);
   const [miniChallenge, setMiniChallenge] = useState<MiniChallengeState | null>(null);
+  const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
 
   const stateRef = useRef<EngineState | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -121,15 +186,20 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const lastMilestoneRef = useRef(0);
   const lastHudRefreshRef = useRef(0);
   const miniChallengeRef = useRef<MiniChallengeState | null>(null);
+  const lastComboTierRef = useRef(0);
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
   const onGameOverRef = useRef(onGameOver);
+  const onChapterTransitionRef = useRef(onChapterTransition);
+  const onSetPieceStartRef = useRef(onSetPieceStart);
 
   useEffect(() => {
     onGameOverRef.current = onGameOver;
-  }, [onGameOver]);
+    onChapterTransitionRef.current = onChapterTransition;
+    onSetPieceStartRef.current = onSetPieceStart;
+  }, [onGameOver, onChapterTransition, onSetPieceStart]);
 
   const setup = useCallback(() => {
     const canvas = canvasRef.current;
@@ -141,7 +211,19 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
     sizeCanvasForDisplay(canvas, width, height);
 
-    const engine = createEngine(width, height, skin);
+    const settings = getSettings();
+    const engine = createEngine(width, height, skin, {
+      seed: seedFromQuery() ?? undefined,
+      modifiers,
+      demo,
+      accessibility: {
+        reducedMotion: settings.reducedMotion ?? false,
+        reducedFlashes: settings.reducedFlashes ?? false,
+        highContrast: settings.highContrast ?? false,
+        colorblindShapes: settings.colorblindShapes ?? false,
+        steerMode: settings.steerMode ?? false,
+      },
+    });
 
     // Apply upgrade levels directly to starting engine configurations
     const shieldLvl = getUpgradeLevel('shield');
@@ -151,37 +233,34 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     stateRef.current = engine;
 
     // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
-    // This runs every time a new engine is created for a run.
-    // It checks current inventory, applies the boosts, and consumes the items.
     const inv = getShopInventory();
+    const noBoostModifier = modifiers.includes('noBoost');
 
-    if (inv.shield > 0 || shieldLvl > 0) {
+    if (!noBoostModifier && (inv.shield > 0 || shieldLvl > 0)) {
       if (inv.shield > 0) consumeShopItem('shield');
-      // Shield capacity is intentionally capped at two visible HUD slots.
       engine.shieldCharges = Math.min(2, 1 + shieldLvl);
       incrementMissionProgress('m_shield', 1);
     }
 
-    // Moorish Idol legendary skin ability: 15% chance to start with a free shield if no shield is active
-    if (skin === 'legendary' && engine.shieldCharges === 0) {
-      if (Math.random() < 0.15) {
+    // Free starting shield chance (Reef Regent character ability).
+    if (skin === 'legendary' && engine.shieldCharges === 0 && !noBoostModifier) {
+      if (engine.rng.chance(0.15)) {
         engine.shieldCharges = 1;
       }
     }
 
-    if (inv.magnet > 0 || magnetLvl > 0) {
+    if (!noBoostModifier && (inv.magnet > 0 || magnetLvl > 0)) {
       if (inv.magnet > 0) consumeShopItem('magnet');
-      // Upgrade increases starting magnet duration (12s base + 3s per level).
       engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
     }
-    if (inv.gemBoost > 0 || gemLvl > 0) {
+    if (!noBoostModifier && (inv.gemBoost > 0 || gemLvl > 0)) {
       if (inv.gemBoost > 0) consumeShopItem('gemBoost');
-      // Upgrade increases gem spawn rate even further
       engine.gemBoostActive = true;
     }
 
     roundCoinsRef.current = 0;
     lastMilestoneRef.current = 0;
+    lastComboTierRef.current = 0;
 
     setScore(0);
     setRoundCoins(0);
@@ -189,9 +268,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setLives(engine.lives ?? 0);
     setHudState(readHudState(engine));
     setMiniChallenge(null);
+    setRunSummary(null);
     miniChallengeRef.current = null;
     lastHudRefreshRef.current = 0;
-  }, [canvasRef, skin]);
+  }, [canvasRef, skin, modifiers, demo]);
 
   const reviveAt = useCallback((invincibleMs: number) => {
     const state = stateRef.current;
@@ -204,7 +284,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     state.fishY = state.height / 2;
     state.fishVY = 0;
     state.invincibleUntil = state.timeMs + invincibleMs;
-    state.shakeIntensity = 0; // Reset any camera shake so revive countdown is smooth (no background tremble)
+    state.shakeIntensity = 0;
 
     state.obstacles = state.obstacles.filter((obs) => {
       const approximateHalfObstacleWidth = 20;
@@ -229,6 +309,8 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
       return jelly.x < fishX - 80 || jelly.x > state.width + 100;
     });
 
+    state.barriers = state.barriers.filter((b) => b.x < fishX - 80 || b.x > state.width + 100);
+
     state.elapsedSinceSpawn = -850;
 
     audioManager.playSound('reward', settings.sound);
@@ -241,6 +323,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     setup();
     incrementRoundsPlayed();
     unlockAchievement('first_flight');
+
+    // Debug/QA hook (?debug=1): exposes the live engine for the overlay and
+    // for browser-automation screenshots of specific game states.
+    if (parseLaunchFlags().debug && typeof window !== 'undefined') {
+      (window as unknown as { __gfrEngine?: unknown }).__gfrEngine = stateRef;
+    }
 
     let mounted = true;
     lastTimeRef.current = performance.now();
@@ -266,7 +354,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 setScore(newScore);
 
                 if (!miniChallengeRef.current && newScore >= 8) {
-                  const template = MINI_CHALLENGE_TEMPLATES[Math.floor(Math.random() * MINI_CHALLENGE_TEMPLATES.length)];
+                  const template = MINI_CHALLENGE_TEMPLATES[state.rng.int(0, MINI_CHALLENGE_TEMPLATES.length - 1)];
                   const challenge: MiniChallengeState = {
                     ...template,
                     progress: 0,
@@ -294,7 +382,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 if (challenge?.status === 'active') {
                   const progress = challenge.kind === 'coins'
                     ? Math.min(challenge.target, challenge.progress + amount)
-                    : Math.min(challenge.target, Math.max(challenge.progress, state.coinStreakCount));
+                    : Math.min(challenge.target, Math.max(challenge.progress, state.combo.count));
                   const updatedChallenge: MiniChallengeState = { ...challenge, progress };
 
                   if (progress >= challenge.target) {
@@ -313,12 +401,12 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   setMiniChallenge(updatedChallenge);
                 }
 
-                // Apply Coin Multiplier Upgrade level directly to coin earnings (+1 coin per level)
+                // Apply Coin Multiplier Upgrade level directly to coin earnings.
                 const multLevel = getUpgradeLevel('coinMultiplier');
-                const bonusCoins = multLevel;
-                let finalAmount = amount + bonusCoins;
+                const treasureTideBonus = modifiers.includes('treasureTide') ? Math.ceil(amount * 0.2) : 0;
+                let finalAmount = amount + multLevel + treasureTideBonus;
 
-                // Goldfish skin ability: +10% Bonus Coins
+                // Aurum's coin affinity (+10%).
                 if (skin === 'golden') {
                   finalAmount = Math.ceil(finalAmount * 1.1);
                 }
@@ -328,10 +416,10 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
                 let total = addCoins(finalAmount);
 
-                audioManager.playSound('coin', settings.sound);
+                const coinSound = amount >= 5 ? 'treasure' : 'coin';
+                audioManager.playSound(coinSound, settings.sound);
                 safeVibrate(18, settings.vibration);
 
-                // If massive coin amount collected (e.g. 15 from treasure chest)
                 if (amount >= 15) {
                   unlockAchievement('treasure_hunter');
                 }
@@ -349,8 +437,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
                 incrementMissionProgress('m_coins', finalAmount);
 
-                // Check coin combos for combo master achievement
-                if (stateRef.current && stateRef.current.coinStreakCount >= 20) {
+                if (stateRef.current && stateRef.current.combo.count >= 20) {
                   unlockAchievement('combo_master');
                 }
 
@@ -393,7 +480,6 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 if (finalScore >= 50) unlockAchievement('ocean_master');
                 if (finalScore >= 100) unlockAchievement('legendary_swimmer');
 
-                // Perfect Run (Survivor) achievement check: score >= 20 and full remaining lives
                 if (finalScore >= 20 && state.lives === state.maxLives) {
                   unlockAchievement('no_damage');
                 }
@@ -418,11 +504,42 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   }
                 }
 
-                // Award Player progression XP based on performance: final score & coins
                 const xpAward = Math.floor(finalScore * 2.5 + roundCoinsRef.current * 1.5);
                 addXP(xpAward);
 
                 incrementMissionProgress('m_rounds', 1);
+
+                // Fold chapter progress + lore into persistent collections.
+                const medalBefore: Record<string, number> = {};
+                const progress = getChapterProgress();
+                for (const [id, p] of Object.entries(progress)) {
+                  medalBefore[id] = p.setPieceCleared ? 3 : p.setPieceReached ? 2 : p.bestScore > 0 ? 1 : 0;
+                }
+                const improvedChapters = recordRunChapters(
+                  state.runStats.chaptersVisited,
+                  finalScore,
+                  state.runStats.setPiecesCleared,
+                );
+                recordRunTotals({
+                  surges: state.runStats.surges,
+                  rescues: state.runStats.rescues,
+                  barriersBroken: state.runStats.barriersBroken,
+                  planktonEaten: state.runStats.planktonEaten,
+                  pearlsCollected: state.runStats.pearlsCollected,
+                  bestCombo: state.runStats.bestCombo,
+                });
+                for (const loreId of state.runStats.loreFound) {
+                  markLoreFound(loreId);
+                }
+                setRunSummary({
+                  score: finalScore,
+                  roundCoins: roundCoinsRef.current,
+                  stats: { ...state.runStats, loreFound: [...state.runStats.loreFound] },
+                  chaptersVisited: [...state.runStats.chaptersVisited],
+                  improvedChapters,
+                  medalBefore,
+                  seed: state.seed,
+                });
 
                 onGameOverRef.current(finalScore);
               },
@@ -438,7 +555,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
               onRedFlash: () => {
                 state.isRedFlashing = true;
-                state.redFlashTimer = 180; // flash screen in ms
+                state.redFlashTimer = 180;
               },
 
               onNearMiss: () => {
@@ -460,6 +577,81 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   audioManager.playSound('powerup', settings.sound);
                   safeVibrate(20, settings.vibration);
                 }
+              },
+
+              onCombo: (count, tier) => {
+                if (tier > lastComboTierRef.current) {
+                  lastComboTierRef.current = tier;
+                  audioManager.playSound('comboTier', settings.sound);
+                  safeVibrate([20, 14, 30], settings.vibration);
+                }
+                void count;
+              },
+
+              onComboBreak: () => {
+                lastComboTierRef.current = 0;
+              },
+
+              onSurgeStart: () => {
+                audioManager.playSound('surge', settings.sound);
+                safeVibrate([40, 30, 40, 30, 80], settings.vibration);
+              },
+
+              onSurgeEnd: () => {
+                audioManager.playSound('milestone', settings.sound);
+              },
+
+              onCompanionRescued: () => {
+                audioManager.playSound('rescue', settings.sound);
+                safeVibrate([15, 20, 25], settings.vibration);
+              },
+
+              onCompanionLost: () => {
+                audioManager.playSound('companionLost', settings.sound);
+                safeVibrate([30, 40], settings.vibration);
+              },
+
+              onGrowthUp: (stage) => {
+                audioManager.playSound('growthUp', settings.sound);
+                safeVibrate([25, 20, 45], settings.vibration);
+                void stage;
+              },
+
+              onChapterTransition: (chapterIndex, chapterId) => {
+                audioManager.playSound('chapter', settings.sound);
+                safeVibrate([20, 25, 20], settings.vibration);
+                onChapterTransitionRef.current?.(chapterIndex, chapterId);
+              },
+
+              onSetPieceStart: (kind, nameKey) => {
+                audioManager.playSound(kind === 'spectacle' ? 'chapter' : 'bossRoar', settings.sound);
+                safeVibrate([50, 40, 90], settings.vibration);
+                onSetPieceStartRef.current?.(kind, nameKey);
+              },
+
+              onSetPieceEnd: (kind, succeeded) => {
+                if (succeeded) {
+                  audioManager.playSound('bossEnd', settings.sound);
+                  safeVibrate([30, 25, 30, 25, 60], settings.vibration);
+                } else {
+                  audioManager.playSound('milestone', settings.sound);
+                }
+                void kind;
+              },
+
+              onLoreFound: (loreId) => {
+                audioManager.playSound('lore', settings.sound);
+                safeVibrate([15, 15, 40], settings.vibration);
+                void loreId;
+              },
+
+              onCurrentPush: () => {
+                audioManager.playSound('current', settings.sound);
+              },
+
+              onBarrierBreak: () => {
+                audioManager.playSound('coralBreak', settings.sound);
+                safeVibrate(30, settings.vibration);
               },
             },
             { vibration: settings.vibration },
@@ -484,6 +676,17 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
             } else if (challenge?.resolvedAt && state.timeMs - challenge.resolvedAt > 2500) {
               miniChallengeRef.current = null;
               setMiniChallenge(null);
+            }
+
+            // Adaptive music + ambience follow the run state.
+            if (state.boss) {
+              audioManager.setMusicState('boss', settings.music);
+            } else if (state.surge.activeUntil > state.timeMs) {
+              audioManager.setMusicState('surge', settings.music);
+            } else if (state.score >= 26) {
+              audioManager.setMusicState('danger', settings.music);
+            } else {
+              audioManager.setMusicState('explore', settings.music);
             }
           }
         }
@@ -541,6 +744,23 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     jumpEngine(state, { vibration: settings.vibration });
   }, []);
 
+  /** Steering mode: glide gently toward the held pointer's Y position. */
+  const doSteer = useCallback((clientY: number) => {
+    const state = stateRef.current;
+    if (!state) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    state.steerTargetY = ((clientY - rect.top) / rect.height) * state.height;
+  }, [canvasRef]);
+
+  const releaseSteer = useCallback(() => {
+    const state = stateRef.current;
+    if (!state) return;
+    state.steerTargetY = null;
+  }, []);
+
   return {
     score,
     coins,
@@ -551,8 +771,25 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     feverRemainingMs: hudState.feverRemainingMs,
     hourglassRemainingMs: hudState.hourglassRemainingMs,
     dropRushRemainingMs: hudState.dropRushRemainingMs,
+    comboCount: hudState.comboCount,
+    comboTier: hudState.comboTier,
+    comboMeter: hudState.comboMeter,
+    surgeCharge: hudState.surgeCharge,
+    surgeActive: hudState.surgeActive,
+    schoolCount: hudState.schoolCount,
+    growthStage: hudState.growthStage,
+    chapterIndex: hudState.chapterIndex,
+    chapterId: hudState.chapterId,
+    bossActive: hudState.bossActive,
+    bossKind: hudState.bossKind,
+    bossPearls: hudState.bossPearls,
+    bossTarget: hudState.bossTarget,
+    bossRemainingMs: hudState.bossRemainingMs,
     miniChallenge,
+    runSummary,
     doJump,
+    doSteer,
+    releaseSteer,
     reviveAt,
     getFinalScore: () => stateRef.current?.score ?? 0,
     engineStateRef: stateRef,

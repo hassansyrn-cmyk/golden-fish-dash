@@ -1,2 +1,5 @@
+allowBuilds:
+  esbuild: true
+  protobufjs: true
 minimumReleaseAgeExclude:
   - '@capacitor-community/admob@8.1.0'

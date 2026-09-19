@@ -9,10 +9,11 @@ import {
   ACHIEVEMENTS,
   DAILY_CHALLENGE_POOL,
   SAMPLE_GLOBAL_SCORES,
-  SKINS,
   STORAGE_KEYS,
   dateKey,
 } from './constants';
+import { CHARACTERS } from './ocean/characters';
+import { CHAPTERS } from './ocean/chapters';
 import type {
   DailyChallengeState,
   AppLanguage,
@@ -23,6 +24,14 @@ import type {
   ShopItemId,
   SkinId,
 } from './types';
+
+const SAVE_VERSION = 2;
+
+export interface ChapterProgress {
+  bestScore: number;
+  setPieceReached: boolean;
+  setPieceCleared: boolean;
+}
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -82,8 +91,8 @@ export function setSelectedSkin(skin: SkinId) {
 }
 export function refreshUnlockedSkins(bestScore: number): SkinId[] {
   const unlocked = new Set(getUnlockedSkins());
-  for (const skin of SKINS) {
-    if (bestScore >= skin.unlockScore) unlocked.add(skin.id);
+  for (const character of CHARACTERS) {
+    if (bestScore >= character.unlockScore) unlocked.add(character.id);
   }
   const result = Array.from(unlocked);
   writeJSON(STORAGE_KEYS.unlockedSkins, result);
@@ -144,6 +153,14 @@ const DEFAULT_SETTINGS: Settings = {
   music: true,
   vibration: true,
   language: detectInitialLanguage(),
+  reducedMotion: false,
+  reducedFlashes: false,
+  highContrast: false,
+  colorblindShapes: false,
+  steerMode: false,
+  masterVolume: 1,
+  musicVolume: 0.7,
+  sfxVolume: 1,
 };
 
 export function getSettings(): Settings {
@@ -561,4 +578,123 @@ export function claimMissionReward(id: string): { success: boolean; coins: numbe
   }
 
   return { success, coins: coinsRewarded, xp: xpRewarded };
+}
+
+// =======================================================================
+// OCEAN LEGENDS: chapter progress, medals, lore collection, migration.
+// All keys are additive — an old save upgrades in place with no data loss.
+// =======================================================================
+
+const CHAPTER_PROGRESS_KEY = 'gfr_chapter_progress';
+const LORE_KEY = 'gfr_lore_found';
+const SAVE_VERSION_KEY = 'gfr_save_version';
+
+/** One-time migration. Safe to call on every boot; writes only what's missing. */
+export function migrateSave(): void {
+  const version = readJSON<number>(SAVE_VERSION_KEY, 1);
+  if (version >= SAVE_VERSION) return;
+  // v1 -> v2: seed empty structures so screens can rely on shapes.
+  if (!readJSON<Record<string, unknown> | null>(CHAPTER_PROGRESS_KEY, null)) {
+    writeJSON(CHAPTER_PROGRESS_KEY, {});
+  }
+  if (!readJSON<string[] | null>(LORE_KEY, null)) {
+    writeJSON(LORE_KEY, []);
+  }
+  writeJSON(SAVE_VERSION_KEY, SAVE_VERSION);
+}
+
+// ---- Chapter progress & replay medals ----
+export function getChapterProgress(): Record<string, ChapterProgress> {
+  return readJSON<Record<string, ChapterProgress>>(CHAPTER_PROGRESS_KEY, {});
+}
+
+/**
+ * Fold a finished run into chapter progress. Returns chapters whose medal
+ * improved (used by the game-over flow for celebration feedback).
+ */
+export function recordRunChapters(
+  chaptersVisited: number[],
+  finalScore: number,
+  setPieceClearedCount: number,
+): string[] {
+  const progress = getChapterProgress();
+  const improved: string[] = [];
+  for (const index of chaptersVisited) {
+    const chapter = CHAPTERS[index];
+    if (!chapter) continue;
+    const prev = progress[chapter.id] ?? { bestScore: 0, setPieceReached: false, setPieceCleared: false };
+    const next: ChapterProgress = {
+      bestScore: Math.max(prev.bestScore, finalScore),
+      setPieceReached: prev.setPieceReached || finalScore >= chapter.setPiece.atScore,
+      setPieceCleared: prev.setPieceCleared || (setPieceClearedCount > 0 && finalScore >= chapter.setPiece.atScore),
+    };
+    const medalBefore = medalFor(prev);
+    const medalAfter = medalFor(next);
+    progress[chapter.id] = next;
+    if (medalAfter > medalBefore) improved.push(chapter.id);
+  }
+  writeJSON(CHAPTER_PROGRESS_KEY, progress);
+  return improved;
+}
+
+export function medalFor(p: ChapterProgress): 0 | 1 | 2 | 3 {
+  if (p.setPieceCleared) return 3;
+  if (p.setPieceReached) return 2;
+  if (p.bestScore > 0) return 1;
+  return 0;
+}
+
+// ---- Lore collection ----
+export function getFoundLore(): string[] {
+  return readJSON<string[]>(LORE_KEY, []);
+}
+
+export function markLoreFound(id: string): boolean {
+  const found = new Set(getFoundLore());
+  if (found.has(id)) return false;
+  found.add(id);
+  writeJSON(LORE_KEY, Array.from(found));
+  return true;
+}
+
+export function getLoreCompletionPercent(): number {
+  const total = CHAPTERS.reduce((sum, c) => sum + c.lore.length, 0);
+  if (total === 0) return 100;
+  return Math.round((getFoundLore().length / total) * 100);
+}
+
+// ---- Lifetime collection totals ----
+export interface CollectionTotals {
+  surges: number;
+  rescues: number;
+  barriers: number;
+  plankton: number;
+  pearls: number;
+  bestCombo: number;
+}
+
+const TOTALS_KEY = 'gfr_collection_totals';
+
+export function getRunCollectionTotals(): CollectionTotals {
+  return readJSON<CollectionTotals>(TOTALS_KEY, {
+    surges: 0, rescues: 0, barriers: 0, plankton: 0, pearls: 0, bestCombo: 0,
+  });
+}
+
+/** Fold one finished run's stats into the lifetime collection book. */
+export function recordRunTotals(stats: {
+  surges: number; rescues: number; barriersBroken: number;
+  planktonEaten: number; pearlsCollected: number; bestCombo: number;
+}) {
+  const totals = getRunCollectionTotals();
+  const next: CollectionTotals = {
+    surges: totals.surges + stats.surges,
+    rescues: totals.rescues + stats.rescues,
+    barriers: totals.barriers + stats.barriersBroken,
+    plankton: totals.plankton + stats.planktonEaten,
+    pearls: totals.pearls + stats.pearlsCollected,
+    bestCombo: Math.max(totals.bestCombo, stats.bestCombo),
+  };
+  writeJSON(TOTALS_KEY, next);
+  return next;
 }

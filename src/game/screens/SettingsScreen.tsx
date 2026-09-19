@@ -11,6 +11,7 @@ import {
 } from '../storage';
 import type { AppLanguage, Settings, SkinId } from '../types';
 import { translateSkin, useI18n } from '../i18n';
+import { audioManager } from '../managers/AudioManager';
 
 interface Props {
   onBack: () => void;
@@ -150,10 +151,17 @@ export default function SettingsScreen({ onBack }: Props) {
   const [selected, setSelected] = useState<SkinId>(() => getSelectedSkin());
   const [confirmReset, setConfirmReset] = useState(false);
 
-  function toggle(key: 'sound' | 'music' | 'vibration') {
+  function toggle(key: 'sound' | 'music' | 'vibration' | 'reducedMotion' | 'reducedFlashes' | 'highContrast' | 'colorblindShapes' | 'steerMode') {
     const next = { ...settings, [key]: !settings[key] };
     setLocalSettings(next);
     setSettings(next);
+    // Live-sync the audio bus with the new volumes/mute state.
+    audioManager.setVolumes({
+      master: next.masterVolume ?? 1,
+      music: next.musicVolume ?? 0.7,
+      sfx: next.sfxVolume ?? 1,
+      enabled: next.sound,
+    });
   }
 
   function chooseLanguage(nextLanguage: AppLanguage) {
@@ -202,6 +210,36 @@ export default function SettingsScreen({ onBack }: Props) {
           <span>{t('settings.vibration')}</span>
           <input type="checkbox" checked={settings.vibration} onChange={() => toggle('vibration')} />
         </label>
+      </div>
+
+      <div className="settings-group">
+        <h3 className="settings-subtitle">{t('settings.accessibility')}</h3>
+
+        <label className="settings-row">
+          <span>{t('settings.reducedMotion')}</span>
+          <input type="checkbox" checked={settings.reducedMotion ?? false} onChange={() => toggle('reducedMotion')} />
+        </label>
+
+        <label className="settings-row">
+          <span>{t('settings.reducedFlashes')}</span>
+          <input type="checkbox" checked={settings.reducedFlashes ?? false} onChange={() => toggle('reducedFlashes')} />
+        </label>
+
+        <label className="settings-row">
+          <span>{t('settings.highContrast')}</span>
+          <input type="checkbox" checked={settings.highContrast ?? false} onChange={() => toggle('highContrast')} />
+        </label>
+
+        <label className="settings-row">
+          <span>{t('settings.colorblindShapes')}</span>
+          <input type="checkbox" checked={settings.colorblindShapes ?? false} onChange={() => toggle('colorblindShapes')} />
+        </label>
+
+        <label className="settings-row">
+          <span>{t('settings.steerMode')}</span>
+          <input type="checkbox" checked={settings.steerMode ?? false} onChange={() => toggle('steerMode')} />
+        </label>
+        <p className="language-hint">{t('settings.steerModeHint')}</p>
       </div>
 
       <div className="settings-group language-settings-group">

@@ -15,11 +15,14 @@ import {
 import { SKINS } from '../constants';
 import { useI18n } from '../i18n';
 import type { SkinId } from '../types';
+import { CHAPTERS } from '../ocean/chapters';
+import type { RunSummary } from '../useGameEngine';
 
 interface Props {
   finalScore: number;
   roundCoins?: number;
   canContinue: boolean;
+  runSummary?: RunSummary | null;
   onWatchAd: () => void;
   onPlayAgain: () => void;
   onLeaderboard: () => void;
@@ -56,6 +59,7 @@ export default function GameOverScreen({
   finalScore,
   roundCoins = 0,
   canContinue,
+  runSummary,
   onWatchAd,
   onPlayAgain,
   onLeaderboard,
@@ -154,6 +158,31 @@ export default function GameOverScreen({
           <span className="stat-value">#{rank}</span>
         </div>
       </div>
+
+      {/* Ocean Legends post-run summary: what happened, and the next goal. */}
+      {runSummary && (
+        <div className="run-summary" role="region" aria-label={t('summary.title')}>
+          <h3 className="run-summary-title">{t('summary.title')}</h3>
+          <div className="run-summary-grid">
+            <div><span>🔥 {t('summary.bestCombo')}</span><strong>{runSummary.stats.bestCombo}</strong></div>
+            <div><span>✨ {t('summary.surges')}</span><strong>{runSummary.stats.surges}</strong></div>
+            <div><span>🐠 {t('summary.rescued')}</span><strong>{runSummary.stats.rescues}</strong></div>
+            <div><span>🦐 {t('summary.plankton')}</span><strong>{runSummary.stats.planktonEaten}</strong></div>
+            <div><span>🔮 {t('summary.pearls')}</span><strong>{runSummary.stats.pearlsCollected}</strong></div>
+            <div><span>🪸 {t('summary.barriers')}</span><strong>{runSummary.stats.barriersBroken}</strong></div>
+            <div><span>🗺️ {t('summary.chapters')}</span><strong>{runSummary.chaptersVisited.length}/{CHAPTERS.length}</strong></div>
+            <div><span>📖 {t('summary.lore')}</span><strong>{runSummary.stats.loreFound.length}</strong></div>
+          </div>
+          {runSummary.improvedChapters.length > 0 && (
+            <p className="run-summary-medals">
+              🏅 {t('summary.medalsEarned', { chapters: runSummary.improvedChapters.map((id) => t(`chapter.${id}.name`)).join(', ') })}
+            </p>
+          )}
+          {runSummary.seed && (
+            <p className="run-summary-seed">{t('summary.seed', { seed: runSummary.seed || '—' })}</p>
+          )}
+        </div>
+      )}
 
       {/* Game Over Player Level Progress */}
       <div style={{ width: '100%', maxWidth: '320px', margin: '14px auto', padding: '12px', backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '10px' }}>

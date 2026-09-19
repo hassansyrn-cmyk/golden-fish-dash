@@ -13,6 +13,10 @@ import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
 import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import LuckySpinScreen from './screens/LuckySpinScreen';
+import ChapterMapScreen from './screens/ChapterMapScreen';
+import CharacterGalleryScreen from './screens/CharacterGalleryScreen';
+import CollectionBookScreen from './screens/CollectionBookScreen';
+import DebugOverlay from './DebugOverlay';
 import { BannerAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
@@ -22,9 +26,13 @@ import {
   getSelectedSkin,
   getSettings,
   markUsedSecondChanceEver,
+  migrateSave,
   unlockAchievement,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
+import type { RunModifiers } from './ocean/runConfig';
+import { parseLaunchFlags } from './ocean/runConfig';
+import { CHAPTERS } from './ocean/chapters';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 
@@ -46,51 +54,28 @@ const HeartIcon = ({ full }: { full: boolean }) => {
       }}
     >
       <defs>
-        {/* Full Heart Gradient */}
         <radialGradient id="heart-grad-full" cx="35%" cy="30%" r="70%">
           <stop offset="0%" stopColor="#ffccd5" />
           <stop offset="40%" stopColor="#ff4d6d" />
           <stop offset="100%" stopColor="#800f2f" />
         </radialGradient>
-
-        {/* Empty Heart Gradient */}
         <radialGradient id="heart-grad-empty" cx="35%" cy="30%" r="70%">
           <stop offset="0%" stopColor="rgba(240, 240, 240, 0.35)" />
           <stop offset="60%" stopColor="rgba(120, 120, 120, 0.25)" />
           <stop offset="100%" stopColor="rgba(40, 40, 40, 0.15)" />
         </radialGradient>
       </defs>
-
-      {/* Main Heart Path */}
       <path
         d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
         fill={full ? "url(#heart-grad-full)" : "url(#heart-grad-empty)"}
         stroke={full ? "#ff4d6d" : "rgba(255, 255, 255, 0.55)"}
         strokeWidth="1.2"
       />
-
-      {/* Glossy Overlay Highlight for Full Heart */}
       {full && (
-        <ellipse
-          cx="7.5"
-          cy="6.5"
-          rx="2.5"
-          ry="1.2"
-          transform="rotate(-25 7.5 6.5)"
-          fill="rgba(255, 255, 255, 0.85)"
-        />
+        <ellipse cx="7.5" cy="6.5" rx="2.5" ry="1.2" transform="rotate(-25 7.5 6.5)" fill="rgba(255, 255, 255, 0.85)" />
       )}
-
-      {/* Glossy Overlay Highlight for Empty Heart */}
       {!full && (
-        <ellipse
-          cx="7.5"
-          cy="6.5"
-          rx="2.5"
-          ry="1.2"
-          transform="rotate(-25 7.5 6.5)"
-          fill="rgba(255, 255, 255, 0.2)"
-        />
+        <ellipse cx="7.5" cy="6.5" rx="2.5" ry="1.2" transform="rotate(-25 7.5 6.5)" fill="rgba(255, 255, 255, 0.2)" />
       )}
     </svg>
   );
@@ -122,6 +107,7 @@ const ShieldIcon = ({ full }: { full: boolean }) => (
 const REVIVE_INVINCIBILITY_MS = 2000;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
 const MAX_VISIBLE_SHIELDS = 2;
+
 export default function GoldenFishRush() {
   const { t } = useI18n();
   const [screen, setScreen] = useState<ScreenName>('loading');
@@ -131,13 +117,32 @@ export default function GoldenFishRush() {
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
   const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
   const [showExitHint, setShowExitHint] = useState(false);
+  const [modifiers, setModifiers] = useState<RunModifiers>([]);
+  // One-time set-piece intro cards (chapter + boss banners).
+  const [chapterBanner, setChapterBanner] = useState<{ nameKey: string; introKey: string } | null>(null);
+  const [bossBanner, setBossBanner] = useState<{ nameKey: string; kind: string } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
+  const launchFlags = useRef(parseLaunchFlags());
   const backListenerRef = useRef<any>(null);
   const exitConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bannerTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
+    migrateSave();
+    // Sync the audio bus levels with persisted settings on boot.
+    const settings = getSettings();
+    audioManager.setVolumes({
+      master: settings.masterVolume ?? 1,
+      music: settings.musicVolume ?? 0.7,
+      sfx: settings.sfxVolume ?? 1,
+      enabled: settings.sound,
+    });
+    if (launchFlags.current.skipLoading) {
+      setScreen('menu');
+      return;
+    }
     const timer = setTimeout(() => setScreen('menu'), 900);
     return () => clearTimeout(timer);
   }, []);
@@ -161,7 +166,10 @@ export default function GoldenFishRush() {
           screen === 'leaderboard' ||
           screen === 'howto' ||
           screen === 'dailyRewards' ||
-          screen === 'luckySpin'
+          screen === 'luckySpin' ||
+          screen === 'chapterMap' ||
+          screen === 'gallery' ||
+          screen === 'collection'
         ) {
           setScreen('menu');
         } else if (screen === 'playing') {
@@ -205,10 +213,31 @@ export default function GoldenFishRush() {
     };
   }, [screen]);
 
+  useEffect(() => () => {
+    bannerTimersRef.current.forEach((timer) => clearTimeout(timer));
+  }, []);
+
+  // Chapter/set-piece banner lifecycle (short intro cards, auto-hide).
+  const handleChapterTransition = useCallback((index: number) => {
+    if (index === 0) return;
+    const chapter = CHAPTERS[index];
+    if (!chapter) return;
+    setChapterBanner({ nameKey: chapter.nameKey, introKey: chapter.introKey });
+    bannerTimersRef.current.forEach((timer) => clearTimeout(timer));
+    bannerTimersRef.current = [setTimeout(() => setChapterBanner(null), 2600)];
+  }, []);
+
+  const handleSetPieceStart = useCallback((kind: string, nameKey: string) => {
+    setBossBanner({ nameKey, kind });
+    bannerTimersRef.current.forEach((timer) => clearTimeout(timer));
+    bannerTimersRef.current = [setTimeout(() => setBossBanner(null), 3000)];
+  }, []);
+
   const handleGameOver = useCallback(
     (score: number) => {
       setFinalScore(score);
       setScreen(usedSecondChanceThisRun ? 'gameover' : 'continueAd');
+      audioManager.stopAmbience();
     },
     [usedSecondChanceThisRun],
   );
@@ -231,24 +260,41 @@ export default function GoldenFishRush() {
     feverRemainingMs,
     hourglassRemainingMs,
     dropRushRemainingMs,
+    comboCount,
+    comboTier,
+    comboMeter,
+    surgeCharge,
+    surgeActive,
+    schoolCount,
+    bossActive,
+    bossPearls,
+    bossTarget,
+    bossRemainingMs,
     miniChallenge,
+    runSummary,
     doJump,
+    doSteer,
+    releaseSteer,
     reviveAt,
   } = useGameEngine({
     canvasRef,
     active: keepEngineAlive,
     paused: enginePaused,
     skin,
+    modifiers,
+    demo: launchFlags.current.demo,
     onGameOver: handleGameOver,
+    onChapterTransition: handleChapterTransition,
+    onSetPieceStart: handleSetPieceStart,
   });
 
-  // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
     setNewUnlocks(null);
-
+    setChapterBanner(null);
+    setBossBanner(null);
     setScreen('ready');
   }, []);
 
@@ -262,7 +308,7 @@ export default function GoldenFishRush() {
     unlockAchievement('comeback');
     reviveAt(REVIVE_INVINCIBILITY_MS);
     setReviveCountdown(3);
-    setScreen('playing'); // Immediately switch so ad modal closes cleanly
+    setScreen('playing');
   }, [reviveAt]);
 
   const handleSkipAd = useCallback(() => {
@@ -285,8 +331,16 @@ export default function GoldenFishRush() {
 
   useEffect(() => {
     if (screen !== 'playing') return;
+    const settings = getSettings();
+    if (settings.music) {
+      audioManager.setMusicState(score >= 26 ? 'danger' : 'explore', true);
+    }
     const handleKey = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
+        event.preventDefault();
+        doJump();
+      }
+      if (event.code === 'ArrowUp') {
         event.preventDefault();
         doJump();
       }
@@ -298,11 +352,28 @@ export default function GoldenFishRush() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [screen, doJump]);
 
-  const handlePointerDown = useCallback(() => {
-    if (screen === 'playing') {
-      doJump();
-    }
+  // Pointer input: tap = jump; hold-drag also steers when steer mode is on.
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (screen !== 'playing') return;
+    pointerDownRef.current = { x: event.clientX, y: event.clientY };
+    doJump();
   }, [screen, doJump]);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (screen !== 'playing') return;
+    const settings = getSettings();
+    if (!settings.steerMode || !pointerDownRef.current) return;
+    if (Math.abs(event.clientY - pointerDownRef.current.y) > 8) {
+      doSteer(event.clientY);
+    }
+  }, [screen, doSteer]);
+
+  const handlePointerUp = useCallback(() => {
+    pointerDownRef.current = null;
+    releaseSteer();
+  }, [releaseSteer]);
 
   const handleNewUnlocks = useCallback((ids: SkinId[]) => {
     setNewUnlocks(ids);
@@ -320,48 +391,16 @@ export default function GoldenFishRush() {
     { id: 'slow', icon: '⌛', label: t('hud.slow'), remainingMs: hourglassRemainingMs, color: '#80deea' },
     { id: 'drop-rush', icon: '✦', label: t('hud.dropRush'), remainingMs: dropRushRemainingMs, color: '#fff176' },
   ].filter((powerUp) => powerUp.remainingMs > 0);
-  const handleOpenShop = useCallback(() => {
-    setScreen('shop');
-  }, []);
-
-  const handleShopBack = useCallback(() => {
-    setScreen('menu');
-  }, []);
-
-  const handleOpenDailyRewards = useCallback(() => {
-    setScreen('dailyRewards');
-  }, []);
-
-  const handleDailyBack = useCallback(() => {
-    setScreen('menu');
-  }, []);
-
-  const handleOpenLuckySpin = useCallback(() => {
-    setScreen('luckySpin');
-  }, []);
-
-  const handleLuckySpinBack = useCallback(() => {
-    setScreen('menu');
-  }, []);
-
-  const handleGoToLeaderboard = useCallback(() => {
-    setScreen('leaderboard');
-  }, []);
-
-  const handleGoToHowTo = useCallback(() => {
-    setScreen('howto');
-  }, []);
-
-  const handleGoToSettings = useCallback(() => {
-    setScreen('settings');
-  }, []);
 
   const handleGoToMenu = useCallback(() => {
     setReviveCountdown(null);
+    audioManager.stopAmbience();
     setScreen('menu');
   }, []);
 
   const handleResumePlaying = useCallback(() => {
+    const settings = getSettings();
+    if (settings.music) audioManager.setMusicState('explore', true);
     setScreen('playing');
   }, []);
 
@@ -372,8 +411,12 @@ export default function GoldenFishRush() {
           ref={canvasRef}
           className="gfr-canvas"
           onPointerDown={handlePointerDown}
-          onClick={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
         />
+
+        {(screen === 'playing' || screen === 'paused') && launchFlags.current.debug && <DebugOverlay />}
 
         {(screen === 'playing' || screen === 'paused') && (
           <div className="hud">
@@ -402,14 +445,52 @@ export default function GoldenFishRush() {
                   );
                 })}
               </div>
+
+              {schoolCount > 0 && (
+                <div className="hud-school" aria-label={`School: ${schoolCount}`}>
+                  🐠<span>×{schoolCount}</span>
+                </div>
+              )}
             </div>
 
             <div className="hud-score">{score}</div>
 
-            {(activePowerUps.length > 0 || miniChallenge) && (
+            {/* Combo chain meter — the run's heartbeat. */}
+            {comboCount > 1 && (
+              <div className="hud-combo" data-tier={comboTier}>
+                <div className="hud-combo-label">×{comboTier > 0 ? comboTier : 1} · {comboCount}</div>
+                <div className="hud-combo-track">
+                  <div className="hud-combo-fill" style={{ width: `${Math.round(comboMeter * 100)}%` }} />
+                </div>
+              </div>
+            )}
+
+            {/* Golden Surge meter. */}
+            {(surgeActive || surgeCharge > 0) && (
+              <div className={`hud-surge ${surgeActive ? 'hud-surge-active' : ''}`}>
+                <span className="hud-surge-icon">✨</span>
+                <div className="hud-surge-track">
+                  <div
+                    className="hud-surge-fill"
+                    style={{ width: surgeActive ? '100%' : `${Math.round((surgeCharge / 100) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {(activePowerUps.length > 0 || miniChallenge || bossActive) && (
               <div className="hud-status-stack">
+                {bossActive && (
+                  <div className="hud-boss" role="status">
+                    <span className="hud-boss-title">{t('hud.setPiece')}</span>
+                    <span className="hud-boss-objective">
+                      {t('hud.pearls', { count: bossPearls, target: bossTarget })} · {Math.ceil(bossRemainingMs / 1000)}s
+                    </span>
+                  </div>
+                )}
+
                 {activePowerUps.length > 0 && (
-                    <div className="hud-powerups" aria-label={t('hud.activePowerUps')}>
+                  <div className="hud-powerups" aria-label={t('hud.activePowerUps')}>
                     {activePowerUps.map((powerUp) => (
                       <div
                         key={powerUp.id}
@@ -456,6 +537,22 @@ export default function GoldenFishRush() {
           </div>
         )}
 
+        {/* Chapter intro card */}
+        {screen === 'playing' && chapterBanner && (
+          <div className="chapter-banner" role="status">
+            <div className="chapter-banner-name">{t(chapterBanner.nameKey)}</div>
+            <div className="chapter-banner-intro">{t(chapterBanner.introKey)}</div>
+          </div>
+        )}
+
+        {/* Set-piece / boss banner */}
+        {screen === 'playing' && bossBanner && (
+          <div className="boss-banner" role="status">
+            <div className="boss-banner-kind">{bossBanner.kind === 'spectacle' ? t('hud.finale') : t('hud.boss')}</div>
+            <div className="boss-banner-name">{t(bossBanner.nameKey)}</div>
+          </div>
+        )}
+
         {reviveCountdown !== null && (
           <div className="revive-countdown-overlay">
             <span>{reviveCountdown > 0 ? reviveCountdown : 'GO!'}</span>
@@ -482,6 +579,9 @@ export default function GoldenFishRush() {
             onShop={handleOpenShop}
             onDailyRewards={handleOpenDailyRewards}
             onLuckySpin={handleOpenLuckySpin}
+            onChapterMap={() => setScreen('chapterMap')}
+            onGallery={() => setScreen('gallery')}
+            onCollection={() => setScreen('collection')}
           />
         )}
 
@@ -491,11 +591,25 @@ export default function GoldenFishRush() {
 
         {screen === 'leaderboard' && <LeaderboardScreen onBack={handleGoToMenu} />}
 
-        {screen === 'shop' && <ShopScreen onBack={handleShopBack} onNewUnlocks={handleNewUnlocks} />}
+        {screen === 'shop' && <ShopScreen onBack={handleGoToMenu} onNewUnlocks={handleNewUnlocks} />}
 
-        {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleDailyBack} />}
+        {screen === 'dailyRewards' && <DailyRewardsScreen onBack={handleGoToMenu} />}
 
-        {screen === 'luckySpin' && <LuckySpinScreen onBack={handleLuckySpinBack} />}
+        {screen === 'luckySpin' && <LuckySpinScreen onBack={handleGoToMenu} />}
+
+        {screen === 'chapterMap' && (
+          <ChapterMapScreen
+            onBack={handleGoToMenu}
+            onDive={(chapterModifiers) => {
+              setModifiers(chapterModifiers);
+              startRun();
+            }}
+          />
+        )}
+
+        {screen === 'gallery' && <CharacterGalleryScreen onBack={handleGoToMenu} />}
+
+        {screen === 'collection' && <CollectionBookScreen onBack={handleGoToMenu} />}
 
         {screen === 'paused' && (
           <PauseScreen
@@ -516,6 +630,7 @@ export default function GoldenFishRush() {
             finalScore={finalScore}
             roundCoins={roundCoins}
             canContinue={!usedSecondChanceThisRun}
+            runSummary={runSummary}
             onWatchAd={handleWatchAd}
             onPlayAgain={startRun}
             onLeaderboard={handleGoToLeaderboard}
@@ -547,4 +662,24 @@ export default function GoldenFishRush() {
       <Footer />
     </div>
   );
+
+  // --- local helpers kept below the component for readability ---
+  function handleOpenShop() {
+    setScreen('shop');
+  }
+  function handleGoToLeaderboard() {
+    setScreen('leaderboard');
+  }
+  function handleGoToHowTo() {
+    setScreen('howto');
+  }
+  function handleGoToSettings() {
+    setScreen('settings');
+  }
+  function handleOpenDailyRewards() {
+    setScreen('dailyRewards');
+  }
+  function handleOpenLuckySpin() {
+    setScreen('luckySpin');
+  }
 }

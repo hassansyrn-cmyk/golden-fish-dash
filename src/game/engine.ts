@@ -1,31 +1,84 @@
 // -----------------------------------------------------------------------
-// Core canvas game engine for Golden Fish Rush.
-// Power-ups: Shield (protects one hit + invincibility) and Magnet (pulls nearby coins)
-// Gem/Life improvement: full lives -> +5 score
-// Shop boosts supported: initial shield/magnet/gemBoostActive
-// Visual feedback: Shield bubble + Magnet glow added
+// Core canvas game engine for Golden Fish Rush: Ocean Legends.
+// Power-ups: Shield, Magnet, Fever, Hourglass. Shop boosts supported.
+// Ocean Legends adds: authored chapter/pattern system, combo chains,
+// Golden Surge, rescue school, collect-and-grow, current zones, coral
+// barriers, lore drops, set-piece boss encounters, seeded runs, and an
+// accessibility layer (reduced motion / high contrast / steer mode).
 // -----------------------------------------------------------------------
 
-import { BASE, SKINS } from './constants';
+import { BASE } from './constants';
 import type { SkinId, FloatingText } from './types';
 import { translate } from './i18n';
+import { ENVIRONMENTS, environmentById, type EnvironmentId, type EnvironmentTheme } from './ocean/environmentTheme';
+import { chapterForScore, chapterDifficulty, type ChapterDef } from './ocean/chapters';
+import { getCharacter, getCharacterAbility } from './ocean/characters';
+import { pickPattern, type PatternSpawnApi, type PowerUpKind, type HazardKind } from './ocean/patterns';
+import { VFXPool, VFX_COLORS } from './ocean/vfx';
+import {
+  createCombo, comboEvent, comboTick, comboTier,
+  createSurge, surgeAddCharge, surgeActivate, surgeIsActive,
+  createGrowth, growthEat, growthScale,
+  MAX_COMPANIONS, type CompanionFish,
+  type ComboState, type SurgeState, type GrowthState,
+} from './ocean/systems';
+import { createBossState, updateBoss, bossReward, type BossState, type BossKind } from './ocean/bosses';
+import { createRunRandom, type RunRandom } from './ocean/rng';
+import type { RunModifiers, AccessibilityOptions } from './ocean/runConfig';
+import { DEFAULT_ACCESSIBILITY } from './ocean/runConfig';
 
-type EnvironmentId = 'lagoon' | 'coral' | 'kelp' | 'ruins' | 'volcanic' | 'temple' | 'abyss' | 'crystal' | 'moonlit' | 'sunkenCity' | 'aurora' | 'crownReef' | 'eternalTemple';
+export interface Plankton {
+  x: number;
+  y: number;
+  collected: boolean;
+  drift: number;
+}
 
-interface EnvironmentTheme {
-  id: EnvironmentId;
-  minScore: number;
-  label: string;
-  top: string;
-  mid: string;
-  bottom: string;
-  ray: string;
-  pillarDark: string;
-  pillarMid: string;
-  pillarLight: string;
-  cap: string;
-  accent: string;
-  speck: string;
+export interface SunPearl {
+  x: number;
+  y: number;
+  collected: boolean;
+  pulse: number;
+}
+
+export interface CoralBarrier {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  broken: boolean;
+  breakProgress: number;
+}
+
+export interface CurrentZone {
+  x: number;
+  y: number;
+  halfHeight: number;
+  direction: 'up' | 'down';
+  strength: number;
+  /** Set by the Mirror Current modifier. */
+  mirrored: boolean;
+}
+
+export interface LoreDrop {
+  id: string;
+  x: number;
+  y: number;
+  collected: boolean;
+  pulse: number;
+}
+
+export interface RunStats {
+  surges: number;
+  rescues: number;
+  companionsLost: number;
+  barriersBroken: number;
+  planktonEaten: number;
+  pearlsCollected: number;
+  loreFound: string[];
+  bestCombo: number;
+  chaptersVisited: number[];
+  setPiecesCleared: number;
 }
 
 export interface Obstacle {
@@ -81,6 +134,7 @@ export interface Particle {
   maxLife: number;
   color: string;
   size: number;
+  gravity?: number;
 }
 
 export interface PredatorShark {
@@ -94,6 +148,8 @@ export interface PredatorShark {
   bobSpeed: number;
   bobAmount: number;
   passed: boolean;
+  /** 'eel' renders as an electric eel (Kelp Labyrinth ambush predator). */
+  variant?: 'shark' | 'eel';
 }
 
 export interface BubbleBoostRing {
@@ -143,6 +199,19 @@ export interface EngineCallbacks {
   onNearMiss?: () => void;
   onFeverStart?: () => void;
   onPowerUpCollect?: (type: PowerUp['type']) => void;
+  onCombo?: (count: number, tier: number) => void;
+  onComboBreak?: (best: number) => void;
+  onSurgeStart?: () => void;
+  onSurgeEnd?: () => void;
+  onCompanionRescued?: (schoolSize: number) => void;
+  onCompanionLost?: (schoolSize: number) => void;
+  onGrowthUp?: (stage: number) => void;
+  onChapterTransition?: (chapterIndex: number, chapterId: string) => void;
+  onSetPieceStart?: (kind: BossKind, nameKey: string) => void;
+  onSetPieceEnd?: (kind: BossKind, succeeded: boolean, score: number, coins: number) => void;
+  onLoreFound?: (loreId: string) => void;
+  onCurrentPush?: (direction: 'up' | 'down') => void;
+  onBarrierBreak?: () => void;
 }
 
 export interface EngineState {
@@ -188,11 +257,44 @@ export interface EngineState {
   feverUntil: number;
   elapsedSinceFeverCoinSpawn: number;
   hourglassUntil: number;
+
+  // === Ocean Legends ===
+  seed: string;
+  rng: RunRandom;
+  modifiers: RunModifiers;
+  accessibility: AccessibilityOptions;
+  chapter: ChapterDef;
+  lastChapterIndex: number;
+  /** Fractional score accumulator from companion bonuses. */
+  scoreCarry: number;
+  combo: ComboState;
+  surge: SurgeState;
+  growth: GrowthState;
+  companions: CompanionFish[];
+  plankton: Plankton[];
+  sunPearls: SunPearl[];
+  barriers: CoralBarrier[];
+  currents: CurrentZone[];
+  loreDrops: LoreDrop[];
+  boss: BossState | null;
+  runStats: RunStats;
+  emberWardUsed: boolean;
+  hitStopUntil: number;
+  steerTargetY: number | null;
+  /** Set-piece chapters already triggered this run. */
+  setPiecesTriggered: number[];
+  currentPatternId: string;
+  recentPatterns: string[];
+  demo: boolean;
+  demoJumpCooldown: number;
+  elapsedSincePattern: number;
+  patternDelayMs: number;
+  vfx: VFXPool;
+  nextAmbientVfxAt: number;
 }
 
 const FISH_X_RATIO = 0.28;
 const MAX_EXTRA_LIVES = 2;
-const GEM_SPAWN_CHANCE = 0.09;
 const DROP_RUSH_DURATION_MS = 20_000;
 const MAGNET_DURATION_MS = 12_000;
 const HIT_INVINCIBILITY_MS = 1700;
@@ -201,27 +303,17 @@ const SAFE_REVIVE_DELAY_MS = 900;
 // circular contact zone makes collisions match what players can see.
 const FAIR_FISH_HITBOX_RADIUS = BASE.fishRadius * 0.82;
 
-const ENVIRONMENTS: EnvironmentTheme[] = [
-  { id: 'lagoon', minScore: 0, label: 'Sunlit Lagoon', top: '#35bce8', mid: '#087fb9', bottom: '#001b38', ray: '#d8fbff', pillarDark: '#0d716d', pillarMid: '#42d2ba', pillarLight: '#a4f5db', cap: '#62dccc', accent: '#d6fff7', speck: '#d8fbff' },
-  { id: 'coral', minScore: 12, label: 'Coral Bloom', top: '#29a9d2', mid: '#146d9b', bottom: '#102b56', ray: '#b6f5ff', pillarDark: '#a84d65', pillarMid: '#ff8f7b', pillarLight: '#ffd0a6', cap: '#ffb37c', accent: '#ffd5b8', speck: '#ffd39a' },
-  { id: 'kelp', minScore: 30, label: 'Kelp Canopy', top: '#287c78', mid: '#124f5b', bottom: '#06293b', ray: '#beffd0', pillarDark: '#236044', pillarMid: '#5ba853', pillarLight: '#b9df70', cap: '#8fcf68', accent: '#e6ff9a', speck: '#c6ffba' },
-  { id: 'ruins', minScore: 55, label: 'Twilight Ruins', top: '#33468a', mid: '#172a68', bottom: '#080e30', ray: '#aeb6ff', pillarDark: '#252b69', pillarMid: '#5a56b0', pillarLight: '#8e9cff', cap: '#737ce8', accent: '#85f0ff', speck: '#c6d2ff' },
-  { id: 'volcanic', minScore: 85, label: 'Ember Vents', top: '#4c3c72', mid: '#382346', bottom: '#180b22', ray: '#ffc0a1', pillarDark: '#3a2430', pillarMid: '#924550', pillarLight: '#ff845d', cap: '#e6634d', accent: '#ffcb76', speck: '#ffb25e' },
-  { id: 'temple', minScore: 120, label: 'Bioluminescent Temple', top: '#163c77', mid: '#102452', bottom: '#05091d', ray: '#8cf6ff', pillarDark: '#18285b', pillarMid: '#265a82', pillarLight: '#4cf0e1', cap: '#4bd9dd', accent: '#7bfbff', speck: '#a6ffff' },
-  { id: 'abyss', minScore: 170, label: 'Abyssal Current', top: '#1b2960', mid: '#111747', bottom: '#030414', ray: '#91a8ff', pillarDark: '#151a48', pillarMid: '#35408f', pillarLight: '#7386e4', cap: '#6576db', accent: '#aebdff', speck: '#849dff' },
-  { id: 'crystal', minScore: 240, label: 'Crystal Grotto', top: '#1c6f88', mid: '#155064', bottom: '#071e3a', ray: '#a8ffff', pillarDark: '#194564', pillarMid: '#2c94ad', pillarLight: '#8affef', cap: '#64dacc', accent: '#c9ffff', speck: '#aafff4' },
-  { id: 'moonlit', minScore: 330, label: 'Moonlit Tides', top: '#32447f', mid: '#252a65', bottom: '#0b1030', ray: '#edf0ff', pillarDark: '#293060', pillarMid: '#6870bb', pillarLight: '#bec5ff', cap: '#a5abed', accent: '#f0f2ff', speck: '#e0e4ff' },
-  { id: 'sunkenCity', minScore: 460, label: 'Sunken City', top: '#17666e', mid: '#11474f', bottom: '#06242f', ray: '#b8fff0', pillarDark: '#1f504c', pillarMid: '#4e9b7b', pillarLight: '#b4d56b', cap: '#8ebf68', accent: '#e1ffac', speck: '#ccffbf' },
-  { id: 'aurora', minScore: 650, label: 'Aurora Trench', top: '#25326e', mid: '#2b2162', bottom: '#100b2c', ray: '#d7b9ff', pillarDark: '#35215e', pillarMid: '#7c4aa1', pillarLight: '#ee8fe3', cap: '#c76fd1', accent: '#ffc5f3', speck: '#eeb6ff' },
-  { id: 'crownReef', minScore: 850, label: 'Crown Reef', top: '#5c3b69', mid: '#69304f', bottom: '#210f2d', ray: '#ffe3a0', pillarDark: '#59303c', pillarMid: '#b15b58', pillarLight: '#ffc77b', cap: '#f49b62', accent: '#fff0b8', speck: '#ffd182' },
-  { id: 'eternalTemple', minScore: 1000, label: 'Eternal Temple', top: '#162b72', mid: '#1a315f', bottom: '#050617', ray: '#b5fff6', pillarDark: '#163651', pillarMid: '#27738c', pillarLight: '#80fff0', cap: '#50d7cf', accent: '#d4fffb', speck: '#9cfff5' },
-];
+const ENVIRONMENT_CHANGE_SPAN = 18;
 
+/**
+ * Chapter-aware environment selection: the active chapter defines its
+ * sub-themes, and the world alternates between them as the run deepens.
+ */
 function environmentForScore(score: number): EnvironmentTheme {
-  for (let index = ENVIRONMENTS.length - 1; index >= 0; index -= 1) {
-    if (score >= ENVIRONMENTS[index].minScore) return ENVIRONMENTS[index];
-  }
-  return ENVIRONMENTS[0];
+  const chapter = chapterForScore(score);
+  const themes = chapter.themeIds;
+  const step = Math.floor((score - chapter.minScore) / ENVIRONMENT_CHANGE_SPAN);
+  return environmentById(themes[step % themes.length]);
 }
 
 let waterTexture: HTMLImageElement | null = null;
@@ -272,14 +364,28 @@ const getInvincibilityDuration = (state: EngineState) => {
   return base;
 };
 
-export function createEngine(width: number, height: number, skin: SkinId): EngineState {
+export interface CreateEngineOptions {
+  seed?: string;
+  modifiers?: RunModifiers;
+  accessibility?: Partial<AccessibilityOptions>;
+  demo?: boolean;
+}
+
+export function createEngine(width: number, height: number, skin: SkinId, options: CreateEngineOptions = {}): EngineState {
+  const rng = options.seed ? createRunRandom(options.seed) : createRunRandom(Math.floor(Math.random() * 2 ** 31));
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({
-    x: Math.random() * width,
-    y: Math.random() * height,
-    r: 2 + Math.random() * 8,
-    speed: 0.25 + Math.random() * 0.95,
-    drift: (Math.random() - 0.5) * 0.45,
+    x: rng.next() * width,
+    y: rng.next() * height,
+    r: 2 + rng.next() * 8,
+    speed: 0.25 + rng.next() * 0.95,
+    drift: (rng.next() - 0.5) * 0.45,
   }));
+  const accessibility: AccessibilityOptions = { ...DEFAULT_ACCESSIBILITY, ...options.accessibility };
+  if (options.demo) {
+    // Deterministic QA passes always render the calmest experience.
+    accessibility.reducedMotion = true;
+    accessibility.reducedFlashes = true;
+  }
   return {
     width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: 0, running: true,
     invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
@@ -302,6 +408,41 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     feverUntil: 0,
     elapsedSinceFeverCoinSpawn: 0,
     hourglassUntil: 0,
+
+    // Ocean Legends
+    seed: options.seed ?? '',
+    rng,
+    modifiers: options.modifiers ?? [],
+    accessibility,
+    chapter: chapterForScore(0),
+    lastChapterIndex: 0,
+    scoreCarry: 0,
+    combo: createCombo(),
+    surge: createSurge(),
+    growth: createGrowth(),
+    companions: [],
+    plankton: [],
+    sunPearls: [],
+    barriers: [],
+    currents: [],
+    loreDrops: [],
+    boss: null,
+    runStats: {
+      surges: 0, rescues: 0, companionsLost: 0, barriersBroken: 0, planktonEaten: 0,
+      pearlsCollected: 0, loreFound: [], bestCombo: 0, chaptersVisited: [0], setPiecesCleared: 0,
+    },
+    emberWardUsed: false,
+    hitStopUntil: 0,
+    steerTargetY: null,
+    setPiecesTriggered: [],
+    currentPatternId: 'none',
+    recentPatterns: [],
+    demo: options.demo ?? false,
+    demoJumpCooldown: 0,
+    elapsedSincePattern: 999999,
+    patternDelayMs: BASE.spawnInterval,
+    vfx: new VFXPool(),
+    nextAmbientVfxAt: 0,
   };
 }
 
@@ -344,153 +485,145 @@ function clampGapY(state: EngineState, gapY: number, gapSize: number) {
   return Math.max(safeMargin, Math.min(state.height - safeMargin, gapY));
 }
 
-/**
- * Place one hazard close to an edge of a pipe gap, while reserving a generous
- * lane on the opposite side. This prevents a hazard from sealing the only
- * route through a gate, especially on narrow high-score gaps.
- */
-function safeHazardLane(gapY: number, gapSize: number, hazardHalfHeight: number) {
-  // Put hazards in a randomized side lane inside the gate: never in the
-  // center flight line, never glued to the pipe lip, and always leaving an
-  // obvious open route on the other side.
-  const minOffset = Math.max(hazardHalfHeight + 20, gapSize * 0.23);
-  const maxOffset = Math.max(minOffset, gapSize / 2 - hazardHalfHeight - 20);
-  const offset = minOffset + Math.random() * (maxOffset - minOffset);
-  return gapY + (Math.random() < 0.5 ? -offset : offset);
+let companionCounter = 0;
+
+function nextLoreId(state: EngineState): string | null {
+  const chapterLore = state.chapter.lore;
+  const remaining = chapterLore.filter((l) => !state.runStats.loreFound.includes(l.id));
+  if (remaining.length === 0) return null;
+  return state.rng.pick(remaining).id;
 }
 
-function spawnObstacle(state: EngineState, score: number) {
-  const { gap, diffMultiplier } = difficultyForScore(score, state.timeMs);
+/**
+ * Pattern-driven spawner. Replaces the old single-gate spawn with authored
+ * pattern templates chosen by seeded RNG, chapter and difficulty.
+ */
+function spawnPattern(state: EngineState) {
+  const chapter = chapterForScore(state.score);
+  const difficulty = chapterDifficulty(chapter, state.score);
+  const { gap, speed } = difficultyForScore(state.score, state.timeMs);
   const margin = Math.max(95, gap * 0.48);
-  const rawGapY = margin + Math.random() * Math.max(1, state.height - margin * 2);
-  const gapY = clampGapY(state, rawGapY, gap);
-  const environment = environmentForScore(score);
+  const anchorY = margin + state.rng.next() * Math.max(1, state.height - margin * 2);
+  const theme = environmentForScore(state.score);
+  const score = state.score;
   const legendaryMode = score >= 120;
-  // Moving and split gates created surprise deaths in late runs. Gates remain
-  // stable, single-opening obstacles; later environments carry the variety.
-  const isDouble = false;
-  state.obstacles.push({
-    x: state.width + BASE.obstacleWidth, gapY, gapSize: gap, passed: false,
-    bobbing: false, bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 0, glowing: legendaryMode, isDouble, environment: environment.id,
+
+  const api: PatternSpawnApi = {
+    width: state.width,
+    height: state.height,
+    anchorY,
+    gapSize: gap,
+    difficulty,
+    score,
+    rng: state.rng,
+    themeId: theme.id,
+    pushObstacle: ({ x, gapY, gapSize }) => {
+      state.obstacles.push({
+        x, gapY, gapSize, passed: false,
+        bobbing: false, bobPhase: state.rng.next() * Math.PI * 2,
+        bobAmount: 0, glowing: legendaryMode, isDouble: false, environment: theme.id,
+      });
+    },
+    pushCoin: (x, y, bonus) => {
+      state.coins.push({ x, y, collected: false, bonus: bonus ?? (score >= 60 && state.rng.chance(0.2)) });
+    },
+    pushGem: (x, y) => {
+      state.gems.push({ x, y, collected: false, pulse: state.rng.next() * Math.PI * 2 });
+    },
+    pushPowerUp: (x, y, type: PowerUpKind) => {
+      state.powerUps.push({ x, y, type, collected: false, pulse: state.rng.next() * Math.PI * 2 });
+    },
+    pushHazard: (kind: HazardKind, x, y) => {
+      if (kind === 'shark') {
+        state.sharks.push({
+          id: 'shark_' + state.rng.next(), x, y, baseY: y,
+          width: 85, height: 38,
+          bobPhase: state.rng.next() * Math.PI * 2,
+          bobSpeed: 0.003 + state.rng.next() * 0.002,
+          bobAmount: 8 + state.rng.next() * 5, passed: false,
+        });
+      } else if (kind === 'eel') {
+        state.sharks.push({
+          id: 'eel_' + state.rng.next(), x, y, baseY: y,
+          width: 95, height: 24, variant: 'eel',
+          bobPhase: state.rng.next() * Math.PI * 2,
+          bobSpeed: 0.004 + state.rng.next() * 0.003,
+          bobAmount: 14 + state.rng.next() * 8, passed: false,
+        });
+      } else if (kind === 'mine') {
+        state.seaMines.push({
+          id: 'mine_' + state.rng.next(), x, y, radius: 14,
+          pulsePhase: state.rng.next() * Math.PI * 2, exploded: false,
+        });
+      } else {
+        state.jellyfish.push({
+          id: 'jelly_' + state.rng.next(), x, y, baseY: y, radius: 12,
+          bobPhase: state.rng.next() * Math.PI * 2,
+          bobSpeed: 0.002 + state.rng.next() * 0.0015,
+          bobAmount: 8 + state.rng.next() * 5,
+        });
+      }
+    },
+    pushPlankton: (x, y) => {
+      state.plankton.push({ x, y, collected: false, drift: state.rng.next() * Math.PI * 2 });
+    },
+    pushSunPearl: (x, y) => {
+      state.sunPearls.push({ x, y, collected: false, pulse: state.rng.next() * Math.PI * 2 });
+    },
+    pushBarrier: (x, y, gapSize) => {
+      state.barriers.push({
+        x, y, width: 24, height: Math.max(90, gapSize * 0.42),
+        broken: false, breakProgress: 0,
+      });
+    },
+    pushCompanion: (x, y) => {
+      if (state.companions.length >= MAX_COMPANIONS + 3) return;
+      state.companions.push({
+        id: 'comp_' + (companionCounter++),
+        phase: state.rng.next() * Math.PI * 2,
+        x, y, rescued: false, spawnAt: state.timeMs,
+      });
+    },
+    pushCurrent: (x, y, direction, strength) => {
+      state.currents.push({
+        x, y, halfHeight: 74, direction, strength,
+        mirrored: state.modifiers.includes('mirrorCurrent'),
+      });
+    },
+    pushChest: (x, y) => {
+      state.chests.push({ x, y, width: 36, height: 30, collected: false });
+    },
+    pushLore: (x, y) => {
+      const loreId = nextLoreId(state);
+      if (!loreId) {
+        // All chapter lore found — a magenta treasure spark appears instead.
+        state.sunPearls.push({ x, y, collected: false, pulse: state.rng.next() * Math.PI * 2 });
+        return;
+      }
+      state.loreDrops.push({ id: loreId, x, y, collected: false, pulse: state.rng.next() * Math.PI * 2 });
+    },
+  };
+
+  const pattern = pickPattern(state.rng, chapter.index, difficulty, {
+    modifiers: state.modifiers,
+    recentIds: state.recentPatterns,
   });
+  const span = pattern.build(api);
 
-  // Drop Rush is awarded by the turquoise ring. It makes collectable drops
-  // noticeably more frequent for 20 seconds without changing obstacle danger.
-  const isFever = state.feverUntil > state.timeMs;
-  const isDropRushActive = state.boostUntil > state.timeMs;
-  const coinChance = isDropRushActive ? 0.92 : 0.68;
-  const powerUpChance = isDropRushActive ? 0.18 : 0.09;
-  const chestChance = isDropRushActive ? 0.055 : 0.025;
-  if (!isFever && Math.random() < coinChance) {
-    state.coins.push({
-      x: state.width + BASE.obstacleWidth + 44, y: gapY + (Math.random() - 0.5) * (gap * 0.32),
-      collected: false, bonus: score >= 60 && Math.random() < 0.22,
-    });
-  }
-  // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive, or Discus skin ability)
-  let gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
-  if (state.skin === 'diamond') {
-    gemChance *= 1.30; // Discus skin: +30% Extra Life drop chance
-  }
-  if (isDropRushActive) {
-    gemChance = Math.min(0.42, gemChance * 2.35);
-  }
-  if (Math.random() < gemChance) {
-    state.gems.push({
-      x: state.width + BASE.obstacleWidth + 88, y: gapY + (Math.random() - 0.5) * (gap * 0.28),
-      collected: false, pulse: Math.random() * Math.PI * 2,
-    });
-  }
-  // Power-up spawn (shield, magnet, Fever mode Star, or Hourglass!)
-  if (Math.random() < powerUpChance) {
-    const roll = Math.random();
-    const type: 'shield' | 'magnet' | 'fever' | 'hourglass' =
-      roll < 0.25 ? 'shield' :
-      roll < 0.50 ? 'magnet' :
-      roll < 0.75 ? 'fever' : 'hourglass';
-    const puY = gapY + (Math.random() - 0.5) * (gap * 0.25);
-    state.powerUps.push({
-      x: state.width + BASE.obstacleWidth + 125,
-      y: puY,
-      type,
-      collected: false,
-      pulse: Math.random() * Math.PI * 2,
-    });
-  }
-
-  // Only one additional hazard can accompany a pipe gate. Its center is
-  // anchored inside the gap and the opposite half remains deliberately clear.
-  const hasActiveHazard = state.sharks.length + state.seaMines.length + state.jellyfish.length > 0;
-  if (!hasActiveHazard) {
-    const hazardRoll = Math.random();
-
-    // Shark enemy after score >= 20. It uses a short vertical bob, so the
-    // reserved lane remains usable throughout the encounter.
-    if (score >= 20 && hazardRoll < 0.12 * diffMultiplier) {
-      const sharkY = safeHazardLane(gapY, gap, 19);
-      state.sharks.push({
-        id: 'shark_' + Math.random(),
-        x: state.width + 150,
-        y: sharkY,
-        baseY: sharkY,
-        width: 85,
-        height: 38,
-        bobPhase: Math.random() * Math.PI * 2,
-        bobSpeed: 0.003 + Math.random() * 0.002,
-        bobAmount: 8 + Math.random() * 5,
-        passed: false,
-      });
-    // Sea mine after score >= 10. Keep it away from the centerline so it
-    // challenges route choice without blocking both paths.
-    } else if (score >= 10 && hazardRoll < 0.35 * diffMultiplier) {
-      state.seaMines.push({
-        id: 'mine_' + Math.random(),
-        x: state.width + 86,
-        y: safeHazardLane(gapY, gap, 14),
-        radius: 14,
-        pulsePhase: Math.random() * Math.PI * 2,
-        exploded: false,
-      });
-    // Jellyfish after score >= 15. Vertical movement is intentionally subtle
-    // to keep the protected half of the pipe gap navigable.
-    } else if (score >= 15 && hazardRoll < 0.55 * diffMultiplier) {
-      const jellyY = safeHazardLane(gapY, gap, 12);
-      state.jellyfish.push({
-        id: 'jelly_' + Math.random(),
-        x: state.width + 72,
-        y: jellyY,
-        baseY: jellyY,
-        radius: 12,
-        bobPhase: Math.random() * Math.PI * 2,
-        bobSpeed: 0.002 + Math.random() * 0.0015,
-        bobAmount: 8 + Math.random() * 5,
-      });
-    }
-  }
-
-  // Bubble Boost Ring spawn (very rare)
-  if (Math.random() < 0.04) {
-    const ringY = 100 + Math.random() * (state.height - 200);
+  // Rare bubble boost ring, unchanged from the classic spawn behavior.
+  if (state.rng.chance(0.05)) {
     state.boostRings.push({
       x: state.width + BASE.obstacleWidth + 180,
-      y: ringY,
-      radius: 25,
-      collected: false,
+      y: 100 + state.rng.next() * (state.height - 200),
+      radius: 25, collected: false,
     });
   }
 
-  // Treasure Chest spawn (rare, but always placed inside a readable gate).
-  if (Math.random() < chestChance) {
-    const chestY = gapY + (Math.random() - 0.5) * gap * 0.24;
-    state.chests.push({
-      x: state.width + BASE.obstacleWidth + 240,
-      y: chestY,
-      width: 36,
-      height: 30,
-      collected: false,
-    });
-  }
+  state.currentPatternId = pattern.id;
+  state.recentPatterns = [...state.recentPatterns.slice(-3), pattern.id];
+  // Wait until the whole pattern (plus a breather) has scrolled past.
+  const spanMs = span / Math.max(0.5, speed * 0.06);
+  state.patternDelayMs = Math.max(700, spanMs + 260);
 }
 
 function addBurst(state: EngineState, x: number, y: number, color: string, count: number, sizeBase = 2) {
@@ -524,6 +657,11 @@ function clearDangerousReviveArea(state: EngineState) {
   state.powerUps = state.powerUps.filter((pu) => pu.x < fishX - BASE.obstacleWidth * 2 || pu.x > state.width + BASE.obstacleWidth);
   state.boostRings = state.boostRings.filter((ring) => ring.x < fishX - 60 || ring.x > state.width + 60);
   state.chests = state.chests.filter((chest) => chest.x < fishX - 60 || chest.x > state.width + 60);
+  state.plankton = state.plankton.filter((p) => p.x < fishX - 60 || p.x > state.width + 60);
+  state.sunPearls = state.sunPearls.filter((p) => p.x < fishX - 60 || p.x > state.width + 60);
+  state.barriers = state.barriers.filter((b) => b.broken || b.x < fishX - 80 || b.x > state.width + 80);
+  state.currents = state.currents.filter((c) => c.x < fishX - 60 || c.x > state.width + 60);
+  state.loreDrops = state.loreDrops.filter((l) => l.x < fishX - 60 || l.x > state.width + 60);
   state.elapsedSinceSpawn = -SAFE_REVIVE_DELAY_MS;
 }
 
@@ -536,16 +674,50 @@ function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   state.fishRotation = 0;
   clearDangerousReviveArea(state);
   callbacks.onLifeChange?.(state.lives);
-  callbacks.onShake(4); // Shaking is light & non-distracting
-  callbacks.onRedFlash?.();
+  callbacks.onShake(state.accessibility.reducedMotion ? 0 : 4); // Shaking is light & non-distracting
+  if (!state.accessibility.reducedFlashes) callbacks.onRedFlash?.();
+  state.hitStopUntil = state.timeMs + 45;
   addBurst(state, state.width * FISH_X_RATIO, state.fishY, 'rgba(80, 220, 255, 0.95)', 22, 3);
   return true;
 }
 
+/**
+ * Hazard damage resolution order (fairness ladder):
+ * 1. Ember's one-time heat ward (character ability).
+ * 2. A rescued companion absorbs the hit and swims away.
+ * 3. An extra life is spent.
+ * 4. Death.
+ */
 function killOrUseLife(state: EngineState, callbacks: EngineCallbacks) {
+  const fishX = state.width * FISH_X_RATIO;
+  const ability = getCharacterAbility(state.skin);
+
+  if (ability.firstHazardWard && !state.emberWardUsed) {
+    state.emberWardUsed = true;
+    state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
+    callbacks.onShake(3);
+    triggerFloatingText(state, translate('engine.emberWard'), fishX, state.fishY - 34, '#ffba08', true);
+    state.vfx.emit('heatAsh', state.particles, fishX, state.fishY, { scale: 1.4 });
+    return;
+  }
+
+  if (state.companions.some((c) => c.rescued)) {
+    // The last rescued companion sacrifices itself and darts away.
+    const index = state.companions.map((c) => c.rescued).lastIndexOf(true);
+    const lost = state.companions[index];
+    state.companions.splice(index, 1);
+    state.runStats.companionsLost += 1;
+    state.invincibleUntil = state.timeMs + Math.round(getInvincibilityDuration(state) * 0.6);
+    callbacks.onShake(2);
+    callbacks.onCompanionLost?.(state.companions.filter((c) => c.rescued).length);
+    triggerFloatingText(state, translate('engine.companionLost'), fishX, state.fishY - 34, VFX_COLORS.cyan, true);
+    state.vfx.emit('rescueSpark', state.particles, lost.x, lost.y, { scale: 1.2 });
+    return;
+  }
+
   if (spendExtraLife(state, callbacks)) return;
-  callbacks.onShake(8); // Reduced shake on gameover/death
-  callbacks.onRedFlash?.();
+  callbacks.onShake(state.accessibility.reducedMotion ? 0 : 8);
+  if (!state.accessibility.reducedFlashes) callbacks.onRedFlash?.();
   callbacks.onDeath();
   state.running = false;
 }
@@ -564,22 +736,69 @@ function triggerFloatingText(state: EngineState, text: string, x: number, y: num
   });
 }
 
-function announceEnvironmentTransition(state: EngineState, callbacks: EngineCallbacks) {
-  const theme = environmentForScore(state.score);
-  if (theme.minScore === 0 || state.score !== theme.minScore) return;
-  triggerFloatingText(state, `✦ ${theme.label}`, state.width * 0.5, state.height * 0.30, theme.accent, true);
-  addBurst(state, state.width * 0.5, state.height * 0.36, theme.speck, 16, 1.8);
-  callbacks.onFloatingText?.(`Entered ${theme.label}`, state.width * 0.5, state.height * 0.30, theme.accent, true);
+/** Chapter intro card + set-piece (boss/finale) triggering on score bands. */
+function maybeTransitionChapter(state: EngineState, callbacks: EngineCallbacks) {
+  const chapter = chapterForScore(state.score);
+  if (chapter.index !== state.lastChapterIndex) {
+    state.chapter = chapter;
+    state.lastChapterIndex = chapter.index;
+    if (!state.runStats.chaptersVisited.includes(chapter.index)) {
+      state.runStats.chaptersVisited.push(chapter.index);
+    }
+    const cx = state.width * 0.5;
+    triggerFloatingText(state, `✦ ${translate(chapter.nameKey)}`, cx, state.height * 0.28, chapter.lighting.accent, true);
+    triggerFloatingText(state, translate(chapter.introKey), cx, state.height * 0.36, chapter.lighting.accent, false);
+    state.vfx.emit('biolumMotes', state.particles, cx, state.height * 0.4, { scale: 1.6 });
+    callbacks.onChapterTransition?.(chapter.index, chapter.id);
+  }
+
+  const sp = chapter.setPiece;
+  if (!state.boss && !state.setPiecesTriggered.includes(chapter.index) && state.score >= sp.atScore) {
+    state.setPiecesTriggered.push(chapter.index);
+    // Clear incoming gates so the set piece opens on a clean stage.
+    clearDangerousReviveArea(state);
+    state.elapsedSinceSpawn = -1200;
+    state.boss = createBossState(sp.kind, state.timeMs);
+    callbacks.onSetPieceStart?.(state.boss.kind, sp.nameKey);
+  }
 }
 
 export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCallbacks, settings: { vibration: boolean }) {
   if (!state.running) return;
-  const dt = Math.min(2.2, dtMs / 16.67);
+  let dt = Math.min(2.2, dtMs / 16.67);
   state.timeMs += dtMs;
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
-  state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
+
+  // Hit-stop: briefly freeze most world motion on major impacts so the hit
+  // reads clearly. Input responsiveness is unaffected (jump is applied below).
+  const wasSurgeActive = surgeIsActive(state.surge, state.timeMs);
+  if (state.hitStopUntil > state.timeMs && !state.accessibility.reducedMotion) {
+    dt *= 0.08;
+  }
+
+  // Combo decay + break feedback.
+  if (comboTick(state.combo, state.timeMs)) {
+    callbacks.onComboBreak?.(state.combo.best);
+  }
+
+  // Steering mode (optional): the fish glides gently toward the held pointer
+  // instead of free-falling. Tap-to-flap stays available in both modes.
+  if (state.accessibility.steerMode && state.steerTargetY !== null) {
+    const targetVY = Math.max(-4.6, Math.min(4.6, (state.steerTargetY - state.fishY) * 0.11));
+    state.fishVY += (targetVY - state.fishVY) * Math.min(1, 0.2 * dt);
+  } else {
+    state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
+  }
   state.fishY += state.fishVY * dt;
   state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
+
+  // Collect-and-grow visual scale eases toward the growth stage size.
+  const targetScale = growthScale(state.growth.stage);
+  if (Math.abs(state.growth.displayScale - targetScale) > 0.001) {
+    state.growth.displayScale += (targetScale - state.growth.displayScale) * Math.min(1, 0.1 * dt);
+  }
+
+  if (state.demo) updateDemoPilot(state, dtMs);
   const groundY = state.height - 8;
   const ceilingY = 8;
   const invincible = state.timeMs < state.invincibleUntil;
@@ -602,19 +821,23 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     return state.timeMs - t.createdAt < t.durationMs;
   });
 
-  const { speed: baseSpeed, spawnInterval } = difficultyForScore(state.score, state.timeMs);
+  const { speed: baseSpeed } = difficultyForScore(state.score, state.timeMs);
   const isHourglassActive = state.hourglassUntil > state.timeMs;
   const speed = isHourglassActive ? baseSpeed * 0.6 : baseSpeed;
   const fishX = state.width * FISH_X_RATIO;
 
   state.elapsedSinceSpawn += dtMs;
-  // Keep enough horizontal breathing room between pipe gates. The timer stays
-  // armed until the previous gate moves on, rather than forcing an overlap.
+  // Keep enough horizontal breathing room between pattern groups. The timer
+  // stays armed until the previous pattern has scrolled through.
   const gateSpacingClear = state.obstacles.every((obstacle) => obstacle.x < state.width * 0.52);
-  if (state.elapsedSinceSpawn >= spawnInterval && gateSpacingClear) {
-    spawnObstacle(state, state.score);
+  if (!state.boss && state.elapsedSinceSpawn >= state.patternDelayMs && gateSpacingClear) {
+    spawnPattern(state);
     state.elapsedSinceSpawn = 0;
   }
+
+  // Chapter boundaries can also be crossed by score jumps (chests, lore) so
+  // the check runs per frame; it acts only on actual band changes.
+  maybeTransitionChapter(state, callbacks);
 
   // === FEVER MODE STREAM SPANNING ===
   const isFeverActive = state.feverUntil > state.timeMs;
@@ -629,15 +852,15 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         x: state.width + 40,
         y: coinY,
         collected: false,
-        bonus: Math.random() < 0.15,
+        bonus: state.rng.chance(0.15),
       });
       // Spawn extra air bubbles for a festive environment
       state.bubbles.push({
         x: state.width + 20,
-        y: Math.random() * state.height,
-        r: 3 + Math.random() * 5,
-        speed: 1.5 + Math.random() * 2.0,
-        drift: (Math.random() - 0.5) * 0.6,
+        y: state.rng.next() * state.height,
+        r: 3 + state.rng.next() * 5,
+        speed: 1.5 + state.rng.next() * 2.0,
+        drift: state.rng.spread(0.3),
       });
     }
   }
@@ -668,9 +891,21 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     }
     if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
       obs.passed = true;
+      // Companion school multiplies gate score through a fractional carry so
+      // gains stay whole numbers.
+      const rescued = state.companions.filter((c) => c.rescued).length;
       state.score += 1;
+      if (rescued > 0) {
+        state.scoreCarry += rescued * 0.08;
+        if (state.scoreCarry >= 1) {
+          const whole = Math.floor(state.scoreCarry);
+          state.score += whole;
+          state.scoreCarry -= whole;
+        }
+      }
+      if (surgeIsActive(state.surge, state.timeMs)) state.score += 1;
       callbacks.onScore(state.score);
-      announceEnvironmentTransition(state, callbacks);
+      maybeTransitionChapter(state, callbacks);
     }
 
     // Near Miss system
@@ -687,12 +922,16 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const isExtremeClose = spaceToTop < 25 || spaceToBottom < 25;
 
       if (withinGap && isExtremeClose && !invincible && state.running) {
-        state.score += 2;
+        const ability = getCharacterAbility(state.skin);
+        comboEvent('nearMiss', state.combo, state.timeMs, surgeIsActive(state.surge, state.timeMs));
+        state.runStats.bestCombo = Math.max(state.runStats.bestCombo, state.combo.count);
+        const bonus = Math.round(2 * (ability.nearMissMultiplier ?? 1));
+        state.score += bonus;
         callbacks.onScore(state.score);
         callbacks.onNearMiss?.();
-        triggerFloatingText(state, '+2 Near Miss! 🔥', fishX, state.fishY - 28, '#00e5ff', true);
+        triggerFloatingText(state, `+${bonus} ${translate('engine.nearMiss')}`, fishX, state.fishY - 28, VFX_COLORS.cyan, true);
         // Spray a beautiful trail of teal particles
-        addBurst(state, fishX, state.fishY, 'rgba(0, 229, 255, 0.85)', 15, 2.5);
+        state.vfx.emit('currentStreak', state.particles, fishX, state.fishY, { scale: 1.4 });
       }
     }
 
@@ -819,7 +1058,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   }
   state.jellyfish = state.jellyfish.filter((j) => j.x > -100);
 
-  // Coin collect streak / combo logic & coin collection
+  // Coin collection — feeds the shared combo chain (coins, plankton, pearls,
+  // near misses all build one meter with big break feedback).
   for (const coin of state.coins) {
     coin.x -= speed * dt;
     pullCollectable(coin);
@@ -828,49 +1068,232 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = coin.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 13) {
         coin.collected = true;
+        const surgeActive = surgeIsActive(state.surge, state.timeMs);
+        const multiplier = comboEvent('coin', state.combo, state.timeMs, surgeActive);
+        state.runStats.bestCombo = Math.max(state.runStats.bestCombo, state.combo.count);
         const baseAmount = coin.bonus ? 5 : 1;
-
-        // Combo / Streak multiplier system
-        const now = state.timeMs;
-        let finalAmount = baseAmount;
-        if (now - state.lastCoinCollectedTime < 1800) {
-          state.coinStreakCount++;
-        } else {
-          state.coinStreakCount = 1;
-        }
-        state.lastCoinCollectedTime = now;
-
-        let comboText = '';
-        if (state.coinStreakCount >= 30) {
-          finalAmount *= 4;
-          comboText = '🔥 COMBO x4 🔥';
-        } else if (state.coinStreakCount >= 20) {
-          finalAmount *= 3;
-          comboText = '✨ COMBO x3 ✨';
-        } else if (state.coinStreakCount >= 10) {
-          finalAmount *= 2;
-          comboText = '⭐ COMBO x2 ⭐';
-        }
-
+        const finalAmount = Math.round(baseAmount * multiplier * (surgeActive ? 2 : 1));
         state.score += finalAmount;
         callbacks.onScore(state.score);
         callbacks.onCoinCollect(finalAmount);
 
-        // Render Combo & collection text (No shaking or jitter on collection)
         const txtColor = coin.bonus ? '#ffd54f' : '#fff59d';
         triggerFloatingText(state, `+${finalAmount}`, coin.x, coin.y - 12, txtColor, false);
-        if (comboText) {
-          triggerFloatingText(state, comboText, fishX, state.fishY - 28, '#ffca28', true);
-          // Sparkle golden burst stars for combos
-          addBurst(state, coin.x, coin.y, '#ffd60a', 15, 3.5);
+        if (multiplier >= 2) {
+          callbacks.onCombo?.(state.combo.count, comboTier(state.combo.count));
+          state.vfx.emit('pearlGlitter', state.particles, coin.x, coin.y, { scale: 1.1 });
         } else {
-          addBurst(state, coin.x, coin.y, coin.bonus ? '#ff9500' : '#ffd60a', 12, 2);
+          state.vfx.emit('planktonDust', state.particles, coin.x, coin.y, { scale: 0.8 });
         }
       }
     }
   }
 
   state.coins = state.coins.filter((c) => c.x > -40 && !c.collected);
+
+  // Plankton — harmless prey driving collect-and-grow.
+  for (const p of state.plankton) {
+    p.x -= speed * dt;
+    p.y += Math.sin(state.timeMs * 0.002 + p.drift) * 0.3 * dt;
+    pullCollectable(p);
+    if (!p.collected) {
+      const dx = p.x - fishX;
+      const dy = p.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 11) {
+        p.collected = true;
+        state.runStats.planktonEaten += 1;
+        const stageUp = growthEat(state.growth);
+        comboEvent('plankton', state.combo, state.timeMs, surgeIsActive(state.surge, state.timeMs));
+        state.runStats.bestCombo = Math.max(state.runStats.bestCombo, state.combo.count);
+        if (stageUp !== null) {
+          callbacks.onGrowthUp?.(stageUp);
+          triggerFloatingText(state, translate('engine.growthUp', undefined, { stage: stageUp + 1 }), fishX, state.fishY - 34, VFX_COLORS.gold, true);
+          state.vfx.emit('bubbleBurst', state.particles, fishX, state.fishY, { scale: 1.6 });
+        } else {
+          state.vfx.emit('planktonDust', state.particles, p.x, p.y, { scale: 0.7 });
+        }
+      }
+    }
+  }
+  state.plankton = state.plankton.filter((p) => p.x > -30 && !p.collected);
+
+  // Sun Pearls — Golden Surge fuel; double as boss objective drops.
+  let bossPearlDelta = 0;
+  for (const pearl of state.sunPearls) {
+    pearl.x -= speed * dt;
+    pearl.pulse += dtMs * 0.004;
+    pullCollectable(pearl);
+    if (!pearl.collected) {
+      const dx = pearl.x - fishX;
+      const dy = pearl.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 15) {
+        pearl.collected = true;
+        state.runStats.pearlsCollected += 1;
+        if (state.boss && !state.boss.ended) bossPearlDelta += 1;
+        const ability = getCharacterAbility(state.skin);
+        const charge = 12 * (ability.surgeChargeMultiplier ?? 1);
+        comboEvent('pearl', state.combo, state.timeMs, surgeIsActive(state.surge, state.timeMs));
+        state.vfx.emit('pearlGlitter', state.particles, pearl.x, pearl.y, { scale: 1.2 });
+        if (surgeAddCharge(state.surge, charge, state.timeMs)) {
+          surgeActivate(state.surge, state.timeMs);
+          state.runStats.surges += 1;
+          state.hitStopUntil = state.timeMs + 55;
+          callbacks.onSurgeStart?.();
+          triggerFloatingText(state, translate('engine.surge'), fishX, state.fishY - 40, VFX_COLORS.gold, true);
+          state.vfx.emit('treasureBeam', state.particles, fishX, state.fishY, { scale: 2 });
+        }
+      }
+    }
+  }
+  state.sunPearls = state.sunPearls.filter((p) => p.x > -30 && !p.collected);
+
+  // Lore fragments — magenta archive drops for the collection book.
+  for (const lore of state.loreDrops) {
+    lore.x -= speed * dt;
+    lore.pulse += dtMs * 0.0035;
+    if (!lore.collected) {
+      const dx = lore.x - fishX;
+      const dy = lore.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 16) {
+        lore.collected = true;
+        state.runStats.loreFound.push(lore.id);
+        callbacks.onLoreFound?.(lore.id);
+        triggerFloatingText(state, translate('engine.loreFound'), lore.x, lore.y - 16, VFX_COLORS.magenta, true);
+        state.vfx.emit('treasureBeam', state.particles, lore.x, lore.y, { scale: 1.4 });
+        state.score += 3;
+        callbacks.onScore(state.score);
+      }
+    }
+  }
+  state.loreDrops = state.loreDrops.filter((l) => l.x > -30 && !l.collected);
+
+  // Current zones — telegraphed up/down push bands. The Mirror Current run
+  // modifier inverts the push while the arrows stay authored-honest because
+  // the zone renders with an inverted-color marker when `mirrored` is set.
+  for (const zone of state.currents) {
+    zone.x -= speed * dt;
+    const withinX = Math.abs(zone.x - fishX) < 58;
+    const withinY = Math.abs(state.fishY - zone.y) < zone.halfHeight;
+    if (withinX && withinY) {
+      const dir = zone.direction;
+      const push = zone.strength * 0.16 * dt;
+      state.fishVY += dir === 'up' ? -push : push;
+      if (state.rng.chance(0.05)) {
+        state.vfx.emit('currentStreak', state.particles, fishX, state.fishY, { scale: 0.6 });
+      }
+      callbacks.onCurrentPush?.(dir);
+    }
+  }
+  state.currents = state.currents.filter((c) => c.x > -80);
+
+  // Fragile coral barriers — breakable during Golden Surge or when grown.
+  for (const barrier of state.barriers) {
+    barrier.x -= speed * dt;
+    if (barrier.broken) continue;
+    const canBreak = surgeIsActive(state.surge, state.timeMs) || state.growth.stage >= 2;
+    const withinX = Math.abs(barrier.x - fishX) < 18 + BASE.fishRadius * 0.6;
+    const withinY = Math.abs(barrier.y - state.fishY) < barrier.height / 2 + BASE.fishRadius * 0.6;
+    if (withinX && withinY) {
+      if (canBreak) {
+        barrier.broken = true;
+        state.runStats.barriersBroken += 1;
+        state.vfx.emit('coralShards', state.particles, barrier.x, barrier.y, { scale: 1.5 });
+        triggerFloatingText(state, translate('engine.barrierBreak'), barrier.x, barrier.y - 20, VFX_COLORS.amber, true);
+        callbacks.onBarrierBreak?.();
+        state.score += 2;
+        callbacks.onScore(state.score);
+      } else if (!invincible) {
+        // Solid coral acts like any other obstacle for an un-supercharged fish.
+        if (state.shieldCharges > 0) {
+          state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+          barrier.broken = true;
+          state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
+          callbacks.onShake(3);
+          state.vfx.emit('shieldShatter', state.particles, barrier.x, state.fishY, { scale: 1.3 });
+          triggerFloatingText(state, translate('engine.shieldBlock'), fishX, state.fishY - 30, '#80d8ff', true);
+        } else {
+          killOrUseLife(state, callbacks);
+          return;
+        }
+      }
+    }
+  }
+  state.barriers = state.barriers.filter((b) => b.x > -60 && !b.broken);
+
+  // Companion school — unrescued fish wait ahead; rescued fish orbit behind.
+  for (const companion of state.companions) {
+    companion.x -= (companion.rescued ? 0 : speed) * dt;
+    if (companion.rescued) {
+      const orbitR = 46 + (companion.phase % Math.PI) * 6;
+      const targetX = fishX - 34 - Math.cos(companion.phase) * orbitR * 0.5;
+      const targetY = state.fishY + Math.sin(companion.phase) * 26;
+      companion.x += (targetX - companion.x) * Math.min(1, 0.14 * dt);
+      companion.y += (targetY - companion.y) * Math.min(1, 0.14 * dt);
+      companion.phase += 0.05 * dt;
+    } else {
+      const dx = companion.x - fishX;
+      const dy = companion.y - state.fishY;
+      if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + 16) {
+        companion.rescued = true;
+        companion.y = companion.y ?? state.fishY;
+        state.runStats.rescues += 1;
+        if (state.boss && !state.boss.ended) state.boss.companionsRescued += 1;
+        comboEvent('rescue', state.combo, state.timeMs, surgeIsActive(state.surge, state.timeMs));
+        callbacks.onCompanionRescued?.(state.companions.filter((c) => c.rescued).length);
+        triggerFloatingText(state, translate('engine.rescued'), companion.x, companion.y - 18, VFX_COLORS.cyan, true);
+        state.vfx.emit('rescueSpark', state.particles, companion.x, companion.y, { scale: 1.3 });
+        state.score += 2;
+        callbacks.onScore(state.score);
+      }
+    }
+  }
+  state.companions = state.companions.filter((c) => c.rescued || c.x > -40);
+
+  // Boss / set-piece encounter stepping.
+  if (state.boss) {
+    const boss = state.boss;
+    const bossApi = {
+      width: state.width,
+      height: state.height,
+      timeMs: state.timeMs,
+      rng: state.rng,
+      pushSunPearl: (x: number, y: number) => state.sunPearls.push({ x, y, collected: false, pulse: 0 }),
+      pushCoin: (x: number, y: number, bonus?: boolean) => state.coins.push({ x, y, collected: false, bonus: bonus ?? false }),
+      pushCurrent: (x: number, y: number, direction: 'up' | 'down', strength: number) =>
+        state.currents.push({ x, y, halfHeight: 74, direction, strength, mirrored: false }),
+      pushCompanion: (x: number, y: number) => {
+        if (state.companions.filter((c) => !c.rescued).length < 3) {
+          state.companions.push({ id: 'comp_b_' + (companionCounter++), phase: state.rng.next() * Math.PI * 2, x, y, rescued: false, spawnAt: state.timeMs });
+        }
+      },
+      pushPlankton: (x: number, y: number) => state.plankton.push({ x, y, collected: false, drift: state.rng.next() * Math.PI * 2 }),
+    };
+    const pearlTarget = boss.pearlTarget;
+    const before = boss.pearlsCollected;
+    updateBoss(boss, bossApi, dtMs, bossPearlDelta);
+    void pearlTarget; void before;
+    if (boss.ended) {
+      const reward = bossReward(boss);
+      state.score += reward.score;
+      callbacks.onCoinCollect(reward.coins);
+      callbacks.onScore(state.score);
+      state.runStats.setPiecesCleared += 1;
+      callbacks.onSetPieceEnd?.(boss.kind, boss.succeeded, reward.score, reward.coins);
+      triggerFloatingText(state, boss.succeeded ? translate('engine.setPieceCleared') : translate('engine.setPieceSurvived'), state.width * 0.5, state.height * 0.3, VFX_COLORS.gold, true);
+      state.vfx.emit('treasureBeam', state.particles, state.width * 0.5, state.height * 0.4, { scale: 2.2 });
+      state.boss = null;
+      state.elapsedSinceSpawn = -600;
+    }
+  }
+
+  // Golden Surge end feedback.
+  if (wasSurgeActive && !surgeIsActive(state.surge, state.timeMs)) {
+    callbacks.onSurgeEnd?.();
+  }
+  // Golden Surge trail.
+  if (surgeIsActive(state.surge, state.timeMs) && state.rng.chance(0.4)) {
+    state.vfx.emit('surgeTrail', state.particles, fishX - BASE.fishRadius, state.fishY, { scale: 1 });
+  }
 
   // Gem (Heart) collection
   for (const gem of state.gems) {
@@ -983,16 +1406,66 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
     if (b.y < -20) { b.y = state.height + 10; b.x = Math.random() * state.width; }
   }
 
-  // Particle updates
-  for (const p of state.particles) {
-    p.life += dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vy += 0.05 * dt;
+  // Particle updates (pooled VFX + legacy burst particles share one array).
+  VFXPool.update(state.particles, dt);
+  state.vfx.tick(state.timeMs);
+  // Ambient biome motes keep dark chapters alive without gameplay clutter.
+  if (state.timeMs > state.nextAmbientVfxAt) {
+    state.nextAmbientVfxAt = state.timeMs + 900 + state.rng.next() * 1400;
+    state.vfx.emit(
+      state.chapter.lighting.dark ? 'biolumMotes' : 'planktonDust',
+      state.particles,
+      state.rng.next() * state.width,
+      state.rng.next() * state.height,
+      { scale: 0.6 },
+    );
   }
-  state.particles = state.particles.filter((p) => p.life < p.maxLife);
   state.shakeIntensity = Math.max(0, state.shakeIntensity - dtMs * 0.05);
   void settings;
+}
+
+/**
+ * Deterministic demo pilot for QA/screenshot mode: a lookahead controller
+ * that steers toward the nearest gap center. Uses only the seeded RNG so
+ * identical seeds produce identical runs. Canvas y grows downward, so a
+ * negative dy means the target is ABOVE the fish and a jump is needed.
+ */
+function updateDemoPilot(state: EngineState, dtMs: number) {
+  state.demoJumpCooldown -= dtMs;
+  if (state.demoJumpCooldown > 0) return;
+
+  const fishX = state.width * FISH_X_RATIO;
+  // Nearest upcoming gate center (falls back to pearls, then mid-screen).
+  let targetY: number | null = null;
+  let bestX = Infinity;
+  for (const obs of state.obstacles) {
+    if (obs.x > fishX - 10 && obs.x < bestX) {
+      bestX = obs.x;
+      // For stacked gates pick the opening closest to the current altitude.
+      const candidates = state.obstacles.filter((o) => Math.abs(o.x - obs.x) < 30);
+      targetY = candidates.reduce(
+        (best, o) => (Math.abs(o.gapY - state.fishY) < Math.abs(best - state.fishY) ? o.gapY : best),
+        candidates[0].gapY,
+      );
+    }
+  }
+  if (targetY === null) {
+    for (const pearl of state.sunPearls) {
+      if (!pearl.collected && pearl.x > fishX) {
+        targetY = pearl.y;
+        break;
+      }
+    }
+  }
+  if (targetY === null) targetY = state.height / 2;
+
+  const dy = targetY - state.fishY;
+  const nearCeiling = state.fishY < 140;
+  const falling = state.fishVY > 0.4;
+  if (!nearCeiling && falling && dy < -18) {
+    state.fishVY = BASE.jumpVelocity;
+    state.demoJumpCooldown = 150 + state.rng.next() * 70;
+  }
 }
 
 function drawEnvironmentDecor(ctx: CanvasRenderingContext2D, state: EngineState, theme: EnvironmentTheme) {
@@ -1280,46 +1753,54 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
 }
 
 function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: number, invincible: boolean) {
-  const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
+  const character = getCharacter(state.skin);
   const isFever = state.feverUntil > state.timeMs;
+  const isSurge = surgeIsActive(state.surge, state.timeMs);
   const blink = (invincible || isFever) && Math.floor(state.timeMs / 100) % 2 === 0;
   if (blink) return;
-  const r = BASE.fishRadius;
-  const id = skin.id;
+  const r = BASE.fishRadius * state.growth.displayScale;
+  const id = character.id;
+  const profile = character.profile;
   const pulse = (Math.sin(state.legendaryPulse) + 1) / 2;
-  const { body, belly, fin, glow } = skin.colors;
+  const { body, belly, fin, glow } = character.colors;
   const swimBob = Math.sin(state.timeMs * 0.007) * 0.75;
-  const accent = id === 'ruby' ? '#ffcc80' : id === 'diamond' ? '#b2ebf2' : id === 'legendary' ? '#ffe066' : '#2fe3e8';
+  const accent = profile.accent;
+
+  // Squash-and-stretch: stretch along velocity, squash on flap impulses.
+  const stretch = Math.min(0.14, Math.abs(state.fishVY) * 0.016);
+  const scaleY = 1 - stretch * 0.6;
+  const scaleX = 1 + stretch * 0.5;
 
   // A stronger tail wave, small body bob, and independent front-fin flap make
   // the player read as a living fish even at high game speed.
-  const wag = Math.sin(state.timeMs * (isFever ? 0.027 : 0.014)) * 0.16;
+  const wag = Math.sin(state.timeMs * (isFever || isSurge ? 0.027 : 0.014)) * 0.16;
 
   ctx.save();
   ctx.translate(fishX, state.fishY + swimBob);
   ctx.rotate(state.fishRotation);
+  ctx.scale(scaleX * profile.bodyLength, scaleY * profile.bodyHeight);
 
   {
-    // The hero skin keeps its clean silhouette; the circular aura is reserved
-    // for the temporary Fever power-up so it always communicates a state.
-    if (isFever) {
+    // The hero keeps its clean silhouette; circular auras are reserved for
+    // temporary states (Fever, Golden Surge) so they always communicate power.
+    if (isFever || isSurge) {
       ctx.save();
       ctx.globalAlpha = 0.28 + pulse * 0.2;
       ctx.beginPath();
       ctx.ellipse(0, 0, r * 1.9, r * 1.35, 0, 0, Math.PI * 2);
-      ctx.fillStyle = `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)`;
+      ctx.fillStyle = isSurge ? VFX_COLORS.gold : `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)`;
       ctx.fill();
       ctx.globalAlpha = 0.5 + pulse * 0.25;
       ctx.beginPath();
       ctx.ellipse(0, 0, r * 1.6, r * 1.12, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)`;
+      ctx.strokeStyle = isSurge ? VFX_COLORS.goldSoft : `hsl(${(state.timeMs / 4) % 360}, 100%, 75%)`;
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.restore();
     }
     ctx.save();
-    ctx.shadowColor = isFever ? '#e040fb' : glow;
-    ctx.shadowBlur = isFever ? 32 : id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
+    ctx.shadowColor = isFever ? '#e040fb' : isSurge ? VFX_COLORS.gold : glow;
+    ctx.shadowBlur = isFever || isSurge ? 32 : id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
 
     // Tiny bubble and sparkle wake: visual only, kept behind the fish so it
     // never obscures obstacles or changes collision behaviour.
@@ -1335,11 +1816,12 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     }
     ctx.restore();
 
-    // Dynamic Tail with Wag
+    // Dynamic Tail with Wag — silhouette varies by character fin style.
     ctx.save();
     ctx.translate(-r * 0.8, 0);
     ctx.rotate(wag);
-    if (id === 'ruby') {
+    if (profile.finStyle === 'veil') {
+      // Long ribbon fins (Coral the betta, Pearl the discus).
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.quadraticCurveTo(-r * 0.8, -r * 1.3, -r * 1.5, -r * 0.6);
@@ -1348,17 +1830,41 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       ctx.closePath();
       ctx.fillStyle = fin;
       ctx.fill();
-    } else if (id === 'legendary') {
+    } else if (profile.finStyle === 'crescent') {
+      // Sickle tail for the sprinters (Mako, Reef Regent).
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.quadraticCurveTo(-r * 0.9, -r * 1.25, -r * 1.6, -r * 0.45);
       ctx.lineTo(-r * 1.0, 0);
       ctx.quadraticCurveTo(-r * 1.6, r * 0.45, -r * 0.9, r * 1.25);
       ctx.closePath();
-      ctx.fillStyle = '#1a1a1a';
+      ctx.fillStyle = fin;
+      ctx.fill();
+    } else if (profile.finStyle === 'spiked') {
+      // Spiky lionfish fan (Ember).
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      for (let ray = 0; ray <= 5; ray++) {
+        const spread = (ray / 5 - 0.5) * 2;
+        ctx.lineTo(-r * (1.15 + (ray % 2) * 0.25), spread * r * 0.85);
+      }
+      ctx.closePath();
+      ctx.fillStyle = fin;
+      ctx.fill();
+    } else if (profile.finStyle === 'lure') {
+      // Nyx's tattered deep-sea tail.
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(-r * 0.7, -r * 0.9, -r * 1.3, -r * 0.7);
+      ctx.lineTo(-r * 0.95, -r * 0.2);
+      ctx.lineTo(-r * 1.4, r * 0.2);
+      ctx.lineTo(-r * 0.95, r * 0.55);
+      ctx.quadraticCurveTo(-r * 0.7, r * 0.9, 0, 0);
+      ctx.closePath();
+      ctx.fillStyle = fin;
       ctx.fill();
     } else {
-      // Elegant streamlined tail shape
+      // Elegant streamlined tail (Aurum and friends).
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.quadraticCurveTo(-r * 0.65, -r * 0.95, -r * 1.15, -r * 0.35);
@@ -1392,6 +1898,11 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       bodyGrad.addColorStop(0, '#e040fb');
       bodyGrad.addColorStop(0.5, '#00e5ff');
       bodyGrad.addColorStop(1, '#ffeb3b');
+    } else if (isSurge) {
+      // Golden Surge: radiant gold body with white-hot core.
+      bodyGrad.addColorStop(0, '#fff8e1');
+      bodyGrad.addColorStop(0.45, VFX_COLORS.gold);
+      bodyGrad.addColorStop(1, '#ff8f00');
     } else if (id === 'legendary') {
       bodyGrad.addColorStop(0, '#1a1a1a');
       bodyGrad.addColorStop(0.5, '#ffd60a');
@@ -1438,11 +1949,25 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    // Dorsal Fin
+    // Dorsal Fin — Aurum's crown-like three-point crest marks the guardian.
     ctx.beginPath();
-    ctx.moveTo(-r * 0.15, -r * 0.7);
-    ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
-    ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
+    if (id === 'golden') {
+      ctx.moveTo(-r * 0.15, -r * 0.7);
+      ctx.quadraticCurveTo(r * 0.02, -r * 1.35, r * 0.18, -r * 0.85);
+      ctx.quadraticCurveTo(r * 0.32, -r * 1.45, r * 0.48, -r * 0.8);
+      ctx.quadraticCurveTo(r * 0.62, -r * 1.3, r * 0.7, -r * 0.55);
+      ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
+    } else if (profile.finStyle === 'spiked') {
+      ctx.moveTo(-r * 0.2, -r * 0.7);
+      for (let spike = 0; spike <= 4; spike++) {
+        ctx.lineTo(-r * 0.2 + spike * r * 0.24, -r * (0.7 + 0.55 + (spike % 2) * 0.15));
+      }
+      ctx.lineTo(r * 0.7, -r * 0.55);
+    } else {
+      ctx.moveTo(-r * 0.15, -r * 0.7);
+      ctx.quadraticCurveTo(r * 0.25, -r * 1.25, r * 0.7, -r * 0.55);
+      ctx.quadraticCurveTo(r * 0.3, -r * 0.8, 0, -r * 0.7);
+    }
     ctx.closePath();
     ctx.fillStyle = id === 'legendary' ? '#ffd60a' : fin;
     ctx.fill();
@@ -1460,22 +1985,23 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.fill();
     ctx.restore();
 
-    // Expressive glossy eye, cheek and gill line give the fish a characterful
-    // face without making it visually noisy at mobile scale.
+    // Expressive glossy eye (scaled per character), cheek and gill line give
+    // the fish a characterful face without visual noise at mobile scale.
+    const eyeR = 5.3 * profile.eyeSize;
     ctx.beginPath();
-    ctx.arc(r * 0.56, -r * 0.16, 5.3, 0, Math.PI * 2);
+    ctx.arc(r * 0.56, -r * 0.16, eyeR, 0, Math.PI * 2);
     ctx.fillStyle = '#fffdf3';
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(r * 0.72, -r * 0.14, 3.35, 0, Math.PI * 2);
-    ctx.fillStyle = isFever ? '#7c4dff' : '#125d82';
+    ctx.arc(r * 0.72, -r * 0.14, eyeR * 0.63, 0, Math.PI * 2);
+    ctx.fillStyle = isFever ? '#7c4dff' : id === 'nyx' ? '#b388ff' : '#125d82';
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(r * 0.86, -r * 0.12, 1.75, 0, Math.PI * 2);
+    ctx.arc(r * 0.86, -r * 0.12, eyeR * 0.33, 0, Math.PI * 2);
     ctx.fillStyle = '#081923';
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(r * 0.11 + r * 0.60, -r * 0.16 - 2.0, 1.35, 0, Math.PI * 2);
+    ctx.arc(r * 0.11 + r * 0.60, -r * 0.16 - 2.0, 1.35 * profile.eyeSize, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.globalAlpha = 0.34;
@@ -1490,6 +2016,25 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
     ctx.arc(r * 0.18, -r * 0.02, r * 0.22, -Math.PI / 2, Math.PI / 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
+
+    // Nyx's bioluminescent lure: a glowing bulb on a stalk above the head.
+    if (profile.finStyle === 'lure') {
+      const lurePhase = state.timeMs * 0.004;
+      ctx.save();
+      ctx.strokeStyle = '#4a2f7a';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.3, -r * 0.75);
+      ctx.quadraticCurveTo(r * 0.55, -r * 1.5, r * 0.95, -r * 1.35 + Math.sin(lurePhase) * 2);
+      ctx.stroke();
+      ctx.shadowColor = VFX_COLORS.violet;
+      ctx.shadowBlur = 14 + pulse * 8;
+      ctx.fillStyle = VFX_COLORS.violet;
+      ctx.beginPath();
+      ctx.arc(r * 0.95, -r * 1.35 + Math.sin(lurePhase) * 2, 3.4 + pulse * 1.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
 
     ctx.restore();
   }
@@ -2341,6 +2886,313 @@ function drawTreasureChest(ctx: CanvasRenderingContext2D, chest: TreasureChest, 
   ctx.restore();
 }
 
+function drawPlankton(ctx: CanvasRenderingContext2D, p: Plankton, timeMs: number) {
+  if (p.collected) return;
+  const bob = Math.sin(timeMs * 0.002 + p.drift) * 2;
+  ctx.save();
+  ctx.translate(p.x, p.y + bob);
+  ctx.shadowColor = VFX_COLORS.goldSoft;
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = '#f6ff9c';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 3.4, 2.2, p.drift, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath();
+  ctx.arc(-0.8, -0.6, 0.9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSunPearl(ctx: CanvasRenderingContext2D, pearl: SunPearl, timeMs: number) {
+  if (pearl.collected) return;
+  const pulse = (Math.sin(timeMs * 0.004 + pearl.pulse) + 1) / 2;
+  const bob = Math.sin(timeMs * 0.0013 + pearl.pulse) * 1.2;
+  ctx.save();
+  ctx.translate(pearl.x, pearl.y + bob);
+
+  // Halo rays mark the pearl as surge fuel (gold, not pink treasure-magenta).
+  ctx.globalAlpha = 0.2 + pulse * 0.18;
+  ctx.strokeStyle = VFX_COLORS.gold;
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2 + timeMs * 0.0008;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * 9, Math.sin(angle) * 9);
+    ctx.lineTo(Math.cos(angle) * (12 + pulse * 3), Math.sin(angle) * (12 + pulse * 3));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.shadowColor = VFX_COLORS.gold;
+  ctx.shadowBlur = 12 + pulse * 6;
+  const grad = ctx.createRadialGradient(-2, -2, 1, 0, 0, 7.5);
+  grad.addColorStop(0, '#fffde7');
+  grad.addColorStop(0.5, '#ffd60a');
+  grad.addColorStop(1, '#ff8f00');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.arc(-2.2, -2.4, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawCoralBarrier(ctx: CanvasRenderingContext2D, barrier: CoralBarrier, timeMs: number) {
+  if (barrier.broken) return;
+  const pulse = (Math.sin(timeMs * 0.003) + 1) / 2;
+  ctx.save();
+  ctx.translate(barrier.x, barrier.y);
+
+  // Fragile coral lattice: visibly breakable, warm amber tones (danger kin).
+  ctx.shadowColor = VFX_COLORS.amber;
+  ctx.shadowBlur = 8 + pulse * 5;
+  ctx.strokeStyle = '#ff8a65';
+  ctx.lineWidth = 3.4;
+  ctx.lineCap = 'round';
+  const h = barrier.height / 2;
+  ctx.beginPath();
+  ctx.moveTo(0, -h);
+  ctx.lineTo(0, h);
+  ctx.moveTo(-7, -h * 0.55);
+  ctx.quadraticCurveTo(7, -h * 0.3, 0, -h * 0.12);
+  ctx.moveTo(7, h * 0.4);
+  ctx.quadraticCurveTo(-7, h * 0.62, 0, h * 0.85);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,224,178,0.8)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 4; i++) {
+    const y = -h + (i / 3) * barrier.height;
+    ctx.beginPath();
+    ctx.arc(0, y, 4.2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawCurrentZone(ctx: CanvasRenderingContext2D, zone: CurrentZone, timeMs: number) {
+  ctx.save();
+  ctx.translate(zone.x, zone.y);
+  const h = zone.halfHeight;
+  const flow = (timeMs * 0.06 * zone.strength) % 26;
+  const dirSign = zone.direction === 'up' ? -1 : 1;
+
+  // Faint band + animated arrow chevrons clearly telegraph direction.
+  ctx.globalAlpha = 0.1;
+  ctx.fillStyle = zone.mirrored ? VFX_COLORS.magenta : VFX_COLORS.cyanSoft;
+  ctx.fillRect(-34, -h, 68, h * 2);
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = zone.mirrored ? VFX_COLORS.magenta : VFX_COLORS.cyan;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 7; i++) {
+    const y = ((i * 26 + flow * dirSign) % (h * 2) + h * 2) % (h * 2) - h;
+    ctx.beginPath();
+    ctx.moveTo(-10, y - 5 * dirSign);
+    ctx.lineTo(0, y + 5 * dirSign);
+    ctx.lineTo(10, y - 5 * dirSign);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawLoreDrop(ctx: CanvasRenderingContext2D, lore: LoreDrop, timeMs: number) {
+  if (lore.collected) return;
+  const pulse = (Math.sin(timeMs * 0.0035 + lore.pulse) + 1) / 2;
+  ctx.save();
+  ctx.translate(lore.x, lore.y + Math.sin(timeMs * 0.0012 + lore.pulse) * 1.4);
+  ctx.rotate(Math.sin(timeMs * 0.001 + lore.pulse) * 0.12);
+
+  // Magenta shell tablet = legendary lore (VFX color language).
+  ctx.shadowColor = VFX_COLORS.magenta;
+  ctx.shadowBlur = 14 + pulse * 8;
+  ctx.fillStyle = '#6a1b5c';
+  ctx.beginPath();
+  ctx.moveTo(0, -11);
+  ctx.quadraticCurveTo(10, -8, 9, 2);
+  ctx.quadraticCurveTo(8, 10, 0, 12);
+  ctx.quadraticCurveTo(-8, 10, -9, 2);
+  ctx.quadraticCurveTo(-10, -8, 0, -11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = VFX_COLORS.magenta;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,190,240,0.9)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-4, -4); ctx.lineTo(4, -4);
+  ctx.moveTo(-4, 0); ctx.lineTo(4, 0);
+  ctx.moveTo(-4, 4); ctx.lineTo(1, 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCompanion(ctx: CanvasRenderingContext2D, companion: CompanionFish, timeMs: number) {
+  const rescued = companion.rescued;
+  ctx.save();
+  ctx.translate(companion.x, companion.y);
+  const wag = Math.sin(timeMs * 0.016 + companion.phase) * 0.3;
+  if (!rescued) {
+    // Waiting fish blink a soft help glow.
+    const pulse = (Math.sin(timeMs * 0.005 + companion.phase) + 1) / 2;
+    ctx.globalAlpha = 0.25 + pulse * 0.2;
+    ctx.fillStyle = VFX_COLORS.cyanSoft;
+    ctx.beginPath();
+    ctx.arc(0, 0, 16 + pulse * 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.rotate(Math.sin(timeMs * 0.003 + companion.phase) * 0.1);
+  ctx.shadowColor = VFX_COLORS.cyan;
+  ctx.shadowBlur = 8;
+
+  // Tiny companion fish: simple readable silhouette with a wagging tail.
+  ctx.save();
+  ctx.rotate(wag);
+  ctx.fillStyle = rescued ? '#7df9ff' : '#9adbe8';
+  ctx.beginPath();
+  ctx.moveTo(-6, 0);
+  ctx.lineTo(-12, -5);
+  ctx.lineTo(-12, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = rescued ? '#4dd0e1' : '#8fd3e8';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 8, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#0b2a30';
+  ctx.beginPath();
+  ctx.arc(4, -1, 1.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBoss(ctx: CanvasRenderingContext2D, state: EngineState) {
+  const boss = state.boss;
+  if (!boss || boss.ended) return;
+  if (boss.kind === 'spectacle') return; // no silhouette; pearls carry the show
+  const timeMs = state.timeMs;
+  const pulse = (Math.sin(timeMs * 0.003) + 1) / 2;
+
+  ctx.save();
+  ctx.translate(boss.bodyX, boss.bodyY);
+  const swim = Math.sin(timeMs * 0.002) * 0.06;
+  ctx.rotate(swim);
+
+  if (boss.kind === 'guardian') {
+    // Benevolent manta guardian: wide wings, calm glow, crown pattern.
+    const wing = Math.sin(timeMs * 0.0035) * 0.25;
+    ctx.shadowColor = VFX_COLORS.cyan;
+    ctx.shadowBlur = 26 + pulse * 14;
+    ctx.fillStyle = 'rgba(58,123,168,0.88)';
+    ctx.beginPath();
+    ctx.moveTo(30, 0);
+    ctx.quadraticCurveTo(-10, -95 * (1 + wing), -80, -40 * (1 + wing));
+    ctx.quadraticCurveTo(-40, -6, -80, 0);
+    ctx.quadraticCurveTo(-40, 6, -80, 40 * (1 + wing));
+    ctx.quadraticCurveTo(-10, 95 * (1 + wing), 30, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(180,244,255,0.75)';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+    // Crown marking.
+    ctx.strokeStyle = VFX_COLORS.gold;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-6, -14); ctx.lineTo(-2, -26); ctx.lineTo(4, -16); ctx.lineTo(9, -28); ctx.lineTo(13, -14);
+    ctx.stroke();
+    // Gentle eyes.
+    ctx.fillStyle = '#e0fbff';
+    ctx.beginPath();
+    ctx.arc(16, -8, 3.4, 0, Math.PI * 2);
+    ctx.arc(16, 8, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    // Tail streamers.
+    ctx.strokeStyle = 'rgba(125,249,255,0.6)';
+    ctx.lineWidth = 1.8;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-70, (i - 1) * 10);
+      ctx.quadraticCurveTo(-100, (i - 1) * 16 + Math.sin(timeMs * 0.004 + i) * 8, -130, (i - 1) * 22);
+      ctx.stroke();
+    }
+  } else if (boss.kind === 'leviathan') {
+    // Trench Leviathan: long dark serpentine body with sonar spots.
+    ctx.shadowColor = VFX_COLORS.violet;
+    ctx.shadowBlur = 20 + pulse * 16;
+    ctx.fillStyle = 'rgba(28,20,52,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(40, 0);
+    for (let seg = 0; seg <= 8; seg++) {
+      const sx = 40 - seg * 22;
+      const sy = Math.sin(timeMs * 0.003 + seg * 0.7) * 14 * (seg / 8 + 0.2);
+      const w = 20 - seg * 1.6;
+      ctx.lineTo(sx, sy - w);
+      void sy;
+    }
+    for (let seg = 8; seg >= 0; seg--) {
+      const sx = 40 - seg * 22;
+      const w = 20 - seg * 1.6;
+      ctx.lineTo(sx, Math.sin(timeMs * 0.003 + seg * 0.7) * 14 * (seg / 8 + 0.2) + w);
+    }
+    ctx.closePath();
+    ctx.fill();
+    // Sonar spots pulse in sequence — the "reveal" rhythm.
+    for (let seg = 0; seg <= 8; seg++) {
+      const sx = 40 - seg * 22;
+      const sy = Math.sin(timeMs * 0.003 + seg * 0.7) * 14 * (seg / 8 + 0.2);
+      const active = (Math.floor(timeMs / 300) + seg) % 4 === 0;
+      ctx.fillStyle = active ? VFX_COLORS.violet : 'rgba(90,70,140,0.5)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, active ? 4.5 : 2.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Head eye.
+    ctx.fillStyle = VFX_COLORS.violet;
+    ctx.beginPath();
+    ctx.arc(34, -6, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Crown Reef finale guardian: radiant sea-dragon with three phase crowns.
+    ctx.shadowColor = VFX_COLORS.gold;
+    ctx.shadowBlur = 30 + pulse * 20;
+    const grad = ctx.createLinearGradient(-90, 0, 50, 0);
+    grad.addColorStop(0, '#7b2ff7');
+    grad.addColorStop(0.6, '#f107a3');
+    grad.addColorStop(1, VFX_COLORS.gold);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(50, 0);
+    ctx.quadraticCurveTo(10, -60, -60, -30);
+    ctx.quadraticCurveTo(-30, 0, -60, 30);
+    ctx.quadraticCurveTo(10, 60, 50, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,240,200,0.8)';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    // Crown.
+    ctx.strokeStyle = VFX_COLORS.gold;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(-4, -30); ctx.lineTo(4, -48); ctx.lineTo(12, -32); ctx.lineTo(20, -52); ctx.lineTo(26, -30);
+    ctx.stroke();
+    // Phase pips show encounter progress.
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i < boss.phase ? VFX_COLORS.gold : 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.arc(-40 + i * 14, 40, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 function drawParticle(ctx: CanvasRenderingContext2D, particle: Particle) {
   const alpha = 1 - particle.life / particle.maxLife;
   ctx.save();
@@ -2375,7 +3227,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   const { width, height } = state;
   ctx.clearRect(0, 0, width, height);
   ctx.save();
-  if (state.shakeIntensity > 0.2) {
+  if (!state.accessibility.reducedMotion && state.shakeIntensity > 0.2) {
     // A deterministic, easing sway avoids the harsh frame-to-frame jitter of
     // random camera offsets while preserving clear hit feedback.
     const dx = Math.sin(state.timeMs * 0.045) * state.shakeIntensity * 0.28;
@@ -2383,7 +3235,9 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     ctx.translate(dx, dy);
   }
   drawBackground(ctx, state);
+  for (const zone of state.currents) drawCurrentZone(ctx, zone, state.timeMs);
   for (const obs of state.obstacles) drawObstacle(ctx, obs, height);
+  for (const barrier of state.barriers) drawCoralBarrier(ctx, barrier, state.timeMs);
   for (const shark of state.sharks) drawShark(ctx, shark, state.timeMs);
   for (const mine of state.seaMines) drawSeaMine(ctx, mine, state.timeMs);
   for (const jelly of state.jellyfish) drawJellyfish(ctx, jelly, state.timeMs);
@@ -2392,10 +3246,15 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);
   for (const ring of state.boostRings) drawBubbleBoostRing(ctx, ring, state.timeMs);
   for (const chest of state.chests) drawTreasureChest(ctx, chest, state.timeMs);
+  for (const p of state.plankton) drawPlankton(ctx, p, state.timeMs);
+  for (const pearl of state.sunPearls) drawSunPearl(ctx, pearl, state.timeMs);
+  for (const lore of state.loreDrops) drawLoreDrop(ctx, lore, state.timeMs);
+  for (const companion of state.companions) drawCompanion(ctx, companion, state.timeMs);
 
   const fishX = width * FISH_X_RATIO;
   const invincible = state.timeMs < state.invincibleUntil;
   drawFish(ctx, state, fishX, invincible);
+  drawBoss(ctx, state);
   for (const particle of state.particles) drawParticle(ctx, particle);
 
   for (const text of state.floatingTexts) {
@@ -2404,10 +3263,30 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
 
   ctx.restore();
 
-  if (state.isRedFlashing) {
+  if (!state.accessibility.reducedFlashes && state.isRedFlashing) {
     ctx.save();
     ctx.fillStyle = 'rgba(211, 47, 47, 0.22)';
     ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  // Golden Surge fullscreen treatment: warm vignette + speed lines.
+  if (surgeIsActive(state.surge, state.timeMs) && !state.accessibility.reducedMotion) {
+    ctx.save();
+    const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.75);
+    vignette.addColorStop(0, 'rgba(255, 214, 10, 0)');
+    vignette.addColorStop(1, 'rgba(255, 160, 0, 0.22)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = 'rgba(255, 243, 166, 0.3)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 10; i++) {
+      const y = ((i * 97 + state.timeMs * 0.24) % (height + 80)) - 40;
+      ctx.beginPath();
+      ctx.moveTo(width * 0.06, y);
+      ctx.lineTo(width * 0.02, y + 26);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -2419,6 +3298,22 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
     vignette.addColorStop(1, 'rgba(0, 229, 255, 0.18)');
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  // High-contrast accessibility mode: sharpen obstacle edges with an outline.
+  if (state.accessibility.highContrast) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 2;
+    for (const obs of state.obstacles) {
+      const w = BASE.obstacleWidth;
+      ctx.strokeRect(obs.x - w / 2, 0, w, obs.gapY - obs.gapSize / 2);
+      ctx.strokeRect(obs.x - w / 2, obs.gapY + obs.gapSize / 2, w, height - (obs.gapY + obs.gapSize / 2));
+    }
+    ctx.beginPath();
+    ctx.arc(fishX, state.fishY, BASE.fishRadius, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 }
