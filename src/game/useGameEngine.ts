@@ -13,6 +13,7 @@ import {
   incrementMissionProgress,
   addXP,
   getUpgradeLevel,
+  unlockSkin,
 } from './storage';
 import {
   FISH_X_RATIO,
@@ -77,7 +78,7 @@ const EMPTY_HUD_STATE: HudState = {
 
 function readHudState(engine: EngineState): HudState {
   return {
-    shieldCharges: Math.max(0, Math.min(2, engine.shieldCharges)),
+    shieldCharges: Math.max(0, Math.min(engine.score >= 300 ? 3 : 2, engine.shieldCharges)),
     magnetRemainingMs: Math.max(0, engine.magnetUntil - engine.timeMs),
     feverRemainingMs: Math.max(0, engine.feverUntil - engine.timeMs),
     hourglassRemainingMs: Math.max(0, engine.hourglassUntil - engine.timeMs),
@@ -125,6 +126,13 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
+  useEffect(() => {
+    if (paused) audioManager.pauseBossMusic();
+    else audioManager.resumeBossMusic();
+  }, [paused]);
+
+  useEffect(() => () => audioManager.stopBossMusic(), []);
+
   const onGameOverRef = useRef(onGameOver);
 
   useEffect(() => {
@@ -142,41 +150,36 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     sizeCanvasForDisplay(canvas, width, height);
 
     const engine = createEngine(width, height, skin);
-
-    // Apply upgrade levels directly to starting engine configurations
-    const shieldLvl = getUpgradeLevel('shield');
-    const magnetLvl = getUpgradeLevel('magnet');
-    const gemLvl = getUpgradeLevel('gemBoost');
-
     stateRef.current = engine;
 
-    // === AUTO-APPLY SHOP BOOSTS ON NEW RUN START ===
-    // This runs every time a new engine is created for a run.
-    // It checks current inventory, applies the boosts, and consumes the items.
-    const inv = getShopInventory();
+    // Apply upgrade levels directly to starting engine configurations.
+      const shieldLvl = getUpgradeLevel('shield');
+      const magnetLvl = getUpgradeLevel('magnet');
+      const gemLvl = getUpgradeLevel('gemBoost');
+      const inv = getShopInventory();
 
-    if (inv.shield > 0 || shieldLvl > 0) {
-      if (inv.shield > 0) consumeShopItem('shield');
-      // Shield capacity is intentionally capped at two visible HUD slots.
-      engine.shieldCharges = Math.min(2, 1 + shieldLvl);
-      incrementMissionProgress('m_shield', 1);
-    }
+      if (inv.shield > 0 || shieldLvl > 0) {
+        if (inv.shield > 0) consumeShopItem('shield');
+        engine.shieldCharges = Math.min(2, 1 + shieldLvl);
+        incrementMissionProgress('m_shield', 1);
+      }
 
-    // Moorish Idol legendary skin ability: 15% chance to start with a free shield if no shield is active
-    if (skin === 'legendary' && engine.shieldCharges === 0) {
-      if (Math.random() < 0.15) {
+      if (skin === 'legendary' && engine.shieldCharges === 0 && Math.random() < 0.15) {
         engine.shieldCharges = 1;
       }
-    }
 
-    if (inv.magnet > 0 || magnetLvl > 0) {
-      if (inv.magnet > 0) consumeShopItem('magnet');
-      // Upgrade increases starting magnet duration (12s base + 3s per level).
-      engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
-    }
+      // Poseidon's Heir always begins protected, while preserving purchased
+      // shields and the normal two-slot early-game capacity.
+      if (skin === 'poseidonsHeir') {
+        engine.shieldCharges = Math.min(2, engine.shieldCharges + 1);
+      }
+
+      if (inv.magnet > 0 || magnetLvl > 0) {
+        if (inv.magnet > 0) consumeShopItem('magnet');
+        engine.magnetUntil = engine.timeMs + 12000 + (magnetLvl * 3000);
+      }
     if (inv.gemBoost > 0 || gemLvl > 0) {
       if (inv.gemBoost > 0) consumeShopItem('gemBoost');
-      // Upgrade increases gem spawn rate even further
       engine.gemBoostActive = true;
     }
 
@@ -380,6 +383,7 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                 const finalScore = state.score;
                 const best = getPersonalBest();
 
+                audioManager.stopBossMusic();
                 audioManager.playSound('gameover', settings.sound);
                 safeVibrate([80, 50, 120], settings.vibration);
 
@@ -460,6 +464,34 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
                   audioManager.playSound('powerup', settings.sound);
                   safeVibrate(20, settings.vibration);
                 }
+              },
+
+              onBossStart: () => {
+                audioManager.playSound('bossWarning', settings.sound);
+                audioManager.startBossMusic(settings.sound);
+                safeVibrate([90, 50, 120], settings.vibration);
+              },
+
+              onBossAttack: () => {
+                audioManager.playSound('bossAttack', settings.sound);
+              },
+
+              onBossSummon: () => {
+                audioManager.playSound('bossSummon', settings.sound);
+                safeVibrate([35, 22, 40], settings.vibration);
+              },
+
+              onBossDefeated: (bossId) => {
+                audioManager.stopBossMusic();
+                audioManager.playSound('bossDefeated', settings.sound);
+                safeVibrate([30, 28, 45, 25, 65], settings.vibration);
+
+                const unlockedNow = bossId === 'poseidon' && unlockSkin('poseidonsHeir');
+                if (unlockedNow) {
+                  audioManager.playSound('achievement', settings.sound);
+                  safeVibrate([40, 35, 60, 35, 85], settings.vibration);
+                }
+                return unlockedNow;
               },
             },
             { vibration: settings.vibration },

@@ -31,6 +31,7 @@ interface EnvironmentTheme {
 export interface Obstacle {
   x: number;
   gapY: number;
+  baseGapY: number;
   gapSize: number;
   passed: boolean;
   bobbing: boolean;
@@ -83,6 +84,8 @@ export interface Particle {
   size: number;
 }
 
+type MinionArtId = 'inkJelly' | 'voltfinShark' | 'lureMine' | 'tideSerpent' | 'stormJelly' | 'coralHatchling' | 'abyssMine' | 'riftShark';
+
 export interface PredatorShark {
   id: string;
   x: number;
@@ -93,8 +96,12 @@ export interface PredatorShark {
   bobPhase: number;
   bobSpeed: number;
   bobAmount: number;
+  speedMultiplier?: number;
+  minionArt?: MinionArtId;
   passed: boolean;
 }
+
+type BossSummonKind = 'shark' | 'jellyfish' | 'mine';
 
 export interface BubbleBoostRing {
   x: number;
@@ -118,6 +125,8 @@ export interface SeaMine {
   radius: number;
   pulsePhase: number;
   exploded: boolean;
+  speedMultiplier?: number;
+  minionArt?: MinionArtId;
 }
 
 export interface Jellyfish {
@@ -129,6 +138,80 @@ export interface Jellyfish {
   bobPhase: number;
   bobSpeed: number;
   bobAmount: number;
+  speedMultiplier?: number;
+  minionArt?: MinionArtId;
+}
+
+type BossId = 'abyssalOctopus' | 'electricManta' | 'abyssalAnglerfish' | 'leviathan' | 'coralKraken' | 'abyssalRazorback' | 'poseidon';
+type BossWeapon = 'ink' | 'plasma' | 'electric' | 'bubble' | 'surge' | 'coral' | 'trident';
+type BossMotion = 'tentacles' | 'fins' | 'lure' | 'serpent' | 'coralTentacles';
+type BossPhase = 'warning' | 'entering' | 'battle' | 'retreating';
+
+interface BossShockwave {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  type: BossWeapon;
+  projectileBossId: BossId;
+  speedMultiplier: number;
+  phase: 'warning' | 'active';
+  activateAt: number;
+}
+
+interface BossAttackPattern {
+  type: BossWeapon;
+  lanes: number[];
+  staggerMs: number;
+  speedMultiplier: number;
+}
+
+interface BossConfig {
+  id: BossId;
+  milestone: number;
+  alphaVideoPath?: string;
+  spriteSheetPath?: string;
+  spriteColumns?: number;
+  spriteRows?: number;
+  spriteFps?: number;
+  spriteFlipX?: boolean;
+  previewOnly?: boolean;
+  nameKey: string;
+  warningKey: string;
+  motion: BossMotion;
+  accent: string;
+  secondaryAccent: string;
+  widthCap: number;
+  widthRatio: number;
+  artScale?: number;
+  battleDurationMs: number;
+  waveIntervalMs: number;
+  rewardCoins: number;
+  rewardScore: number;
+  patterns: BossAttackPattern[];
+  summonPattern?: BossSummonKind[];
+  summonLabelKey?: string;
+  summonIntervalMs?: number;
+  maxSummons?: number;
+}
+
+interface BossEncounter {
+  config: BossConfig;
+  x: number;
+  y: number;
+  baseY: number;
+  width: number;
+  height: number;
+  startedAt: number;
+  entryStartedAt: number;
+  battleStartedAt: number;
+  retreatStartedAt: number;
+  phase: BossPhase;
+  nextWaveAt: number;
+  nextSummonAt: number;
+  summonedSharks: number;
+  lastAttackAt: number;
+  waves: BossShockwave[];
 }
 
 export interface EngineCallbacks {
@@ -143,6 +226,10 @@ export interface EngineCallbacks {
   onNearMiss?: () => void;
   onFeverStart?: () => void;
   onPowerUpCollect?: (type: PowerUp['type']) => void;
+  onBossStart?: (bossId: BossId) => void;
+  onBossAttack?: (weapon: BossShockwave['type']) => void;
+  onBossSummon?: (bossId: BossId, kind: BossSummonKind) => void;
+  onBossDefeated?: (bossId: BossId) => boolean | void;
 }
 
 export interface EngineState {
@@ -167,6 +254,7 @@ export interface EngineState {
   legendaryPulse: number;
   lives: number;
   maxLives: number;
+  lateGameSafetyGranted: boolean;
   shieldCharges: number;
   magnetUntil: number;
   gemBoostActive: boolean;
@@ -188,15 +276,136 @@ export interface EngineState {
   feverUntil: number;
   elapsedSinceFeverCoinSpawn: number;
   hourglassUntil: number;
+
+  // Multi-stage boss encounters
+  boss: BossEncounter | null;
+  defeatedBosses: BossId[];
+  nextBossEligibleScore: number;
 }
 
 const FISH_X_RATIO = 0.28;
 const MAX_EXTRA_LIVES = 2;
+const LATE_GAME_MAX_EXTRA_LIVES = 3;
+const MAX_SHIELD_CHARGES = 2;
+const LATE_GAME_MAX_SHIELD_CHARGES = 3;
+const LATE_GAME_SUPPORT_SCORE = 300;
 const GEM_SPAWN_CHANCE = 0.09;
 const DROP_RUSH_DURATION_MS = 20_000;
 const MAGNET_DURATION_MS = 12_000;
 const HIT_INVINCIBILITY_MS = 1700;
 const SAFE_REVIVE_DELAY_MS = 900;
+const BOSS_WARNING_MS = 1_450;
+const BOSS_ENTRY_MS = 1_500;
+const BOSS_RETREAT_MS = 1_650;
+const BOSS_WAVE_WARNING_MS = 900;
+const BOSS_WAVE_SPEED = 5.35;
+const BOSS_SUMMON_INTERVAL_MS = 6_200;
+const BOSS_MAX_SUMMONED_SHARKS = 3;
+const BOSS_SCORE_BREATHER = 60;
+
+// Every staged fight reserves the arena, provides a warning window, and keeps
+// one broad vertical escape route in each deterministic attack sequence.
+const BOSS_CONFIGS: BossConfig[] = [
+  {
+    id: 'abyssalOctopus', milestone: 100,
+    alphaVideoPath: '/assets/boss-alpha-videos/test/deep-kraken-alpha-test.mp4', nameKey: 'engine.bossName.octopus', warningKey: 'engine.bossWarning.octopus', motion: 'coralTentacles',
+    accent: '#c581ff', secondaryAccent: '#4ce6ff', widthCap: 205, widthRatio: 0.45, artScale: 1.0,
+    battleDurationMs: 24_000, waveIntervalMs: 2_450, rewardCoins: 60, rewardScore: 30,
+    summonPattern: ['jellyfish'], summonLabelKey: 'engine.bossSummon.jelly', summonIntervalMs: 5_200, maxSummons: 3,
+    patterns: [
+      { type: 'ink', lanes: [0.26], staggerMs: 0, speedMultiplier: 0.92 },
+      { type: 'plasma', lanes: [0.74], staggerMs: 0, speedMultiplier: 1.20 },
+      { type: 'ink', lanes: [0.32, 0.68], staggerMs: 290, speedMultiplier: 0.96 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.30 },
+      { type: 'ink', lanes: [0.22, 0.56], staggerMs: 310, speedMultiplier: 1.02 },
+      { type: 'plasma', lanes: [0.78], staggerMs: 0, speedMultiplier: 1.35 },
+    ],
+  },
+  {
+    id: 'electricManta', milestone: 250,
+    alphaVideoPath: '/assets/boss-alpha-videos/electric-manta-alpha.mp4', nameKey: 'engine.bossName.manta', warningKey: 'engine.bossWarning.manta', motion: 'fins',
+    accent: '#62efff', secondaryAccent: '#4c78ff', widthCap: 210, widthRatio: 0.48,
+    battleDurationMs: 27_000, waveIntervalMs: 1_720, rewardCoins: 80, rewardScore: 40,
+    summonPattern: ['shark'], summonLabelKey: 'engine.bossSummon.shark', summonIntervalMs: 4_200, maxSummons: 4,
+    patterns: [
+      { type: 'electric', lanes: [0.18, 0.74], staggerMs: 150, speedMultiplier: 1.56 },
+      { type: 'electric', lanes: [0.34, 0.64], staggerMs: 260, speedMultiplier: 1.62 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.72 },
+      { type: 'electric', lanes: [0.16, 0.48, 0.80], staggerMs: 190, speedMultiplier: 1.50 },
+      { type: 'electric', lanes: [0.26, 0.70], staggerMs: 120, speedMultiplier: 1.70 },
+    ],
+  },
+  {
+    id: 'abyssalAnglerfish', milestone: 400,
+    alphaVideoPath: '/assets/boss-alpha-videos/abyssal-anglerfish-alpha.mp4', nameKey: 'engine.bossName.anglerfish', warningKey: 'engine.bossWarning.anglerfish', motion: 'lure',
+    accent: '#7cfaff', secondaryAccent: '#a764ff', widthCap: 205, widthRatio: 0.46,
+    battleDurationMs: 29_000, waveIntervalMs: 1_920, rewardCoins: 105, rewardScore: 55,
+    summonPattern: ['mine'], summonLabelKey: 'engine.bossSummon.mine', summonIntervalMs: 3_700, maxSummons: 5,
+    patterns: [
+      { type: 'bubble', lanes: [0.30, 0.70], staggerMs: 420, speedMultiplier: 0.92 },
+      { type: 'plasma', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.70 },
+      { type: 'bubble', lanes: [0.18, 0.52, 0.82], staggerMs: 330, speedMultiplier: 1.08 },
+      { type: 'plasma', lanes: [0.24, 0.72], staggerMs: 210, speedMultiplier: 1.60 },
+    ],
+  },
+  {
+    id: 'leviathan', milestone: 600,
+    alphaVideoPath: '/assets/boss-alpha-videos/test/water-dragon-alpha-test.mp4', nameKey: 'engine.bossName.leviathan', warningKey: 'engine.bossWarning.leviathan', motion: 'serpent',
+    accent: '#5dfff0', secondaryAccent: '#268dff', widthCap: 360, widthRatio: 0.78, artScale: 0.82,
+    battleDurationMs: 31_000, waveIntervalMs: 1_720, rewardCoins: 135, rewardScore: 72,
+    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 3_150, maxSummons: 7,
+    patterns: [
+      { type: 'surge', lanes: [0.26], staggerMs: 0, speedMultiplier: 1.32 },
+      { type: 'surge', lanes: [0.72], staggerMs: 0, speedMultiplier: 1.38 },
+      { type: 'surge', lanes: [0.34, 0.66], staggerMs: 270, speedMultiplier: 1.34 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.58 },
+      { type: 'surge', lanes: [0.20, 0.54], staggerMs: 290, speedMultiplier: 1.42 },
+    ],
+  },
+  {
+    id: 'coralKraken', milestone: 500, previewOnly: true,
+    alphaVideoPath: '/assets/boss-alpha-videos/abyssal-razorback-alpha.mp4', nameKey: 'engine.bossName.razorback', warningKey: 'engine.bossWarning.razorback', motion: 'fins',
+    accent: '#00e7ff', secondaryAccent: '#8f5cff', widthCap: 224, widthRatio: 0.50,
+    battleDurationMs: 30_000, waveIntervalMs: 1_620, rewardCoins: 195, rewardScore: 110,
+    summonPattern: ['shark', 'jellyfish'], summonLabelKey: 'engine.bossSummon.mixed', summonIntervalMs: 2_950, maxSummons: 8,
+    patterns: [
+      { type: 'electric', lanes: [0.24, 0.72], staggerMs: 160, speedMultiplier: 1.56 },
+      { type: 'surge', lanes: [0.48], staggerMs: 0, speedMultiplier: 1.64 },
+      { type: 'electric', lanes: [0.18, 0.48, 0.80], staggerMs: 210, speedMultiplier: 1.58 },
+      { type: 'plasma', lanes: [0.32, 0.68], staggerMs: 260, speedMultiplier: 1.70 },
+    ],
+  },
+  {
+    id: 'abyssalRazorback', milestone: 800,
+    alphaVideoPath: '/assets/boss-alpha-videos/test/final-kraken-130221-alpha.mp4',
+    nameKey: 'engine.bossName.kraken', warningKey: 'engine.bossWarning.kraken', motion: 'coralTentacles',
+    accent: '#ff995d', secondaryAccent: '#ffdb64', widthCap: 310, widthRatio: 0.64, artScale: 0.72,
+    battleDurationMs: 38_000, waveIntervalMs: 1_380, rewardCoins: 240, rewardScore: 140,
+    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_400, maxSummons: 10,
+    patterns: [
+      { type: 'coral', lanes: [0.22, 0.70], staggerMs: 120, speedMultiplier: 1.46 },
+      { type: 'plasma', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.84 },
+      { type: 'coral', lanes: [0.18, 0.48, 0.78], staggerMs: 180, speedMultiplier: 1.56 },
+      { type: 'surge', lanes: [0.30, 0.66], staggerMs: 210, speedMultiplier: 1.68 },
+      { type: 'coral', lanes: [0.24, 0.56, 0.82], staggerMs: 160, speedMultiplier: 1.62 },
+    ],
+  },
+  {
+    id: 'poseidon', milestone: 1000,
+    alphaVideoPath: '/assets/boss-alpha-videos/test/poseidon-alpha.mp4',
+    nameKey: 'engine.bossName.poseidon', warningKey: 'engine.bossWarning.poseidon', motion: 'serpent',
+    accent: '#35ecff', secondaryAccent: '#ffd067', widthCap: 290, widthRatio: 0.60, artScale: 0.76,
+    battleDurationMs: 42_000, waveIntervalMs: 1_200, rewardCoins: 320, rewardScore: 190,
+    summonPattern: ['shark', 'jellyfish', 'mine'], summonLabelKey: 'engine.bossSummon.all', summonIntervalMs: 2_150, maxSummons: 12,
+    patterns: [
+      { type: 'trident', lanes: [0.22, 0.78], staggerMs: 250, speedMultiplier: 1.48 },
+      { type: 'surge', lanes: [0.50], staggerMs: 0, speedMultiplier: 1.70 },
+      { type: 'trident', lanes: [0.36, 0.68], staggerMs: 290, speedMultiplier: 1.56 },
+      { type: 'surge', lanes: [0.24, 0.76], staggerMs: 260, speedMultiplier: 1.62 },
+      { type: 'trident', lanes: [0.20, 0.80], staggerMs: 280, speedMultiplier: 1.64 },
+    ],
+  },
+];
 // The artwork intentionally extends beyond the gameplay body. A smaller,
 // circular contact zone makes collisions match what players can see.
 const FAIR_FISH_HITBOX_RADIUS = BASE.fishRadius * 0.82;
@@ -226,6 +435,79 @@ function environmentForScore(score: number): EnvironmentTheme {
 
 let waterTexture: HTMLImageElement | null = null;
 let heartDropImage: HTMLImageElement | null = null;
+const playerFishSpriteSheetCache = new Map<SkinId, HTMLImageElement>();
+const bossVideoCache = new Map<BossId, HTMLVideoElement>();
+const bossSpriteSheetCache = new Map<BossId, HTMLImageElement>();
+const bossProjectileSheetCache = new Map<string, HTMLImageElement>();
+const minionSpriteSheetCache = new Map<MinionArtId, HTMLImageElement>();
+
+const PLAYER_FISH_SPRITE_SHEET_PATHS: Record<SkinId, string> = {
+  golden: '/assets/player-fish/golden-hero-swim-sheet.png',
+  ruby: '/assets/player-fish/ruby-betta-swim-sheet.png',
+  emerald: '/assets/player-fish/emerald-mandarin-swim-sheet.png',
+  diamond: '/assets/player-fish/diamond-discus-swim-sheet.png',
+  legendary: '/assets/player-fish/legendary-royal-abyss-swim-sheet.png',
+  sapphire: '/assets/player-fish/sapphire-crown-koi-swim-sheet.png',
+  solar: '/assets/player-fish/solar-empress-lionfish-swim-sheet.png',
+  poseidonsHeir: '/assets/player-fish/poseidons-heir-swim-sheet.png',
+};
+
+const BOSS_PROJECTILE_SHEET_PATHS: Record<BossId, string> = {
+  abyssalOctopus: '/assets/boss-projectiles/octopus-ink-sheet.png',
+  electricManta: '/assets/boss-projectiles/manta-electric-sheet.png',
+  abyssalAnglerfish: '/assets/boss-projectiles/angler-abyss-sheet.png',
+  leviathan: '/assets/boss-projectiles/leviathan-surge-sheet.png',
+  coralKraken: '/assets/boss-projectiles/razorback-wave-sheet.png',
+  abyssalRazorback: '/assets/boss-projectiles/kraken-coral-sheet.png',
+  poseidon: '/assets/boss-projectiles/poseidon-trident-sheet.png',
+};
+
+const BOSS_WEAPON_PROJECTILE_SHEET_PATHS: Partial<Record<BossId, Partial<Record<BossWeapon, string>>>> = {
+  poseidon: { surge: '/assets/boss-projectiles/leviathan-surge-sheet.png' },
+};
+
+const MINION_SPRITE_SHEET_PATHS: Record<MinionArtId, string> = {
+  inkJelly: '/assets/minions/ink-jelly-minion.png',
+  voltfinShark: '/assets/minions/voltfin-shark-minion.png',
+  lureMine: '/assets/minions/lure-mine-minion.png',
+  tideSerpent: '/assets/minions/tide-serpent-minion.png',
+  stormJelly: '/assets/minions/storm-jelly-minion.png',
+  coralHatchling: '/assets/minions/coral-hatchling-minion.png',
+  abyssMine: '/assets/minions/abyss-mine-minion.png',
+  riftShark: '/assets/minions/rift-shark-minion.png',
+};
+
+type BossMinionArtChoice = MinionArtId | MinionArtId[];
+
+const BOSS_MINION_ART: Record<BossId, Partial<Record<BossSummonKind, BossMinionArtChoice>>> = {
+  abyssalOctopus: { jellyfish: 'inkJelly' },
+  electricManta: { shark: 'voltfinShark' },
+  abyssalAnglerfish: { mine: 'lureMine' },
+  leviathan: { shark: 'tideSerpent', jellyfish: 'stormJelly' },
+  coralKraken: { shark: 'riftShark', jellyfish: 'inkJelly' },
+  abyssalRazorback: { shark: 'coralHatchling', jellyfish: 'coralHatchling', mine: 'abyssMine' },
+  poseidon: {
+    shark: ['tideSerpent', 'riftShark', 'voltfinShark'],
+    jellyfish: ['stormJelly', 'inkJelly', 'coralHatchling'],
+    mine: ['lureMine', 'abyssMine'],
+  },
+};
+
+function minionArtFor(bossId: BossId, kind: BossSummonKind, summonIndex: number, patternLength: number): MinionArtId | undefined {
+  const choice = BOSS_MINION_ART[bossId][kind];
+  if (!choice) return undefined;
+  if (!Array.isArray(choice)) return choice;
+  const round = Math.floor(summonIndex / Math.max(1, patternLength));
+  return choice[round % choice.length];
+}
+
+interface BossVideoFrame {
+  canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+  lastTime: number;
+}
+
+const bossVideoFrameCache = new Map<BossId, BossVideoFrame>();
 
 function getHeartDropImage() {
   if (typeof Image === 'undefined') return null;
@@ -234,6 +516,173 @@ function getHeartDropImage() {
     heartDropImage.src = '/assets/heart-drop.svg';
   }
   return heartDropImage;
+}
+
+function getBossSpriteSheet(config: BossConfig) {
+  if (typeof Image === 'undefined' || !config.spriteSheetPath) return null;
+  let spriteSheet = bossSpriteSheetCache.get(config.id);
+  if (!spriteSheet) {
+    spriteSheet = new Image();
+    spriteSheet.decoding = 'async';
+    spriteSheet.src = config.spriteSheetPath;
+    bossSpriteSheetCache.set(config.id, spriteSheet);
+  }
+  return spriteSheet;
+}
+
+function getPlayerFishSpriteSheet(skinId: SkinId) {
+  if (typeof Image === 'undefined') return null;
+  let sheet = playerFishSpriteSheetCache.get(skinId);
+  if (!sheet) {
+    sheet = new Image();
+    sheet.decoding = 'async';
+    sheet.src = PLAYER_FISH_SPRITE_SHEET_PATHS[skinId];
+    playerFishSpriteSheetCache.set(skinId, sheet);
+  }
+  return sheet;
+}
+
+function getBossProjectileSheet(bossId: BossId, weaponType?: BossWeapon) {
+  if (typeof Image === 'undefined') return null;
+  const path = BOSS_WEAPON_PROJECTILE_SHEET_PATHS[bossId]?.[weaponType ?? 'ink'] ?? BOSS_PROJECTILE_SHEET_PATHS[bossId];
+  let sheet = bossProjectileSheetCache.get(path);
+  if (!sheet) {
+    sheet = new Image();
+    sheet.decoding = 'async';
+    sheet.src = path;
+    bossProjectileSheetCache.set(path, sheet);
+  }
+  return sheet;
+}
+
+function getMinionSpriteSheet(artId: MinionArtId) {
+  if (typeof Image === 'undefined') return null;
+  let sheet = minionSpriteSheetCache.get(artId);
+  if (!sheet) {
+    sheet = new Image();
+    sheet.decoding = 'async';
+    sheet.src = MINION_SPRITE_SHEET_PATHS[artId];
+    minionSpriteSheetCache.set(artId, sheet);
+  }
+  return sheet;
+}
+
+function drawMinionSprite(ctx: CanvasRenderingContext2D, artId: MinionArtId, timeMs: number, phase: number, size: number) {
+  const sheet = getMinionSpriteSheet(artId);
+  if (!sheet?.complete || !sheet.naturalWidth || !sheet.naturalHeight) return false;
+  const frameWidth = sheet.naturalWidth / 4;
+  const frame = Math.floor(timeMs / 135 + phase) % 4;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(sheet, frame * frameWidth, 0, frameWidth, sheet.naturalHeight, -size / 2, -size / 2, size, size);
+  return true;
+}
+
+function getBossVideo(config: BossConfig) {
+  if (typeof document === 'undefined' || !config.alphaVideoPath) return null;
+  let video = bossVideoCache.get(config.id);
+  if (!video) {
+    video = document.createElement('video');
+    video.src = config.alphaVideoPath;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    bossVideoCache.set(config.id, video);
+  }
+  return video;
+}
+
+function startBossVideo(config: BossConfig) {
+  const video = getBossVideo(config);
+  if (!video) return;
+  video.currentTime = 0;
+  void video.play().catch(() => undefined);
+}
+
+function stopBossVideo(config: BossConfig) {
+  const video = bossVideoCache.get(config.id);
+  if (!video) return;
+  video.pause();
+  video.currentTime = 0;
+}
+
+function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
+  const frameWidth = video.videoWidth;
+  const frameHeight = Math.floor(video.videoHeight / 2);
+  if (!frameWidth || !frameHeight || typeof document === 'undefined') return null;
+
+  let frame = bossVideoFrameCache.get(config.id);
+  if (!frame) {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return null;
+    frame = { canvas, context, lastTime: -1 };
+    bossVideoFrameCache.set(config.id, frame);
+  }
+
+  if (frame.canvas.width !== frameWidth || frame.canvas.height !== video.videoHeight) {
+    frame.canvas.width = frameWidth;
+    frame.canvas.height = video.videoHeight;
+    frame.lastTime = -1;
+  }
+
+  if (Math.abs(frame.lastTime - video.currentTime) > 0.0001) {
+    frame.context.drawImage(video, 0, 0, frameWidth, video.videoHeight);
+    const pixels = frame.context.getImageData(0, 0, frameWidth, video.videoHeight);
+    const alphaOffset = frameWidth * frameHeight * 4;
+    for (let index = 0; index < alphaOffset; index += 4) {
+      // Use the matte only to separate the black video backdrop from the boss.
+      // The boss itself stays fully opaque, preserving the rich original RGB
+      // values instead of letting a soft matte darken it over the game world.
+      const matte = pixels.data[alphaOffset + index];
+      // H.264 compression leaves faint low-level matte residue at the bottom edge.
+      // Treat it as transparent to prevent the thin dark line beneath every boss.
+      if (matte <= 48) {
+        pixels.data[index] = 0;
+        pixels.data[index + 1] = 0;
+        pixels.data[index + 2] = 0;
+        pixels.data[index + 3] = 0;
+        continue;
+      }
+      // The H.264 source is authored on black. A gentle gamma lift restores
+      // the original perceived brightness on the underwater game background
+      // without shifting the boss palette or blowing out its highlights.
+      const lift = (channel: number) => Math.min(255, Math.round(255 * Math.pow(channel / 255, 0.60)));
+      pixels.data[index] = lift(pixels.data[index]);
+      pixels.data[index + 1] = lift(pixels.data[index + 1]);
+      pixels.data[index + 2] = lift(pixels.data[index + 2]);
+      pixels.data[index + 3] = 255;
+    }
+    frame.context.putImageData(pixels, 0, 0, 0, 0, frameWidth, frameHeight);
+    // The canvas temporarily holds the stacked alpha matte below the artwork.
+    // Clear it after extracting the top frame so browser interpolation cannot leak
+    // its seam as a thin line beneath the rendered boss.
+    frame.context.clearRect(0, frameHeight, frameWidth, video.videoHeight - frameHeight);
+    frame.lastTime = video.currentTime;
+  }
+
+  return { canvas: frame.canvas, width: frameWidth, height: frameHeight };
+}
+
+function bossEncounterScale(state: EngineState) {
+  const boss = state.boss;
+  if (!boss || boss.phase === 'warning') return 1;
+  // This scales only the player character during a boss encounter. The
+  // background remains full-screen, creating a clean pull-back camera effect.
+  const targetScale = 0.64;
+  if (boss.phase === 'entering') {
+    const progress = Math.max(0, Math.min(1, (state.timeMs - boss.entryStartedAt) / BOSS_ENTRY_MS));
+    return 1 + (targetScale - 1) * (1 - Math.pow(1 - progress, 3));
+  }
+  if (boss.phase === 'retreating') {
+    const progress = Math.max(0, Math.min(1, (state.timeMs - boss.retreatStartedAt) / BOSS_RETREAT_MS));
+    return targetScale + (1 - targetScale) * (progress * progress * (3 - 2 * progress));
+  }
+  return targetScale;
 }
 
 function getWaterTexture() {
@@ -264,13 +713,9 @@ function drawWaterTexture(ctx: CanvasRenderingContext2D, state: EngineState) {
   ctx.restore();
 }
 
-const getInvincibilityDuration = (state: EngineState) => {
-  const base = HIT_INVINCIBILITY_MS;
-  if (state.skin === 'ruby') {
-    return Math.round(base * 1.30); // Betta skin: +30% duration
-  }
-  return base;
-};
+// A shield absorbs one hit and grants the same brief recovery window to every skin.
+// Skin perks therefore improve real collection rewards instead of an invisible duration.
+const getInvincibilityDuration = (_state: EngineState) => HIT_INVINCIBILITY_MS;
 
 export function createEngine(width: number, height: number, skin: SkinId): EngineState {
   const bubbles: Bubble[] = Array.from({ length: 30 }, () => ({
@@ -284,7 +729,7 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     width, height, fishY: height / 2, fishVY: 0, fishRotation: 0, score: 0, running: true,
     invincibleUntil: 0, obstacles: [], coins: [], gems: [], powerUps: [], bubbles, particles: [],
     elapsedSinceSpawn: 999999, skin, shakeIntensity: 0, timeMs: 0, legendaryPulse: 0,
-    lives: 0, maxLives: MAX_EXTRA_LIVES, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
+    lives: 0, maxLives: MAX_EXTRA_LIVES, lateGameSafetyGranted: false, shieldCharges: 0, magnetUntil: 0, gemBoostActive: false,
 
     floatingTexts: [],
     sharks: [],
@@ -302,19 +747,20 @@ export function createEngine(width: number, height: number, skin: SkinId): Engin
     feverUntil: 0,
     elapsedSinceFeverCoinSpawn: 0,
     hourglassUntil: 0,
+    boss: null,
+    defeatedBosses: [],
+    nextBossEligibleScore: 0,
   };
 }
 
-export function difficultyForScore(score: number, timeMs: number = 0) {
+export function difficultyForScore(score: number, _timeMs: number = 0) {
   // Constant speed of 3.0 as requested to prevent the game from becoming too fast / impossible.
   const speed = 3.0;
 
+  // The pipe opening stays constant throughout a run. Later difficulty comes
+  // from readable moving gates and varied minions, never from a shrinking route.
+  const gap = BASE.baseGap + 30;
   const speedSteps = Math.floor(score / 12);
-
-  // The minimum opening remains deliberately generous even in late runs.
-  // Difficulty comes from visual variety and route choice, not tiny corridors.
-  const baseGapVal = BASE.baseGap + 30 - speedSteps * 2 - Math.floor(timeMs / 45000) * 3;
-  const gap = Math.max(146, baseGapVal);
 
   const baseSpawnInterval = Math.max(1200, BASE.spawnInterval + 180 - speedSteps * 25);
   // Spawn interval is fairly balanced
@@ -359,6 +805,17 @@ function safeHazardLane(gapY: number, gapSize: number, hazardHalfHeight: number)
   return gapY + (Math.random() < 0.5 ? -offset : offset);
 }
 
+const AMBIENT_MINION_ART: Record<BossSummonKind, MinionArtId[]> = {
+  shark: ['voltfinShark', 'riftShark', 'tideSerpent'],
+  jellyfish: ['inkJelly', 'stormJelly', 'coralHatchling'],
+  mine: ['lureMine', 'abyssMine'],
+};
+
+function ambientMinionArtFor(kind: BossSummonKind, score: number): MinionArtId {
+  const candidates = AMBIENT_MINION_ART[kind];
+  return candidates[Math.floor(score / 100) % candidates.length];
+}
+
 function spawnObstacle(state: EngineState, score: number) {
   const { gap, diffMultiplier } = difficultyForScore(score, state.timeMs);
   const margin = Math.max(95, gap * 0.48);
@@ -366,13 +823,15 @@ function spawnObstacle(state: EngineState, score: number) {
   const gapY = clampGapY(state, rawGapY, gap);
   const environment = environmentForScore(score);
   const legendaryMode = score >= 120;
-  // Moving and split gates created surprise deaths in late runs. Gates remain
-  // stable, single-opening obstacles; later environments carry the variety.
+  // After 200 points, some gates visibly glide up and down. Their opening size
+  // is never changed, and the slow shared motion keeps the route readable.
+  const movingGate = score >= 200 && Math.random() < 0.58;
+  const bobAmount = movingGate ? Math.min(28, 14 + Math.floor(score / 100) * 2) : 0;
   const isDouble = false;
   state.obstacles.push({
-    x: state.width + BASE.obstacleWidth, gapY, gapSize: gap, passed: false,
-    bobbing: false, bobPhase: Math.random() * Math.PI * 2,
-    bobAmount: 0, glowing: legendaryMode, isDouble, environment: environment.id,
+    x: state.width + BASE.obstacleWidth, gapY, baseGapY: gapY, gapSize: gap, passed: false,
+    bobbing: movingGate, bobPhase: Math.random() * Math.PI * 2,
+    bobAmount, glowing: legendaryMode, isDouble, environment: environment.id,
   });
 
   // Drop Rush is awarded by the turquoise ring. It makes collectable drops
@@ -380,8 +839,10 @@ function spawnObstacle(state: EngineState, score: number) {
   const isFever = state.feverUntil > state.timeMs;
   const isDropRushActive = state.boostUntil > state.timeMs;
   const coinChance = isDropRushActive ? 0.92 : 0.68;
-  const powerUpChance = isDropRushActive ? 0.18 : 0.09;
-  const chestChance = isDropRushActive ? 0.055 : 0.025;
+  let powerUpChance = isDropRushActive ? 0.18 : 0.09;
+  let chestChance = isDropRushActive ? 0.055 : 0.025;
+  if (state.skin === 'solar') powerUpChance *= 1.35;
+  if (state.skin === 'ruby') chestChance *= 1.30;
   if (!isFever && Math.random() < coinChance) {
     state.coins.push({
       x: state.width + BASE.obstacleWidth + 44, y: gapY + (Math.random() - 0.5) * (gap * 0.32),
@@ -390,7 +851,9 @@ function spawnObstacle(state: EngineState, score: number) {
   }
   // Gem (now beautiful Heart) spawn (boosted if shop gemBoostActive, or Discus skin ability)
   let gemChance = state.gemBoostActive ? GEM_SPAWN_CHANCE * 1.8 : GEM_SPAWN_CHANCE;
-  if (state.skin === 'diamond') {
+  if (state.skin === 'poseidonsHeir') {
+    gemChance *= 1.65; // Legendary reward: +65% Heart drop chance
+  } else if (state.skin === 'diamond') {
     gemChance *= 1.30; // Discus skin: +30% Extra Life drop chance
   }
   if (isDropRushActive) {
@@ -419,10 +882,12 @@ function spawnObstacle(state: EngineState, score: number) {
     });
   }
 
-  // Only one additional hazard can accompany a pipe gate. Its center is
-  // anchored inside the gap and the opposite half remains deliberately clear.
-  const hasActiveHazard = state.sharks.length + state.seaMines.length + state.jellyfish.length > 0;
-  if (!hasActiveHazard) {
+  // Ambient minions grow gradually after the first boss. The cap preserves a
+  // clear escape lane and avoids stacking hazards in every pipe opening.
+  const activeHazardCount = state.sharks.length + state.seaMines.length + state.jellyfish.length;
+  const ambientMinionLimit = score >= 600 ? 3 : score >= 300 ? 2 : 1;
+  const hazardLimit = score >= 120 ? ambientMinionLimit : 1;
+  if (activeHazardCount < hazardLimit) {
     const hazardRoll = Math.random();
 
     // Shark enemy after score >= 20. It uses a short vertical bob, so the
@@ -439,6 +904,7 @@ function spawnObstacle(state: EngineState, score: number) {
         bobPhase: Math.random() * Math.PI * 2,
         bobSpeed: 0.003 + Math.random() * 0.002,
         bobAmount: 8 + Math.random() * 5,
+        minionArt: score >= 120 ? ambientMinionArtFor('shark', score) : undefined,
         passed: false,
       });
     // Sea mine after score >= 10. Keep it away from the centerline so it
@@ -451,6 +917,7 @@ function spawnObstacle(state: EngineState, score: number) {
         radius: 14,
         pulsePhase: Math.random() * Math.PI * 2,
         exploded: false,
+        minionArt: score >= 120 ? ambientMinionArtFor('mine', score) : undefined,
       });
     // Jellyfish after score >= 15. Vertical movement is intentionally subtle
     // to keep the protected half of the pipe gap navigable.
@@ -465,6 +932,7 @@ function spawnObstacle(state: EngineState, score: number) {
         bobPhase: Math.random() * Math.PI * 2,
         bobSpeed: 0.002 + Math.random() * 0.0015,
         bobAmount: 8 + Math.random() * 5,
+        minionArt: score >= 120 ? ambientMinionArtFor('jellyfish', score) : undefined,
       });
     }
   }
@@ -527,6 +995,255 @@ function clearDangerousReviveArea(state: EngineState) {
   state.elapsedSinceSpawn = -SAFE_REVIVE_DELAY_MS;
 }
 
+function startBossEncounter(state: EngineState, callbacks: EngineCallbacks, config: BossConfig) {
+  clearDangerousReviveArea(state);
+  // Keep the full background canvas untouched and reduce only the boss actor
+  // so the encounter reads as a wider, more cinematic arena.
+  const width = Math.min(config.widthCap, state.width * config.widthRatio) * 0.78;
+  const entryStartedAt = state.timeMs + BOSS_WARNING_MS;
+  const battleStartedAt = entryStartedAt + BOSS_ENTRY_MS;
+  const boss: BossEncounter = {
+    config,
+    x: state.width + width * 0.72,
+    y: state.height * 0.42,
+    baseY: state.height * 0.42,
+    width,
+    height: width,
+    startedAt: state.timeMs,
+    entryStartedAt,
+    battleStartedAt,
+    retreatStartedAt: 0,
+    phase: 'warning',
+    nextWaveAt: battleStartedAt + 820,
+    nextSummonAt: battleStartedAt + BOSS_SUMMON_INTERVAL_MS,
+    summonedSharks: 0,
+    lastAttackAt: 0,
+    waves: [],
+  };
+  state.boss = boss;
+  getBossProjectileSheet(config.id);
+  Object.values(BOSS_MINION_ART[config.id]).forEach((artChoice) => {
+    const artIds = Array.isArray(artChoice) ? artChoice : [artChoice];
+    artIds.forEach((artId) => {
+      if (artId) getMinionSpriteSheet(artId);
+    });
+  });
+  startBossVideo(config);
+  state.elapsedSinceSpawn = -(BOSS_WARNING_MS + BOSS_ENTRY_MS + config.battleDurationMs + BOSS_RETREAT_MS);
+  const warning = translate(config.warningKey);
+  triggerFloatingText(state, warning, state.width * 0.5, state.height * 0.25, config.accent, true);
+  callbacks.onFloatingText?.(warning, state.width * 0.5, state.height * 0.25, config.accent, true);
+    addBurst(state, state.width * 0.72, state.height * 0.42, config.accent, 28, 3.2);
+  callbacks.onBossStart?.(config.id);
+}
+
+function absorbBossHit(state: EngineState, callbacks: EngineCallbacks, fishX: number) {
+  callbacks.onShake(5);
+  callbacks.onRedFlash?.();
+  addBurst(state, fishX, state.fishY, '#73e8ff', 18, 2.8);
+  if (state.shieldCharges > 0) {
+    state.shieldCharges = Math.max(0, state.shieldCharges - 1);
+    state.invincibleUntil = state.timeMs + getInvincibilityDuration(state);
+    triggerFloatingText(state, translate('engine.shield'), fishX, state.fishY - 30, '#80d8ff', true);
+    return false;
+  }
+  killOrUseLife(state, callbacks);
+  return true;
+}
+
+function updateBossEncounter(state: EngineState, dt: number, callbacks: EngineCallbacks, fishX: number, invincible: boolean, isFeverActive: boolean) {
+  const boss = state.boss;
+  if (!boss) return false;
+
+  const { config } = boss;
+  // Pull the combatants apart inside the unchanged full-screen background.
+  // The boss remains directly opposite the fish, but the arena now has a
+  // wider cinematic gap for clearer attacks and less visual crowding.
+  const targetX = state.width * 0.75;
+  const entryX = state.width + boss.width * 0.72;
+  const exitX = state.width + boss.width * 0.95;
+  const motionAmplitude = config.motion === 'serpent' ? 22 : config.motion === 'fins' ? 17 : 14;
+  const motionRate = config.motion === 'fins' ? 0.0032 : config.motion === 'serpent' ? 0.0028 : 0.0018;
+  const livingY = boss.baseY + Math.sin(state.timeMs * motionRate) * Math.min(motionAmplitude, state.height * 0.052);
+
+  if (boss.phase === 'warning' && state.timeMs >= boss.entryStartedAt) {
+    boss.phase = 'entering';
+    addBurst(state, state.width * 0.93, boss.baseY, config.accent, 22, 2.8);
+  }
+
+  if (boss.phase === 'entering') {
+    const progress = Math.max(0, Math.min(1, (state.timeMs - boss.entryStartedAt) / BOSS_ENTRY_MS));
+    const eased = 1 - Math.pow(1 - progress, 3);
+    boss.x = entryX + (targetX - entryX) * eased;
+    boss.y = livingY - Math.sin(progress * Math.PI) * Math.min(18, state.height * 0.045);
+    if (progress >= 1) {
+      boss.phase = 'battle';
+      boss.x = targetX;
+      boss.y = livingY;
+      addBurst(state, boss.x, boss.y, config.secondaryAccent, 24, 2.6);
+    }
+    return false;
+  }
+
+  if (boss.phase === 'retreating') {
+    const progress = Math.max(0, Math.min(1, (state.timeMs - boss.retreatStartedAt) / BOSS_RETREAT_MS));
+    const eased = progress * progress * (3 - 2 * progress);
+    boss.x = targetX + (exitX - targetX) * eased;
+    boss.y = livingY - Math.sin(progress * Math.PI) * Math.min(30, state.height * 0.075);
+    if (progress < 1) return false;
+
+    const rewardX = Math.min(state.width * 0.75, boss.x);
+    const rewardY = boss.y;
+    stopBossVideo(config);
+    state.boss = null;
+    if (!state.defeatedBosses.includes(config.id)) state.defeatedBosses.push(config.id);
+    state.score += config.rewardScore;
+    // Winning a boss opens a calm score window before the next encounter,
+    // preventing two boss warnings from appearing back-to-back.
+    state.nextBossEligibleScore = state.score + BOSS_SCORE_BREATHER;
+    callbacks.onScore(state.score);
+    callbacks.onCoinCollect(config.rewardCoins);
+    const rewardText = translate('engine.bossDefeated', undefined, { coins: config.rewardCoins, score: config.rewardScore });
+    triggerFloatingText(state, rewardText, rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
+    callbacks.onFloatingText?.(rewardText, rewardX, rewardY - boss.height * 0.62, '#ffe082', true);
+    addBurst(state, rewardX, rewardY, '#ffe082', 38, 3.9);
+    addBurst(state, rewardX, rewardY, config.accent, 30, 3.4);
+    callbacks.onShake(3);
+    const unlockedBossReward = callbacks.onBossDefeated?.(config.id);
+    if (config.id === 'poseidon' && unlockedBossReward) {
+      const unlockText = translate('engine.poseidonsHeirUnlocked');
+      triggerFloatingText(state, unlockText, state.width * 0.5, state.height * 0.34, '#ffd740', true);
+      callbacks.onFloatingText?.(unlockText, state.width * 0.5, state.height * 0.34, '#ffd740', true);
+      addBurst(state, state.width * 0.5, state.height * 0.40, '#35ecff', 34, 3.6);
+    }
+    state.elapsedSinceSpawn = -900;
+    return false;
+  }
+
+  boss.x += (targetX - boss.x) * Math.min(1, dt * 0.052);
+  boss.y = livingY;
+
+  if (boss.phase === 'battle' && state.timeMs >= boss.nextWaveAt) {
+    const sequenceIndex = Math.floor((state.timeMs - boss.battleStartedAt) / config.waveIntervalMs);
+    const pattern = config.patterns[sequenceIndex % config.patterns.length];
+    boss.lastAttackAt = state.timeMs;
+    pattern.lanes.forEach((laneRatio, laneIndex) => {
+      const isHeavy = pattern.type === 'ink' || pattern.type === 'bubble' || pattern.type === 'coral' || pattern.type === 'trident';
+      boss.waves.push({
+        id: `${pattern.type}_bolt_${state.timeMs}_${laneIndex}`,
+        x: boss.x - boss.width * 0.42,
+        y: state.height * laneRatio,
+        radius: isHeavy
+          ? Math.max(18, Math.min(28, state.width * 0.070))
+          : Math.max(13, Math.min(20, state.width * 0.052)),
+        type: pattern.type,
+        projectileBossId: config.id,
+        speedMultiplier: pattern.speedMultiplier,
+        phase: 'warning',
+        activateAt: state.timeMs + BOSS_WAVE_WARNING_MS + laneIndex * pattern.staggerMs,
+      });
+    });
+    callbacks.onBossAttack?.(pattern.type);
+    boss.nextWaveAt = state.timeMs + config.waveIntervalMs;
+  }
+
+  if (
+    boss.phase === 'battle'
+    && config.summonPattern?.length
+    && state.timeMs >= boss.battleStartedAt
+    && boss.summonedSharks < (config.maxSummons ?? BOSS_MAX_SUMMONED_SHARKS)
+    && state.timeMs >= boss.nextSummonAt
+  ) {
+    const kind = config.summonPattern[boss.summonedSharks % config.summonPattern.length];
+    const tier = Math.floor(config.milestone / 100);
+    const summonLanes: Record<BossSummonKind, number[]> = {
+      shark: [0.22, 0.78, 0.34, 0.66],
+      jellyfish: [0.18, 0.76, 0.38, 0.64],
+      mine: [0.26, 0.72, 0.42, 0.62, 0.20],
+    };
+    const lanes = summonLanes[kind];
+    const lane = lanes[boss.summonedSharks % lanes.length];
+    const summonY = state.height * lane;
+    const speedScale = 0.95 + tier * 0.11;
+
+    if (kind === 'shark') {
+      state.sharks.push({
+        id: `boss_shark_${state.timeMs}`,
+        x: state.width + 110,
+        y: summonY,
+        baseY: summonY,
+        width: 78 + tier * 2,
+        height: 35 + tier,
+        bobPhase: boss.summonedSharks * 1.7,
+        bobSpeed: 0.0038 + tier * 0.00032,
+        bobAmount: 6 + tier,
+        speedMultiplier: speedScale,
+        minionArt: minionArtFor(config.id, kind, boss.summonedSharks, config.summonPattern.length),
+        passed: false,
+      });
+    } else if (kind === 'jellyfish') {
+      state.jellyfish.push({
+        id: `boss_jelly_${state.timeMs}`,
+        x: state.width + 82,
+        y: summonY,
+        baseY: summonY,
+        radius: 11 + tier,
+        bobPhase: boss.summonedSharks * 1.5,
+        bobSpeed: 0.0025 + tier * 0.00028,
+        bobAmount: 7 + tier * 1.5,
+        speedMultiplier: speedScale,
+        minionArt: minionArtFor(config.id, kind, boss.summonedSharks, config.summonPattern.length),
+      });
+    } else {
+      state.seaMines.push({
+        id: `boss_mine_${state.timeMs}`,
+        x: state.width + 94,
+        y: summonY,
+        radius: 13 + tier,
+        pulsePhase: boss.summonedSharks * 1.3,
+        exploded: false,
+        speedMultiplier: 0.82 + tier * 0.10,
+        minionArt: minionArtFor(config.id, kind, boss.summonedSharks, config.summonPattern.length),
+      });
+    }
+
+    boss.summonedSharks += 1;
+    boss.nextSummonAt += config.summonIntervalMs ?? BOSS_SUMMON_INTERVAL_MS;
+    const summonText = translate(config.summonLabelKey ?? 'engine.bossSharks');
+    triggerFloatingText(state, summonText, state.width * 0.62, summonY - 24, config.secondaryAccent, false);
+    callbacks.onFloatingText?.(summonText, state.width * 0.62, summonY - 24, config.secondaryAccent, false);
+    callbacks.onBossSummon?.(config.id, kind);
+  }
+
+  for (const wave of boss.waves) {
+    if (wave.phase === 'warning' && state.timeMs >= wave.activateAt) wave.phase = 'active';
+    if (wave.phase === 'active') {
+      wave.x -= BOSS_WAVE_SPEED * wave.speedMultiplier * dt;
+      if (!invincible && !isFeverActive) {
+        const distance = Math.hypot(wave.x - fishX, wave.y - state.fishY);
+        if (distance < FAIR_FISH_HITBOX_RADIUS + wave.radius * 0.55) {
+          if (absorbBossHit(state, callbacks, fishX)) return true;
+          wave.x = -100;
+        }
+      }
+    }
+  }
+  boss.waves = boss.waves.filter((wave) => wave.phase === 'warning' || wave.x > -80);
+
+  if (boss.phase === 'battle' && state.timeMs >= boss.battleStartedAt + config.battleDurationMs) {
+    boss.phase = 'retreating';
+    boss.retreatStartedAt = state.timeMs;
+    boss.waves = [];
+    state.sharks = [];
+    state.seaMines = [];
+    state.jellyfish = [];
+    boss.lastAttackAt = state.timeMs;
+    addBurst(state, boss.x, boss.y, config.secondaryAccent, 34, 3.1);
+    callbacks.onShake(3);
+  }
+  return false;
+}
+
 function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
   if (state.lives <= 0) return false;
   state.lives -= 1;
@@ -544,6 +1261,7 @@ function spendExtraLife(state: EngineState, callbacks: EngineCallbacks) {
 
 function killOrUseLife(state: EngineState, callbacks: EngineCallbacks) {
   if (spendExtraLife(state, callbacks)) return;
+  if (state.boss) stopBossVideo(state.boss.config);
   callbacks.onShake(8); // Reduced shake on gameover/death
   callbacks.onRedFlash?.();
   callbacks.onDeath();
@@ -572,6 +1290,20 @@ function announceEnvironmentTransition(state: EngineState, callbacks: EngineCall
   callbacks.onFloatingText?.(`Entered ${theme.label}`, state.width * 0.5, state.height * 0.30, theme.accent, true);
 }
 
+function applyLateGameSafetySupport(state: EngineState, callbacks: EngineCallbacks) {
+  if (state.lateGameSafetyGranted || state.score < LATE_GAME_SUPPORT_SCORE) return;
+  state.lateGameSafetyGranted = true;
+  state.maxLives = LATE_GAME_MAX_EXTRA_LIVES;
+  state.lives = Math.min(state.maxLives, state.lives + 1);
+  state.shieldCharges = Math.min(LATE_GAME_MAX_SHIELD_CHARGES, state.shieldCharges + 1);
+  const message = translate('engine.lateGameSupport');
+  triggerFloatingText(state, message, state.width * 0.5, state.height * 0.30, '#ffe082', true);
+  callbacks.onFloatingText?.(message, state.width * 0.5, state.height * 0.30, '#ffe082', true);
+  callbacks.onLifeChange?.(state.lives);
+  callbacks.onShake(2);
+  addBurst(state, state.width * 0.5, state.height * 0.36, '#ffe082', 22, 2.5);
+}
+
 export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCallbacks, settings: { vibration: boolean }) {
   if (!state.running) return;
   const dt = Math.min(2.2, dtMs / 16.67);
@@ -579,6 +1311,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   state.legendaryPulse = (state.legendaryPulse + dtMs * 0.002) % (Math.PI * 2);
   state.fishVY = Math.min(BASE.maxFallSpeed, state.fishVY + BASE.gravity * dt);
   state.fishY += state.fishVY * dt;
+
   state.fishRotation = Math.max(-0.5, Math.min(0.9, state.fishVY * 0.06));
   const groundY = state.height - 8;
   const ceilingY = 8;
@@ -606,18 +1339,27 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   const isHourglassActive = state.hourglassUntil > state.timeMs;
   const speed = isHourglassActive ? baseSpeed * 0.6 : baseSpeed;
   const fishX = state.width * FISH_X_RATIO;
+  applyLateGameSafetySupport(state, callbacks);
 
   state.elapsedSinceSpawn += dtMs;
-  // Keep enough horizontal breathing room between pipe gates. The timer stays
-  // armed until the previous gate moves on, rather than forcing an overlap.
+  const nextBoss = BOSS_CONFIGS.find((config) => !config.previewOnly && !state.defeatedBosses.includes(config.id) && state.score >= config.milestone && state.score >= state.nextBossEligibleScore);
+  if (!state.boss && nextBoss) {
+    startBossEncounter(state, callbacks, nextBoss);
+  }
+
+  // The boss arena clears existing danger and temporarily pauses new gates.
+  // This gives every ink-bolt pattern a deliberately readable escape route.
+  const bossActive = state.boss !== null;
   const gateSpacingClear = state.obstacles.every((obstacle) => obstacle.x < state.width * 0.52);
-  if (state.elapsedSinceSpawn >= spawnInterval && gateSpacingClear) {
+  if (!bossActive && state.elapsedSinceSpawn >= spawnInterval && gateSpacingClear) {
     spawnObstacle(state, state.score);
     state.elapsedSinceSpawn = 0;
   }
 
   // === FEVER MODE STREAM SPANNING ===
   const isFeverActive = state.feverUntil > state.timeMs;
+  if (updateBossEncounter(state, dt, callbacks, fishX, invincible, isFeverActive)) return;
+
   if (isFeverActive) {
     state.elapsedSinceFeverCoinSpawn += dtMs;
     if (state.elapsedSinceFeverCoinSpawn >= 180) {
@@ -645,8 +1387,16 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   // The magnet attracts every reward object, never enemies or obstacles.
   // Fever retains its stronger vacuum behavior while the normal magnet is more generous.
   const hasMagnet = state.magnetUntil > state.timeMs || isFeverActive;
-  const magnetRange = isFeverActive ? 220 : hasMagnet ? 175 : 0;
-  const magnetPull = isFeverActive ? 0.35 : 0.28;
+  const magnetRange = isFeverActive
+    ? 220
+    : hasMagnet
+      ? state.skin === 'poseidonsHeir'
+        ? 270
+        : state.skin === 'sapphire'
+          ? 230
+          : 175
+      : 0;
+  const magnetPull = isFeverActive ? 0.35 : state.skin === 'poseidonsHeir' ? 0.42 : state.skin === 'sapphire' ? 0.34 : 0.28;
   const pullCollectable = (collectable: { x: number; y: number; collected: boolean }) => {
     if (!hasMagnet || collectable.collected) return;
     const dx = collectable.x - fishX;
@@ -662,9 +1412,8 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
   for (const obs of state.obstacles) {
     obs.x -= speed * dt;
     if (obs.bobbing) {
-      obs.bobPhase += dtMs * 0.002;
-      obs.gapY += Math.sin(obs.bobPhase) * 1.18 * dt;
-      obs.gapY = clampGapY(state, obs.gapY, obs.gapSize);
+      obs.bobPhase += dtMs * 0.00145;
+      obs.gapY = clampGapY(state, obs.baseGapY + Math.sin(obs.bobPhase) * obs.bobAmount, obs.gapSize);
     }
     if (!obs.passed && obs.x + BASE.obstacleWidth / 2 < fishX) {
       obs.passed = true;
@@ -730,7 +1479,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
   // Shark movement and collision
   for (const shark of state.sharks) {
-    const sharkSpeed = (speed + 0.8) * dt;
+    const sharkSpeed = (speed + 0.8) * (shark.speedMultiplier ?? 1) * dt;
     shark.x -= sharkSpeed;
     shark.bobPhase += shark.bobSpeed * dtMs;
     shark.y = shark.baseY + Math.sin(shark.bobPhase) * shark.bobAmount;
@@ -761,7 +1510,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
   // Sea Mine movement and collision
   for (const mine of state.seaMines) {
-    mine.x -= speed * dt;
+    mine.x -= speed * (mine.speedMultiplier ?? 1) * dt;
     mine.pulsePhase += dtMs * 0.0075;
 
     if (!mine.exploded && !invincible && !isFeverActive) {
@@ -791,7 +1540,7 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
 
   // Jellyfish movement and collision
   for (const jelly of state.jellyfish) {
-    jelly.x -= (speed - 0.5) * dt;
+    jelly.x -= (speed - 0.5) * (jelly.speedMultiplier ?? 1) * dt;
     jelly.bobPhase += jelly.bobSpeed * dtMs;
     jelly.y = jelly.baseY + Math.sin(jelly.bobPhase) * jelly.bobAmount;
 
@@ -850,6 +1599,12 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         } else if (state.coinStreakCount >= 10) {
           finalAmount *= 2;
           comboText = '⭐ COMBO x2 ⭐';
+        }
+
+        if (state.skin === 'poseidonsHeir') {
+          finalAmount = Math.ceil(finalAmount * 1.50);
+        } else if (state.skin === 'sapphire') {
+          finalAmount = Math.ceil(finalAmount * 1.35);
         }
 
         state.score += finalAmount;
@@ -911,12 +1666,20 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
         pu.collected = true;
         callbacks.onPowerUpCollect?.(pu.type);
         if (pu.type === 'shield') {
-          state.shieldCharges = Math.min(2, state.shieldCharges + 1);
+          const shieldCapacity = state.score >= LATE_GAME_SUPPORT_SCORE ? LATE_GAME_MAX_SHIELD_CHARGES : MAX_SHIELD_CHARGES;
+          state.shieldCharges = Math.min(shieldCapacity, state.shieldCharges + 1);
           callbacks.onShake?.(1); // Light non-distracting shake
           triggerFloatingText(state, translate('engine.shield'), pu.x, pu.y - 15, '#29b6f6', true);
           addBurst(state, pu.x, pu.y, 'rgba(70, 180, 255, 0.9)', 20, 3);
         } else if (pu.type === 'magnet') {
-          const duration = state.skin === 'emerald' ? MAGNET_DURATION_MS * 1.25 : MAGNET_DURATION_MS;
+          const durationMultiplier = state.skin === 'poseidonsHeir'
+            ? 1.75
+            : state.skin === 'sapphire'
+              ? 1.40
+              : state.skin === 'emerald'
+                ? 1.25
+                : 1;
+          const duration = MAGNET_DURATION_MS * durationMultiplier;
           state.magnetUntil = state.timeMs + duration;
           triggerFloatingText(state, translate('engine.magnet', undefined, { seconds: Math.round(duration / 1000) }), pu.x, pu.y - 15, '#ffa726', true);
           addBurst(state, pu.x, pu.y, 'rgba(255, 140, 0, 0.9)', 18, 3);
@@ -946,8 +1709,13 @@ export function stepEngine(state: EngineState, dtMs: number, callbacks: EngineCa
       const dy = ring.y - state.fishY;
       if (Math.sqrt(dx * dx + dy * dy) < BASE.fishRadius + ring.radius) {
         ring.collected = true;
-        state.boostUntil = state.timeMs + DROP_RUSH_DURATION_MS;
-        triggerFloatingText(state, translate('engine.dropRush', undefined, { seconds: 20 }), ring.x, ring.y - 15, '#ffd54f', true);
+        const dropRushDuration = state.skin === 'poseidonsHeir'
+          ? 30_000
+          : state.skin === 'solar'
+            ? 25_000
+            : DROP_RUSH_DURATION_MS;
+        state.boostUntil = state.timeMs + dropRushDuration;
+        triggerFloatingText(state, translate('engine.dropRush', undefined, { seconds: Math.round(dropRushDuration / 1000) }), ring.x, ring.y - 15, '#ffd54f', true);
         callbacks.onShake(1); // Very minor shake
         addBurst(state, ring.x, ring.y, '#00e5ff', 18, 2);
         addBurst(state, ring.x, ring.y, '#ffd54f', 12, 2.4);
@@ -1279,6 +2047,68 @@ function drawObstacle(ctx: CanvasRenderingContext2D, obs: Obstacle, height: numb
   if (theme.id === 'temple') ctx.restore();
 }
 
+function drawFishPowerUpIndicators(ctx: CanvasRenderingContext2D, state: EngineState, r: number, isFever: boolean) {
+  if (state.shieldCharges > 0) {
+    const shieldPulse = (Math.sin(state.legendaryPulse * 1.8) + 1) / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.22 + shieldPulse * 0.18;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.65, 0, Math.PI * 2);
+    ctx.fillStyle = '#4fc3f7';
+    ctx.fill();
+    ctx.globalAlpha = 0.65 + shieldPulse * 0.25;
+    ctx.strokeStyle = '#e3f2fd';
+    ctx.lineWidth = 3.5 + shieldPulse * 1.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (state.magnetUntil > state.timeMs || isFever) {
+    const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
+    ctx.save();
+    ctx.shadowColor = isFever ? '#e040fb' : '#ff6d00';
+    ctx.shadowBlur = isFever ? 44 : 32 + magPulse * 14;
+    ctx.globalAlpha = 0.4 + magPulse * 0.25;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (isFever ? 1.85 : 1.45), 0, Math.PI * 2);
+    ctx.strokeStyle = isFever ? '#e040fb' : '#ff9500';
+    ctx.lineWidth = isFever ? 4.0 : 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (state.boostUntil > state.timeMs) {
+    const rushPulse = (Math.sin(state.timeMs * 0.010) + 1) / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.45 + rushPulse * 0.25;
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 14 + rushPulse * 10;
+    ctx.strokeStyle = '#fff3a6';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([3, 4]);
+    ctx.lineDashOffset = -state.timeMs * 0.018;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.85, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0, 25, 48, 0.82)';
+    ctx.beginPath();
+    ctx.roundRect(-31, -r * 2.65, 62, 14, 7);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#fff3a6';
+    ctx.font = '700 7px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const secondsLeft = Math.max(1, Math.ceil((state.boostUntil - state.timeMs) / 1000));
+    ctx.fillText(translate('engine.dropRush', undefined, { seconds: secondsLeft }), 0, -r * 2.65 + 7);
+    ctx.restore();
+  }
+}
+
 function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: number, invincible: boolean) {
   const skin = SKINS.find((s) => s.id === state.skin) ?? SKINS[0];
   const isFever = state.feverUntil > state.timeMs;
@@ -1298,6 +2128,7 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
   ctx.save();
   ctx.translate(fishX, state.fishY + swimBob);
   ctx.rotate(state.fishRotation);
+  ctx.scale(bossEncounterScale(state), bossEncounterScale(state));
 
   {
     // The hero skin keeps its clean silhouette; the circular aura is reserved
@@ -1334,6 +2165,25 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       ctx.fill();
     }
     ctx.restore();
+
+    // Every selectable player fish now uses its own premium 16-frame Sprite Sheet.
+    const heroSheet = getPlayerFishSpriteSheet(id);
+    if (heroSheet?.complete && heroSheet.naturalWidth && heroSheet.naturalHeight) {
+      const frame = Math.floor(state.timeMs / 74) % 16;
+      const sourceWidth = heroSheet.naturalWidth / 4;
+      const sourceHeight = heroSheet.naturalHeight / 4;
+      const sourceX = (frame % 4) * sourceWidth;
+      const sourceY = Math.floor(frame / 4) * sourceHeight;
+      const heroSize = r * 3.7;
+      ctx.globalAlpha = 1;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(heroSheet, sourceX, sourceY, sourceWidth, sourceHeight, -heroSize / 2, -heroSize / 2, heroSize, heroSize);
+      drawFishPowerUpIndicators(ctx, state, r, isFever);
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
 
     // Dynamic Tail with Wag
     ctx.save();
@@ -1565,6 +2415,10 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.rotate(Math.sin(timeMs * 0.004 + shark.bobPhase) * 0.045);
 
   const pulse = (Math.sin(timeMs * 0.005) + 1) / 2;
+  if (shark.minionArt && drawMinionSprite(ctx, shark.minionArt, timeMs, shark.bobPhase, shark.width * 1.28)) {
+    ctx.restore();
+    return;
+  }
   const tailSway = Math.sin(timeMs * 0.014 + shark.bobPhase) * 0.17;
   ctx.shadowColor = '#d32f2f';
   ctx.shadowBlur = 15 + pulse * 6;
@@ -1686,6 +2540,202 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.restore();
 }
 
+function bossWeaponPalette(type: BossWeapon) {
+  switch (type) {
+    case 'electric': return { warning: '#7df6ff', core: 'rgba(230, 255, 255, 0.98)', mid: 'rgba(52, 225, 255, 0.86)', outer: 'rgba(40, 122, 255, 0)', stroke: '#b4fbff' };
+    case 'bubble': return { warning: '#bd86ff', core: 'rgba(239, 232, 255, 0.98)', mid: 'rgba(158, 95, 255, 0.76)', outer: 'rgba(104, 67, 255, 0)', stroke: '#e6ceff' };
+    case 'surge': return { warning: '#78fff0', core: 'rgba(230, 255, 252, 0.98)', mid: 'rgba(58, 236, 208, 0.82)', outer: 'rgba(34, 122, 255, 0)', stroke: '#a6fff4' };
+    case 'coral': return { warning: '#ffbc75', core: 'rgba(255, 245, 214, 0.98)', mid: 'rgba(255, 126, 80, 0.82)', outer: 'rgba(255, 77, 58, 0)', stroke: '#ffe0a1' };
+    case 'plasma': return { warning: '#78f4ff', core: 'rgba(231, 255, 255, 0.98)', mid: 'rgba(73, 238, 255, 0.86)', outer: 'rgba(45, 135, 255, 0)', stroke: '#9ff7ff' };
+    case 'trident': return { warning: '#ffe183', core: 'rgba(255, 250, 222, 0.98)', mid: 'rgba(255, 193, 67, 0.88)', outer: 'rgba(38, 224, 255, 0)', stroke: '#ffe89a' };
+    default: return { warning: '#e7a8ff', core: 'rgba(244, 220, 255, 0.94)', mid: 'rgba(169, 83, 255, 0.76)', outer: 'rgba(49, 145, 255, 0)', stroke: '#e8b8ff' };
+  }
+}
+
+function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
+  const boss = state.boss;
+  if (!boss) return;
+
+  const { config } = boss;
+  const isWarning = boss.phase === 'warning';
+  const remaining = Math.max(0, boss.battleStartedAt + config.battleDurationMs - state.timeMs);
+  const pulse = 0.62 + (Math.sin(state.timeMs * 0.007) + 1) * 0.19;
+
+  if (isWarning) {
+    const remainingSeconds = Math.max(1, Math.ceil((boss.battleStartedAt - state.timeMs) / 1000));
+    ctx.save();
+    ctx.fillStyle = 'rgba(9, 15, 42, 0.68)';
+    ctx.fillRect(0, 0, state.width, state.height);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = config.accent;
+    ctx.shadowBlur = 14;
+    ctx.font = '900 34px system-ui, sans-serif';
+    ctx.fillStyle = '#fff2ff';
+    ctx.fillText('⚠', state.width * 0.5, state.height * 0.39);
+    ctx.font = '900 14px system-ui, sans-serif';
+    ctx.fillStyle = config.accent;
+    ctx.fillText(translate(config.warningKey), state.width * 0.5, state.height * 0.47);
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.fillStyle = config.secondaryAccent;
+    ctx.fillText(`${remainingSeconds}`, state.width * 0.5, state.height * 0.52);
+    ctx.restore();
+    return;
+  }
+
+  ctx.save();
+  const halo = ctx.createRadialGradient(boss.x, boss.y, boss.width * 0.16, boss.x, boss.y, boss.width * 0.9);
+  halo.addColorStop(0, `${config.accent}52`);
+  halo.addColorStop(0.48, `${config.secondaryAccent}22`);
+  halo.addColorStop(1, `${config.secondaryAccent}00`);
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(boss.x, boss.y, boss.width * 0.9, 0, Math.PI * 2);
+  ctx.fill();
+
+  const attackKick = Math.max(0, 1 - (state.timeMs - boss.lastAttackAt) / 420);
+  const motionRate = config.motion === 'fins' ? 0.006 : config.motion === 'serpent' ? 0.0048 : 0.004;
+  const entryProgress = boss.phase === 'entering'
+    ? Math.max(0, Math.min(1, (state.timeMs - boss.entryStartedAt) / BOSS_ENTRY_MS))
+    : 1;
+  const retreatProgress = boss.phase === 'retreating'
+    ? Math.max(0, Math.min(1, (state.timeMs - boss.retreatStartedAt) / BOSS_RETREAT_MS))
+    : 0;
+  const travelTilt = boss.phase === 'entering'
+    ? 0.12 * (1 - entryProgress)
+    : boss.phase === 'retreating' ? -0.12 * retreatProgress : 0;
+  const rotation = Math.sin(state.timeMs * motionRate) * (config.motion === 'fins' ? 0.05 : 0.028) - attackKick * 0.055 + travelTilt;
+  const swell = 1 + Math.sin(state.timeMs * (motionRate * 2.1)) * 0.022 + attackKick * 0.045;
+  const cinematicScale = bossEncounterScale(state);
+  ctx.translate(boss.x + attackKick * boss.width * 0.075, boss.y);
+  ctx.rotate(rotation);
+  ctx.scale(swell * cinematicScale, swell * cinematicScale);
+  ctx.imageSmoothingEnabled = true;
+  const bossVideo = getBossVideo(config);
+  // A looping video resets currentTime to zero for its first frame. Do not hide
+  // that valid frame: the old timing gate made the boss vanish at every loop seam.
+  const videoReady = Boolean(
+    bossVideo
+      && bossVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      && bossVideo.videoWidth,
+  );
+  const spriteSheet = getBossSpriteSheet(config);
+  const spriteReady = Boolean(spriteSheet?.complete && spriteSheet.naturalWidth && spriteSheet.naturalHeight);
+  const travelAlpha = boss.phase === 'retreating' ? Math.max(0.34, 1 - retreatProgress * 0.58) : 1;
+  ctx.globalAlpha = travelAlpha;
+  ctx.shadowColor = config.secondaryAccent;
+  ctx.shadowBlur = 16 * pulse;
+  const videoFrame = videoReady && bossVideo ? getBossVideoFrame(config, bossVideo) : null;
+  if (videoFrame) {
+    const animationSize = boss.width * 1.36 * (config.artScale ?? 1);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(videoFrame.canvas, 0, 0, videoFrame.width, videoFrame.height, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
+  } else if (spriteReady && spriteSheet) {
+    const columns = config.spriteColumns ?? 1;
+    const rows = config.spriteRows ?? 1;
+    const frameCount = columns * rows;
+    const frame = Math.floor((state.timeMs / 1000) * (config.spriteFps ?? 12)) % frameCount;
+    const frameWidth = spriteSheet.naturalWidth / columns;
+    const frameHeight = spriteSheet.naturalHeight / rows;
+    const sourceX = (frame % columns) * frameWidth;
+    const sourceY = Math.floor(frame / columns) * frameHeight;
+    const animationSize = boss.width * 1.38 * (config.artScale ?? 1);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.save();
+    if (config.spriteFlipX) ctx.scale(-1, 1);
+    ctx.drawImage(spriteSheet, sourceX, sourceY, frameWidth, frameHeight, -animationSize / 2, -animationSize / 2, animationSize, animationSize);
+    ctx.restore();
+  }
+
+  if (videoFrame || spriteReady) {
+    // The animated footage carries organic motion; this overlay keeps all supplied artwork
+    // visually tied to the same active energy language during attacks.
+    const flow = (Math.sin(state.timeMs * motionRate * 1.7) + 1) * 0.5;
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.10 + flow * 0.10;
+    const livingGlow = ctx.createRadialGradient(0, -boss.height * 0.04, boss.width * 0.06, 0, -boss.height * 0.04, boss.width * 0.54);
+    livingGlow.addColorStop(0, config.secondaryAccent);
+    livingGlow.addColorStop(0.45, `${config.secondaryAccent}48`);
+    livingGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = livingGlow;
+    ctx.beginPath();
+    ctx.arc(0, -boss.height * 0.04, boss.width * 0.54, 0, Math.PI * 2);
+    ctx.fill();
+    const eyePulse = 0.18 + (Math.sin(state.timeMs * 0.011) + 1) * 0.12;
+    ctx.globalAlpha = eyePulse;
+    ctx.fillStyle = config.secondaryAccent;
+    ctx.beginPath();
+    ctx.arc(-boss.width * 0.15, -boss.height * 0.12, boss.width * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '800 10px system-ui, sans-serif';
+  ctx.fillStyle = '#eaffff';
+  ctx.shadowColor = '#21002e';
+  ctx.shadowBlur = 5;
+  ctx.fillText(translate(config.nameKey), boss.x, boss.y - boss.height * 0.64);
+  if (boss.phase === 'battle') {
+    const barWidth = Math.min(96, boss.width * 0.72);
+    const progress = Math.max(0, Math.min(1, remaining / config.battleDurationMs));
+    ctx.fillStyle = 'rgba(0, 18, 38, 0.72)';
+    ctx.fillRect(boss.x - barWidth / 2, boss.y - boss.height * 0.54, barWidth, 4);
+    ctx.fillStyle = config.accent;
+    ctx.fillRect(boss.x - barWidth / 2, boss.y - boss.height * 0.54, barWidth * progress, 4);
+  }
+  if (boss.phase === 'entering' || boss.phase === 'retreating') {
+    const status = boss.phase === 'entering' ? 'INCOMING' : 'RETREATING';
+    ctx.font = '800 8px system-ui, sans-serif';
+    ctx.fillStyle = config.secondaryAccent;
+    ctx.fillText(status, boss.x, boss.y + boss.height * 0.62);
+  }
+  ctx.restore();
+
+  for (const wave of boss.waves) {
+    ctx.save();
+    const palette = bossWeaponPalette(wave.type);
+    const projectileSheet = getBossProjectileSheet(wave.projectileBossId, wave.type);
+    const projectileReady = Boolean(projectileSheet?.complete && projectileSheet.naturalWidth && projectileSheet.naturalHeight);
+    if (wave.phase === 'warning') {
+      const warningPulse = 0.45 + (Math.sin(state.timeMs * 0.012) + 1) * 0.23;
+      ctx.globalAlpha = warningPulse;
+      ctx.strokeStyle = palette.warning;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(state.width * 0.08, wave.y);
+      ctx.lineTo(boss.x - boss.width * 0.2, wave.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (projectileReady && projectileSheet) {
+        const horizontalFrames = projectileSheet.naturalWidth > projectileSheet.naturalHeight;
+        const sourceWidth = horizontalFrames ? projectileSheet.naturalWidth / 4 : projectileSheet.naturalWidth;
+        const sourceHeight = horizontalFrames ? projectileSheet.naturalHeight : projectileSheet.naturalHeight / 4;
+        const previewSize = wave.radius * 1.8;
+        ctx.globalAlpha = warningPulse * 0.56;
+        ctx.drawImage(projectileSheet, 0, 0, sourceWidth, sourceHeight, wave.x - previewSize / 2, wave.y - previewSize / 2, previewSize, previewSize);
+      }
+    } else if (projectileReady && projectileSheet) {
+      const frameCount = 4;
+      const frame = Math.floor((state.timeMs - wave.activateAt) / 78) % frameCount;
+      const horizontalFrames = projectileSheet.naturalWidth > projectileSheet.naturalHeight;
+      const sourceWidth = horizontalFrames ? projectileSheet.naturalWidth / frameCount : projectileSheet.naturalWidth;
+      const sourceHeight = horizontalFrames ? projectileSheet.naturalHeight : projectileSheet.naturalHeight / frameCount;
+      const sourceX = horizontalFrames ? frame * sourceWidth : 0;
+      const sourceY = horizontalFrames ? 0 : frame * sourceHeight;
+      const projectileSize = wave.radius * 3.15;
+      ctx.globalAlpha = 0.96;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(projectileSheet, sourceX, sourceY, sourceWidth, sourceHeight, wave.x - projectileSize / 2, wave.y - projectileSize / 2, projectileSize, projectileSize);
+    }
+    ctx.restore();
+  }
+}
+
 function drawSeaMine(ctx: CanvasRenderingContext2D, mine: SeaMine, timeMs: number) {
   if (mine.exploded) return;
   ctx.save();
@@ -1693,6 +2743,10 @@ function drawSeaMine(ctx: CanvasRenderingContext2D, mine: SeaMine, timeMs: numbe
 
   const glowAmount = (Math.sin(mine.pulsePhase + timeMs * 0.01) + 1) / 2;
   ctx.rotate(Math.sin(timeMs * 0.0018 + mine.pulsePhase) * 0.08);
+  if (mine.minionArt && drawMinionSprite(ctx, mine.minionArt, timeMs, mine.pulsePhase, mine.radius * 3.25)) {
+    ctx.restore();
+    return;
+  }
   ctx.shadowColor = '#ff8f00';
   ctx.shadowBlur = 10 + glowAmount * 12;
 
@@ -1764,6 +2818,10 @@ function drawJellyfish(ctx: CanvasRenderingContext2D, jelly: Jellyfish, timeMs: 
   const pulse = (Math.sin(timeMs * 0.004) + 1) / 2;
   const bellSquash = 0.92 + pulse * 0.11;
   ctx.rotate(Math.sin(timeMs * 0.0027 + jelly.bobPhase) * 0.055);
+  if (jelly.minionArt && drawMinionSprite(ctx, jelly.minionArt, timeMs, jelly.bobPhase, jelly.radius * 4.35)) {
+    ctx.restore();
+    return;
+  }
   ctx.shadowColor = '#e040fb';
   ctx.shadowBlur = 12 + pulse * 11;
 
@@ -2387,6 +3445,7 @@ export function renderEngine(ctx: CanvasRenderingContext2D, state: EngineState) 
   for (const shark of state.sharks) drawShark(ctx, shark, state.timeMs);
   for (const mine of state.seaMines) drawSeaMine(ctx, mine, state.timeMs);
   for (const jelly of state.jellyfish) drawJellyfish(ctx, jelly, state.timeMs);
+  drawBossEncounter(ctx, state);
   for (const coin of state.coins) drawCoin(ctx, coin, state.timeMs);
   for (const gem of state.gems) drawGem(ctx, gem, state.timeMs);
   for (const pu of state.powerUps) drawPowerUp(ctx, pu, state.timeMs);

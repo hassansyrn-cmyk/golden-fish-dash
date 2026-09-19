@@ -1,11 +1,12 @@
 // Shared type definitions for Golden Fish Rush
 
-export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary';
+export type SkinId = 'golden' | 'ruby' | 'emerald' | 'diamond' | 'legendary' | 'sapphire' | 'solar' | 'poseidonsHeir';
 
 export interface SkinDef {
   id: SkinId;
   name: string;
   unlockScore: number;
+  unlockMethod?: 'score' | 'poseidon';
   colors: { body: string; belly: string; fin: string; glow: string };
   ability: string;
 }

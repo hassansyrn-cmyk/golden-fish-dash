@@ -15,11 +15,17 @@ export type SoundName =
   | 'milestone'
   | 'shield'
   | 'powerup'
-  | 'back';
+  | 'back'
+  | 'bossWarning'
+  | 'bossAttack'
+  | 'bossSummon'
+  | 'bossDefeated';
 
 class AudioManager {
   private static instance: AudioManager;
   private audioContext: AudioContext | null = null;
+  private bossMusic: HTMLAudioElement | null = null;
+  private bossMusicActive = false;
   private sfxVolume: number = 0.05;
   private readonly lastPlayedAt = new Map<SoundName, number>();
   private readonly cooldownMs: Partial<Record<SoundName, number>> = {
@@ -28,6 +34,8 @@ class AudioManager {
     gem: 110,
     hit: 170,
     back: 140,
+    bossAttack: 180,
+    bossSummon: 650,
   };
 
   private constructor() {}
@@ -175,9 +183,64 @@ class AudioManager {
         setTimeout(() => this.playTone(310, 58, 'sine', 0.38), 38);
         break;
 
+      case 'bossWarning':
+        this.playTone(148, 280, 'sawtooth', 0.70);
+        setTimeout(() => this.playTone(196, 270, 'sawtooth', 0.60), 170);
+        setTimeout(() => this.playTone(294, 360, 'triangle', 0.56), 350);
+        break;
+
+      case 'bossAttack':
+        this.playTone(230, 140, 'sawtooth', 0.52);
+        setTimeout(() => this.playTone(150, 190, 'triangle', 0.50), 55);
+        break;
+
+      case 'bossSummon':
+        this.playTone(125, 250, 'sine', 0.64);
+        setTimeout(() => this.playTone(250, 180, 'triangle', 0.48), 140);
+        break;
+
+      case 'bossDefeated':
+        this.playTone(440, 90, 'triangle', 0.68);
+        setTimeout(() => this.playTone(660, 105, 'triangle', 0.60), 76);
+        setTimeout(() => this.playTone(990, 130, 'sine', 0.52), 168);
+        break;
+
       default:
         break;
     }
+  }
+
+  public startBossMusic(enabled: boolean) {
+    if (!enabled || typeof Audio === 'undefined') return;
+    try {
+      if (!this.bossMusic) {
+        this.bossMusic = new Audio('/audio/boss-danger-loop.mp3');
+        this.bossMusic.loop = true;
+        this.bossMusic.preload = 'auto';
+      }
+      this.bossMusicActive = true;
+      this.bossMusic.volume = 0.20;
+      void this.bossMusic.play().catch(() => undefined);
+    } catch {
+      // A browser or WebView may block media playback until the first user gesture.
+    }
+  }
+
+  public pauseBossMusic() {
+    if (this.bossMusicActive) this.bossMusic?.pause();
+  }
+
+  public resumeBossMusic() {
+    if (this.bossMusicActive && this.bossMusic?.paused) {
+      void this.bossMusic.play().catch(() => undefined);
+    }
+  }
+
+  public stopBossMusic() {
+    this.bossMusicActive = false;
+    if (!this.bossMusic) return;
+    this.bossMusic.pause();
+    this.bossMusic.currentTime = 0;
   }
 
   public setVolume(level: number) {

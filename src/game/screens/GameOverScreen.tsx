@@ -14,6 +14,7 @@ import {
 } from '../storage';
 import { SKINS } from '../constants';
 import { useI18n } from '../i18n';
+import { PLAYER_FISH_PREVIEW_PATHS } from '../fishAssets';
 import type { SkinId } from '../types';
 
 interface Props {
@@ -39,7 +40,7 @@ function encouragement(
     return t('gameover.encourageClose', { points: best - finalScore });
   }
 
-  const nextSkin = SKINS.find((skin) => skin.unlockScore > finalScore);
+  const nextSkin = SKINS.find((skin) => skin.unlockMethod !== 'poseidon' && skin.unlockScore > finalScore);
 
   if (nextSkin) {
     return t('gameover.encourageUnlock', { points: nextSkin.unlockScore - finalScore, fish: nextSkin.name });
@@ -195,13 +196,9 @@ export default function GameOverScreen({
                   className={`skin-card ${isEquipped ? 'skin-card-selected' : ''}`}
                   onClick={() => handleEquipSkin(id)}
                 >
-                  <div
-                    className="skin-swatch"
-                    style={{
-                      background: skin.colors.body,
-                      boxShadow: `0 0 14px ${skin.colors.glow}, 0 0 10px rgba(0, 0, 0, 0.3) inset`,
-                    }}
-                  />
+                  <div className="skin-fish-preview skin-fish-preview-art" style={{ filter: `drop-shadow(0 0 10px ${skin.colors.glow})` }} aria-hidden="true">
+                    <img src={PLAYER_FISH_PREVIEW_PATHS[id]} alt="" />
+                  </div>
 
                   <span>{skin.name}</span>
 
