@@ -48,6 +48,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Google removed the legacy 'tools' package from the SDK repository;
+          # requesting it fails sdkmanager. platform-tools is still valid.
+          packages: platform-tools
 
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36"
@@ -117,6 +121,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Google removed the legacy 'tools' package from the SDK repository;
+          # requesting it fails sdkmanager. platform-tools is still valid.
+          packages: platform-tools
 
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36"
