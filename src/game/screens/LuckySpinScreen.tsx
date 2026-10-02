@@ -3,6 +3,7 @@ import { getCoins, addCoins, getShopInventory, getSelectedSkin } from '../storag
 import { dateKey } from '../constants';
 import { audioManager } from '../managers/AudioManager';
 import { useI18n } from '../i18n';
+import { adManager } from '../managers/AdManager';
 
 interface Props {
   onBack: () => void;
@@ -46,6 +47,8 @@ export default function LuckySpinScreen({ onBack }: Props) {
   const [coins, setCoins] = useState(getCoins());
   const [isSpinning, setIsSubSpinning] = useState(false);
   const [hasFreeSpin, setHasFreeSpin] = useState(false);
+  const [hasRewardedFreeSpin, setHasRewardedFreeSpin] = useState(false);
+  const [isLoadingRewardedSpin, setIsLoadingRewardedSpin] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [cost, setCost] = useState(150);
 
@@ -155,9 +158,11 @@ export default function LuckySpinScreen({ onBack }: Props) {
   const spin = () => {
     if (isSpinning) return;
 
+    const canUseFreeSpin = hasFreeSpin || hasRewardedFreeSpin;
+
     // Deduct cost if not free
     const today = dateKey();
-    if (!hasFreeSpin) {
+    if (!canUseFreeSpin) {
       if (coins < cost) {
         setResultMessage(t('spin.notEnough'));
         setTimeout(() => setResultMessage(null), 2000);
@@ -167,9 +172,11 @@ export default function LuckySpinScreen({ onBack }: Props) {
       const balance = getCoins() - cost;
       localStorage.setItem('gfr_coins', JSON.stringify(balance));
       setCoins(balance);
-    } else {
+    } else if (hasFreeSpin) {
       localStorage.setItem('gfr_last_daily_spin_date', today);
       setHasFreeSpin(false);
+    } else {
+      setHasRewardedFreeSpin(false);
     }
 
     setIsSubSpinning(true);
@@ -244,6 +251,22 @@ export default function LuckySpinScreen({ onBack }: Props) {
     animationRef.current = requestAnimationFrame(animate);
   };
 
+  const watchAdForFreeSpin = async () => {
+    if (isLoadingRewardedSpin || isSpinning || hasFreeSpin || hasRewardedFreeSpin) return;
+
+    setIsLoadingRewardedSpin(true);
+    setResultMessage(null);
+    const earnedReward = await adManager.showRewarded();
+    setIsLoadingRewardedSpin(false);
+
+    if (earnedReward) {
+      setHasRewardedFreeSpin(true);
+      setResultMessage(t('spin.adRewardReady'));
+    } else {
+      setResultMessage(t('spin.adUnavailable'));
+    }
+  };
+
   return (
     <div className="screen lucky-spin-screen" style={{ paddingTop: 'max(50px, env(safe-area-inset-top) + 20px)' }}>
       <div className="shop-header">
@@ -284,8 +307,19 @@ export default function LuckySpinScreen({ onBack }: Props) {
           onClick={spin}
           disabled={isSpinning}
         >
-          {isSpinning ? t('spin.spinning') : hasFreeSpin ? t('spin.freeDaily') : t('spin.spinWheel')}
+          {isSpinning ? t('spin.spinning') : hasFreeSpin || hasRewardedFreeSpin ? t('spin.freeSpin') : t('spin.spinWheel')}
         </button>
+
+        {!hasFreeSpin && !hasRewardedFreeSpin && (
+          <button
+            className="btn btn-ad"
+            style={{ width: '220px', marginTop: '12px', padding: '12px' }}
+            onClick={() => void watchAdForFreeSpin()}
+            disabled={isSpinning || isLoadingRewardedSpin}
+          >
+            {isLoadingRewardedSpin ? t('spin.loadingAd') : t('spin.watchAdForFreeSpin')}
+          </button>
+        )}
       </div>
 
       <div className="shop-footer">
