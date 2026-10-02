@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import {
   AdMob,
+  AdmobConsentStatus,
   BannerAdPosition,
   BannerAdSize,
   MaxAdContentRating,
@@ -13,11 +14,23 @@ const GOOGLE_TEST_UNITS = {
   rewarded: 'ca-app-pub-3940256099942544/5224354917',
 } as const;
 
-const testing = import.meta.env.VITE_ADMOB_TESTING !== 'false';
+const PRODUCTION_UNITS = {
+  banner: 'ca-app-pub-7778383086464835/3015643122',
+  interstitial: 'ca-app-pub-7778383086464835/1702561451',
+  rewarded: 'ca-app-pub-7778383086464835/5578402291',
+} as const;
+
+const testing = import.meta.env.VITE_ADMOB_TESTING === 'true';
 const units = {
-  banner: import.meta.env.VITE_ADMOB_BANNER_ID || GOOGLE_TEST_UNITS.banner,
-  interstitial: import.meta.env.VITE_ADMOB_INTERSTITIAL_ID || GOOGLE_TEST_UNITS.interstitial,
-  rewarded: import.meta.env.VITE_ADMOB_REWARDED_ID || GOOGLE_TEST_UNITS.rewarded,
+  banner: testing
+    ? GOOGLE_TEST_UNITS.banner
+    : import.meta.env.VITE_ADMOB_BANNER_ID || PRODUCTION_UNITS.banner,
+  interstitial: testing
+    ? GOOGLE_TEST_UNITS.interstitial
+    : import.meta.env.VITE_ADMOB_INTERSTITIAL_ID || PRODUCTION_UNITS.interstitial,
+  rewarded: testing
+    ? GOOGLE_TEST_UNITS.rewarded
+    : import.meta.env.VITE_ADMOB_REWARDED_ID || PRODUCTION_UNITS.rewarded,
 };
 
 let initialization: Promise<boolean> | null = null;
@@ -34,6 +47,19 @@ async function initialize(): Promise<boolean> {
 
   initialization = (async () => {
     try {
+      let consentInfo = await AdMob.requestConsentInfo();
+      if (
+        consentInfo.status === AdmobConsentStatus.REQUIRED &&
+        consentInfo.isConsentFormAvailable
+      ) {
+        consentInfo = await AdMob.showConsentForm();
+      }
+
+      if (!consentInfo.canRequestAds) {
+        console.warn('[AdMob] Ads are paused until consent allows ad requests.');
+        return false;
+      }
+
       await AdMob.initialize({
         initializeForTesting: testing,
         maxAdContentRating: MaxAdContentRating.ParentalGuidance,
@@ -156,12 +182,20 @@ export const adManager = {
       // Safe cleanup when no banner was loaded.
     }
   },
+
+  async showPrivacyOptions() {
+    if (!(await initialize())) return false;
+    try {
+      await AdMob.showPrivacyOptionsForm();
+      return true;
+    } catch (error) {
+      console.warn('[AdMob] Privacy options form was not available.', error);
+      return false;
+    }
+  },
 };
 
 export const ADMOB_SETUP_NOTES = {
   testing,
-  usesGoogleTestUnits:
-    units.banner === GOOGLE_TEST_UNITS.banner ||
-    units.interstitial === GOOGLE_TEST_UNITS.interstitial ||
-    units.rewarded === GOOGLE_TEST_UNITS.rewarded,
+  usesGoogleTestUnits: testing,
 };

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getShopItemCount, consumeShopItem } from '../storage';
 import { useI18n } from '../i18n';
+import { adManager } from '../managers/AdManager';
 
 interface Props {
   onFinished: () => void;
@@ -12,6 +13,7 @@ export default function ContinueAdScreen({ onFinished, onSkip }: Props) {
   const [hasToken, setHasToken] = useState(false);
   const [tokenCount, setTokenCount] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
+  const [isWatching, setIsWatching] = useState(false);
 
   useEffect(() => {
     const count = getShopItemCount('continueToken');
@@ -25,8 +27,19 @@ export default function ContinueAdScreen({ onFinished, onSkip }: Props) {
     }
   };
 
-  const handleWatchAd = () => {
-    setMessage(t('continue.adNotice'));
+  const handleWatchAd = async () => {
+    if (isWatching) return;
+    setIsWatching(true);
+    setMessage(null);
+
+    const earnedReward = await adManager.showRewarded();
+    if (earnedReward) {
+      onFinished();
+      return;
+    }
+
+    setMessage(t('continue.adUnavailable'));
+    setIsWatching(false);
   };
 
   return (
@@ -38,22 +51,21 @@ export default function ContinueAdScreen({ onFinished, onSkip }: Props) {
 
       <div className="gameover-buttons">
         {hasToken && (
-          <button className="btn btn-primary token-btn" onClick={handleUseToken}>
+          <button className="btn btn-primary token-btn" onClick={handleUseToken} disabled={isWatching}>
             {t('continue.useTokenCount', { count: tokenCount })}
           </button>
         )}
 
-        <button className="btn btn-ad" onClick={handleWatchAd}>
-          {t('continue.adSoon')}
+        <button className="btn btn-ad" onClick={() => void handleWatchAd()} disabled={isWatching}>
+          {isWatching ? t('continue.loadingAd') : t('continue.watchAd')}
         </button>
 
-        <button className="btn btn-secondary" onClick={onSkip}>
+        <button className="btn btn-secondary" onClick={onSkip} disabled={isWatching}>
           {t('continue.noThanks')}
         </button>
       </div>
 
       {message && <p className="continue-note">{message}</p>}
-      <p className="continue-note">{t('continue.approvedNotice')}</p>
     </div>
   );
 }

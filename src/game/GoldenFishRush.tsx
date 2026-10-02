@@ -21,12 +21,16 @@ import { useI18n } from './i18n';
 import {
   getSelectedSkin,
   getSettings,
+  addCoins,
+  addXP,
+  incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
 } from './storage';
 import type { ScreenName, SkinId } from './types';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { adManager } from './managers/AdManager';
 
 // Custom 3D/Glossy Heart Icon component for the HUD
 const HeartIcon = ({ full }: { full: boolean }) => {
@@ -133,16 +137,32 @@ export default function GoldenFishRush() {
   const [reviveCountdown, setReviveCountdown] = useState<number | null>(null);
   const [newUnlocks, setNewUnlocks] = useState<SkinId[] | null>(null);
   const [showExitHint, setShowExitHint] = useState(false);
+  const [rewardsDoubledThisRun, setRewardsDoubledThisRun] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const skin = getSelectedSkin();
   const backListenerRef = useRef<any>(null);
   const exitConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countedGameOverRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    void adManager.initializeAndPreload();
+  }, []);
+
+  useEffect(() => {
+    if (screen !== 'gameover' || countedGameOverRef.current) return;
+    countedGameOverRef.current = true;
+
+    const gameOverCount = incrementGameOverCount();
+    if (gameOverCount % 3 === 0) {
+      void adManager.showInterstitial();
+    }
+  }, [screen]);
 
   // Android hardware back button handling (Capacitor)
   useEffect(() => {
@@ -246,6 +266,8 @@ export default function GoldenFishRush() {
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
+    countedGameOverRef.current = false;
+    setRewardsDoubledThisRun(false);
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
     setFinalScore(0);
@@ -271,6 +293,19 @@ export default function GoldenFishRush() {
     setReviveCountdown(null);
     setScreen('gameover');
   }, []);
+
+  const handleDoubleRewards = useCallback(async () => {
+    if (rewardsDoubledThisRun) return null;
+
+    const earnedReward = await adManager.showRewarded();
+    if (!earnedReward) return null;
+
+    const bonusXP = Math.floor(finalScore * 2.5 + roundCoins * 1.5);
+    addCoins(roundCoins);
+    addXP(bonusXP);
+    setRewardsDoubledThisRun(true);
+    return { coins: roundCoins, xp: bonusXP };
+  }, [finalScore, rewardsDoubledThisRun, roundCoins]);
 
   useEffect(() => {
     if (reviveCountdown === null) return;
@@ -526,6 +561,8 @@ export default function GoldenFishRush() {
             onMenu={handleGoToMenu}
             onNewUnlocks={handleNewUnlocks}
             onShop={handleOpenShop}
+            rewardsDoubled={rewardsDoubledThisRun}
+            onDoubleRewards={handleDoubleRewards}
           />
         )}
 
@@ -547,7 +584,7 @@ export default function GoldenFishRush() {
         </button>
       )}
 
-      <BannerAd />
+      <BannerAd visible={screen === 'menu' || screen === 'gameover'} />
       <Footer />
     </div>
   );

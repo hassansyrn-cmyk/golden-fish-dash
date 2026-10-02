@@ -12,6 +12,7 @@ import {
 import type { AppLanguage, Settings, SkinId } from '../types';
 import { translateSkin, useI18n } from '../i18n';
 import { PLAYER_FISH_PREVIEW_PATHS } from '../fishAssets';
+import { adManager } from '../managers/AdManager';
 
 interface Props {
   onBack: () => void;
@@ -177,6 +178,15 @@ export default function SettingsScreen({ onBack }: Props) {
         >
           {t('footer.privacy')}
         </button>
+
+        {adManager.isNative() && (
+          <button
+            onClick={() => void adManager.showPrivacyOptions()}
+            className="btn btn-secondary text-sm py-2"
+          >
+            {t('settings.adPrivacy')}
+          </button>
+        )}
       </div>
 
       <button className="btn btn-primary mt-4" onClick={onBack}>

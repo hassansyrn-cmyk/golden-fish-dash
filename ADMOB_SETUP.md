@@ -8,35 +8,36 @@ The Android app now initializes `@capacitor-community/admob` and uses three plac
 
 | Placement | Player moment | Reward / behavior |
 |---|---|---|
-| Adaptive banner | Native Android app shell | Displays without affecting a run. |
+| Adaptive banner | Menu and game-over screens | Removed during active play. |
 | Rewarded ad | Continue screen | A revive is granted only when the SDK confirms an earned reward. |
 | Rewarded ad | Game-over double reward button | The extra coins and XP are granted only after an earned reward. |
 | Interstitial | Every third game-over event | Displays only between rounds, never during active play. |
 
-## Closed-testing configuration
+## Production configuration
 
-The branch intentionally defaults to Google’s **sample test identifiers**. This is the correct configuration for functional verification during closed testing and prevents invalid traffic. The Android sample app ID is in:
+The Android manifest uses the Golden Fish Dash production AdMob app ID from:
 
 ```text
 android/app/src/main/res/values/strings.xml
 ```
 
-The JavaScript unit IDs are defined in:
+The production banner, interstitial, and rewarded unit IDs are defined in:
 
 ```text
 src/game/managers/AdManager.ts
 ```
 
-## Switch to real production units
+The app requests Google UMP consent information before initializing the Mobile Ads SDK. If consent is required, it displays the consent form and does not request ads until the SDK reports that ad requests are allowed.
 
-Before a public production release, replace the Android app ID in `strings.xml`, then supply your real unit IDs through Vite build variables:
+## Safe test mode
+
+Never click live ads while testing. Build with Google sample ad units by setting:
 
 ```bash
-VITE_ADMOB_TESTING=false
-VITE_ADMOB_BANNER_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
-VITE_ADMOB_INTERSTITIAL_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
-VITE_ADMOB_REWARDED_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+VITE_ADMOB_TESTING=true
 ```
+
+Production builds use the real units by default. The unit IDs can still be overridden with `VITE_ADMOB_BANNER_ID`, `VITE_ADMOB_INTERSTITIAL_ID`, and `VITE_ADMOB_REWARDED_ID`.
 
 After any identifier change, run:
 
@@ -45,8 +46,8 @@ pnpm build
 npx cap sync android
 ```
 
-Do not replace the test identifiers with production IDs until your app is ready for real ad traffic. Verify that the ad format and unit type match: banner for the banner placement, interstitial for the interstitial placement, and rewarded for both reward paths.
+Verify that the ad format and unit type match: banner for the banner placement, interstitial for the between-rounds placement, and rewarded for both reward paths.
 
 ## Recommended validation for closed testing
 
-Test on a physical Android device. Confirm that a banner appears only in the native app, a rewarded ad opens from both revive and double-reward buttons, and cancelling or failing an ad grants **no** revival or extra currency. Check that the interstitial appears between rounds only. Finally, review the Privacy Policy, the Google Play Data safety form, the AdMob privacy/consent configuration, and your consent flow before production.
+Test on a physical Android device with `VITE_ADMOB_TESTING=true`. Confirm that a banner appears on menu and game-over screens only, a rewarded ad opens from both revive and double-reward buttons, and cancelling or failing an ad grants **no** revival or extra currency. Check that the interstitial appears after every third completed run. Finally, publish the required message in AdMob Privacy & messaging, and review the Privacy Policy and Google Play Data safety form before production.

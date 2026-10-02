@@ -27,6 +27,8 @@ interface Props {
   onMenu: () => void;
   onNewUnlocks?: (ids: SkinId[]) => void;
   onShop?: () => void;
+  rewardsDoubled: boolean;
+  onDoubleRewards: () => Promise<{ coins: number; xp: number } | null>;
 }
 
 function encouragement(
@@ -62,6 +64,8 @@ export default function GameOverScreen({
   onLeaderboard,
   onMenu,
   onNewUnlocks,
+  rewardsDoubled,
+  onDoubleRewards,
 }: Props) {
   const { t } = useI18n();
   const prevBest = getPersonalBest();
@@ -79,14 +83,29 @@ export default function GameOverScreen({
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
   const [doubleMsg, setDoubleMsg] = useState<string | null>(null);
+  const [isDoubling, setIsDoubling] = useState(false);
 
   useEffect(() => {
     setLevel(getLevel());
     setXp(getXP());
   }, []);
 
-  const handleDoubleRewards = () => {
-    setDoubleMsg(t('gameover.doubleInfo'));
+  const handleDoubleRewards = async () => {
+    if (isDoubling || rewardsDoubled) return;
+    setIsDoubling(true);
+    setDoubleMsg(null);
+
+    const reward = await onDoubleRewards();
+    if (!reward) {
+      setDoubleMsg(t('gameover.adUnavailable'));
+      setIsDoubling(false);
+      return;
+    }
+
+    setLevel(getLevel());
+    setXp(getXP());
+    setIsDoubling(false);
+    setDoubleMsg(t('gameover.doubleEarned', reward));
   };
 
   const xpNeeded = level * 150;
@@ -255,10 +274,15 @@ export default function GameOverScreen({
         {(roundCoins > 0 || finalScore > 0) && (
           <button
             className="btn btn-ad"
-            onClick={handleDoubleRewards}
+            onClick={() => void handleDoubleRewards()}
+            disabled={isDoubling || rewardsDoubled}
             style={{ background: 'linear-gradient(135deg, #fb8500, #ffb703)', border: 'none', color: '#000814' }}
           >
-            {t('gameover.doubleSoon')}
+            {isDoubling
+              ? t('gameover.loadingAd')
+              : rewardsDoubled
+                ? t('gameover.rewardDoubled')
+                : t('gameover.doubleReward')}
           </button>
         )}
 
