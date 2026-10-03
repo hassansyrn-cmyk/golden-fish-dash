@@ -1,54 +1,56 @@
 # AdMob setup for Golden Fish Dash
 
-> This is an implementation checklist, not legal advice. Review Google Play, AdMob, consent, and privacy requirements for the countries where you distribute the app before production release.
+> Review Google Play, AdMob, consent, and privacy requirements for the countries where you distribute the app before publishing a production release.
 
-## What is already wired
+## What is wired
 
-The Android app now initializes `@capacitor-community/admob` and uses three placements:
+The Android app uses the `@capacitor-community/admob` plugin for these placements:
 
 | Placement | Player moment | Reward / behavior |
 |---|---|---|
 | Adaptive banner | Menu and game-over screens | Removed during active play. |
 | Rewarded ad | Continue screen | A revive is granted only when the SDK confirms an earned reward. |
-| Rewarded ad | Game-over double reward button | The extra coins and XP are granted only after an earned reward. |
-| Rewarded ad | Lucky Spin screen | Grants one free spin only after the dedicated Lucky Spin unit confirms an earned reward. |
-| Interstitial | Every third game-over event | Displays only between rounds, never during active play. |
+| Rewarded ad | Game-over double reward button | Extra coins and XP are granted only after an earned reward. |
+| Rewarded ad | Lucky Spin screen | One free spin is granted only after the dedicated unit confirms an earned reward. |
+| Interstitial | Every third game-over event | Displays between rounds, never during active play. |
 
-## Production configuration
+## Production AdMob IDs
 
-The Android manifest uses the Golden Fish Dash production AdMob app ID from:
+The Android app is registered in AdMob as `Golden Fish Dash`, package `com.husseinbostan.goldenfishdash`, with App ID `ca-app-pub-7778383086464835~5563066796`.
 
-```text
-android/app/src/main/res/values/strings.xml
-```
+| Placement | AdMob unit | ID |
+|---|---|---|
+| Adaptive banner | Golden Fish Dash - Bottom Banner | `ca-app-pub-7778383086464835/3015643122` |
+| Interstitial | Golden Fish Dash - Between Rounds | `ca-app-pub-7778383086464835/1702561451` |
+| Gameplay rewarded | Golden Fish Dash - Rewarded Continue | `ca-app-pub-7778383086464835/5578402291` |
+| Lucky Spin rewarded | Golden Fish Dash - Rewarded Lucky Spin | `ca-app-pub-7778383086464835/1234465629` |
 
-The production banner, interstitial, gameplay-rewarded, and Lucky Spin rewarded unit IDs are defined in:
+These existing production units match all implemented formats. Their configuration is in `src/game/managers/AdManager.ts`.
 
-```text
-src/game/managers/AdManager.ts
-```
+## Test versus release configuration
 
-The app requests Google UMP consent information before initializing the Mobile Ads SDK. If consent is required, it displays the consent form and does not request ads until the SDK reports that ad requests are allowed.
+Test mode is the default unless `VITE_ADMOB_TESTING=false` is explicitly supplied. The debug APK job always sets test mode, so it uses Google's sample banner, interstitial, rewarded units, and sample App ID.
 
-## Safe test mode
+The base Android resource at `android/app/src/main/res/values/strings.xml` contains Google's sample App ID. Only the release resource overlay at `android/app/src/release/res/values/strings.xml` contains the production App ID. The Android Build workflow's `admob_testing` input defaults to true; leave it enabled for closed/internal testing. For a production AAB build, explicitly disable **Use Google sample ads** while requesting the release build. The workflow builds and stores artifacts; it does not publish to Google Play.
 
-Never click live ads while testing. GitHub Actions now builds with Google sample ads by default, including push builds. For a local test build, set:
-
-```bash
-VITE_ADMOB_TESTING=true
-```
-
-For a production AAB, manually run the Android Build workflow with **Build a signed AAB** enabled and **Use Google sample ads** disabled. The unit IDs can still be overridden with `VITE_ADMOB_BANNER_ID`, `VITE_ADMOB_INTERSTITIAL_ID`, `VITE_ADMOB_REWARDED_ID`, and `VITE_ADMOB_LUCKY_SPIN_REWARDED_ID`.
-
-After any identifier change, run:
+For local builds, test mode:
 
 ```bash
-pnpm build
-npx cap sync android
+VITE_ADMOB_TESTING=true pnpm build
+pnpm cap:sync
+cd android && ./gradlew assembleDebug --no-daemon
 ```
 
-Verify that the ad format and unit type match: banner for the banner placement, interstitial for the between-rounds placement, and rewarded for both reward paths.
+For a production-configured release AAB (build only; do not upload it to Play):
 
-## Recommended validation for closed testing
+```bash
+VITE_ADMOB_TESTING=false pnpm build
+pnpm cap:sync
+cd android && ./gradlew bundleRelease --no-daemon
+```
 
-Test on a physical Android device with `VITE_ADMOB_TESTING=true`. Confirm that a banner appears on menu and game-over screens only, a rewarded ad opens from both revive and double-reward buttons, and cancelling or failing an ad grants **no** revival or extra currency. Check that the interstitial appears after every third completed run. Finally, publish the required message in AdMob Privacy & messaging, and review the Privacy Policy and Google Play Data safety form before production.
+Production unit IDs may be overridden with `VITE_ADMOB_BANNER_ID`, `VITE_ADMOB_INTERSTITIAL_ID`, `VITE_ADMOB_REWARDED_ID`, and `VITE_ADMOB_LUCKY_SPIN_REWARDED_ID`.
+
+## Closed-testing validation
+
+Test on a physical Android device with `VITE_ADMOB_TESTING=true`. Confirm that the banner appears on menu and game-over screens only, the rewarded continue and double-reward flows grant rewards only after the SDK confirms them, Lucky Spin uses its dedicated rewarded unit, and the interstitial appears after every third completed run. Review the Privacy Policy, Google Play Data safety form, and AdMob consent configuration before any production publication.

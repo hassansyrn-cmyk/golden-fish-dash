@@ -21,7 +21,7 @@ const PRODUCTION_UNITS = {
   luckySpinRewarded: 'ca-app-pub-7778383086464835/1234465629',
 } as const;
 
-const testing = import.meta.env.VITE_ADMOB_TESTING === 'true';
+const testing = import.meta.env.VITE_ADMOB_TESTING !== 'false';
 const units = {
   banner: testing
     ? GOOGLE_TEST_UNITS.banner

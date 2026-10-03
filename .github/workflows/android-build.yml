@@ -63,7 +63,7 @@ jobs:
 
       - name: Build web application
         env:
-          VITE_ADMOB_TESTING: ${{ github.event_name != 'workflow_dispatch' || inputs.admob_testing }}
+          VITE_ADMOB_TESTING: "true"
         run: pnpm build
 
       - name: Sync with Capacitor

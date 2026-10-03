@@ -1,6 +1,6 @@
 {
   "name": "@workspace/golden-fish-rush",
-  "version": "1.0.7",
+  "version": "1.0.10",
   "private": true,
   "type": "module",
   "scripts": {
