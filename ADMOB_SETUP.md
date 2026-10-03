@@ -11,6 +11,7 @@ The Android app now initializes `@capacitor-community/admob` and uses three plac
 | Adaptive banner | Menu and game-over screens | Removed during active play. |
 | Rewarded ad | Continue screen | A revive is granted only when the SDK confirms an earned reward. |
 | Rewarded ad | Game-over double reward button | The extra coins and XP are granted only after an earned reward. |
+| Rewarded ad | Lucky Spin screen | Grants one free spin only after the dedicated Lucky Spin unit confirms an earned reward. |
 | Interstitial | Every third game-over event | Displays only between rounds, never during active play. |
 
 ## Production configuration
@@ -21,7 +22,7 @@ The Android manifest uses the Golden Fish Dash production AdMob app ID from:
 android/app/src/main/res/values/strings.xml
 ```
 
-The production banner, interstitial, and rewarded unit IDs are defined in:
+The production banner, interstitial, gameplay-rewarded, and Lucky Spin rewarded unit IDs are defined in:
 
 ```text
 src/game/managers/AdManager.ts
@@ -31,13 +32,13 @@ The app requests Google UMP consent information before initializing the Mobile A
 
 ## Safe test mode
 
-Never click live ads while testing. Build with Google sample ad units by setting:
+Never click live ads while testing. GitHub Actions now builds with Google sample ads by default, including push builds. For a local test build, set:
 
 ```bash
 VITE_ADMOB_TESTING=true
 ```
 
-Production builds use the real units by default. The unit IDs can still be overridden with `VITE_ADMOB_BANNER_ID`, `VITE_ADMOB_INTERSTITIAL_ID`, and `VITE_ADMOB_REWARDED_ID`.
+For a production AAB, manually run the Android Build workflow with **Build a signed AAB** enabled and **Use Google sample ads** disabled. The unit IDs can still be overridden with `VITE_ADMOB_BANNER_ID`, `VITE_ADMOB_INTERSTITIAL_ID`, `VITE_ADMOB_REWARDED_ID`, and `VITE_ADMOB_LUCKY_SPIN_REWARDED_ID`.
 
 After any identifier change, run:
 

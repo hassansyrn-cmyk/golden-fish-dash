@@ -256,7 +256,7 @@ export default function LuckySpinScreen({ onBack }: Props) {
 
     setIsLoadingRewardedSpin(true);
     setResultMessage(null);
-    const earnedReward = await adManager.showRewarded();
+    const earnedReward = await adManager.showRewarded('luckySpin');
     setIsLoadingRewardedSpin(false);
 
     if (earnedReward) {

@@ -18,6 +18,7 @@ const PRODUCTION_UNITS = {
   banner: 'ca-app-pub-7778383086464835/3015643122',
   interstitial: 'ca-app-pub-7778383086464835/1702561451',
   rewarded: 'ca-app-pub-7778383086464835/5578402291',
+  luckySpinRewarded: 'ca-app-pub-7778383086464835/1234465629',
 } as const;
 
 const testing = import.meta.env.VITE_ADMOB_TESTING === 'true';
@@ -31,11 +32,19 @@ const units = {
   rewarded: testing
     ? GOOGLE_TEST_UNITS.rewarded
     : import.meta.env.VITE_ADMOB_REWARDED_ID || PRODUCTION_UNITS.rewarded,
+  luckySpinRewarded: testing
+    ? GOOGLE_TEST_UNITS.rewarded
+    : import.meta.env.VITE_ADMOB_LUCKY_SPIN_REWARDED_ID || PRODUCTION_UNITS.luckySpinRewarded,
 };
 
 let initialization: Promise<boolean> | null = null;
-let rewardedPrepared = false;
+type RewardedPlacement = 'gameplay' | 'luckySpin';
+const preparedRewardedAdIds = new Set<string>();
 let interstitialPrepared = false;
+
+function rewardedUnitId(placement: RewardedPlacement) {
+  return placement === 'luckySpin' ? units.luckySpinRewarded : units.rewarded;
+}
 
 function isNativeAdMobAvailable() {
   return Capacitor.isNativePlatform();
@@ -47,17 +56,21 @@ async function initialize(): Promise<boolean> {
 
   initialization = (async () => {
     try {
-      let consentInfo = await AdMob.requestConsentInfo();
-      if (
-        consentInfo.status === AdmobConsentStatus.REQUIRED &&
-        consentInfo.isConsentFormAvailable
-      ) {
-        consentInfo = await AdMob.showConsentForm();
-      }
+      // Google sample ads are non-personalized and must remain available in
+      // closed testing even before the production UMP message is published.
+      if (!testing) {
+        let consentInfo = await AdMob.requestConsentInfo();
+        if (
+          consentInfo.status === AdmobConsentStatus.REQUIRED &&
+          consentInfo.isConsentFormAvailable
+        ) {
+          consentInfo = await AdMob.showConsentForm();
+        }
 
-      if (!consentInfo.canRequestAds) {
-        console.warn('[AdMob] Ads are paused until consent allows ad requests.');
-        return false;
+        if (!consentInfo.canRequestAds) {
+          console.warn('[AdMob] Ads are paused until consent allows ad requests.');
+          return false;
+        }
       }
 
       await AdMob.initialize({
@@ -74,26 +87,30 @@ async function initialize(): Promise<boolean> {
   return initialization;
 }
 
-async function preloadRewarded() {
-  if (!(await initialize()) || rewardedPrepared) return false;
+async function preloadRewarded(placement: RewardedPlacement = 'gameplay') {
+  if (!(await initialize())) return false;
+
+  const adId = rewardedUnitId(placement);
+  if (preparedRewardedAdIds.has(adId)) return true;
 
   try {
     await AdMob.prepareRewardVideoAd({
-      adId: units.rewarded,
+      adId,
       isTesting: testing,
       immersiveMode: true,
     });
-    rewardedPrepared = true;
+    preparedRewardedAdIds.add(adId);
     return true;
   } catch (error) {
     console.warn('[AdMob] Rewarded ad was not available.', error);
-    rewardedPrepared = false;
+    preparedRewardedAdIds.delete(adId);
     return false;
   }
 }
 
 async function preloadInterstitial() {
-  if (!(await initialize()) || interstitialPrepared) return false;
+  if (!(await initialize())) return false;
+  if (interstitialPrepared) return true;
 
   try {
     await AdMob.prepareInterstitial({
@@ -118,24 +135,31 @@ export const adManager = {
   async initializeAndPreload() {
     const ready = await initialize();
     if (!ready) return false;
-    await Promise.all([preloadRewarded(), preloadInterstitial()]);
+
+    const preloadTasks = [preloadRewarded('gameplay'), preloadInterstitial()];
+    if (units.luckySpinRewarded !== units.rewarded) {
+      preloadTasks.push(preloadRewarded('luckySpin'));
+    }
+    await Promise.all(preloadTasks);
     return true;
   },
 
-  async showRewarded(): Promise<boolean> {
-    if (!(await preloadRewarded())) return false;
+  async showRewarded(placement: RewardedPlacement = 'gameplay'): Promise<boolean> {
+    if (!(await preloadRewarded(placement))) return false;
+
+    const adId = rewardedUnitId(placement);
 
     try {
       // The plugin resolves only after the earned-reward callback. Never grant
       // a revival from dismissal or a failed ad presentation.
-      await AdMob.showRewardVideoAd({ adId: units.rewarded });
-      rewardedPrepared = false;
-      void preloadRewarded();
+      await AdMob.showRewardVideoAd({ adId });
+      preparedRewardedAdIds.delete(adId);
+      void preloadRewarded(placement);
       return true;
     } catch (error) {
       console.warn('[AdMob] Rewarded ad did not earn a reward.', error);
-      rewardedPrepared = false;
-      void preloadRewarded();
+      preparedRewardedAdIds.delete(adId);
+      void preloadRewarded(placement);
       return false;
     }
   },
