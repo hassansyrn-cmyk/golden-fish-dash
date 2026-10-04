@@ -1,0 +1,122 @@
+diff --git a/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt b/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
+index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..ec467b9d25eb1941af5370317bd2ae4b20ed2659 100644
+--- a/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
++++ b/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
+@@ -2,14 +2,60 @@ package com.getcapacitor.community.admob.models
+ 
+ import com.getcapacitor.JSObject
+ import com.google.android.gms.ads.AdError
++import com.google.android.gms.ads.LoadAdError
++import org.json.JSONArray
+ 
+-data class AdMobPluginError(val code: Int, val message: String) : JSObject() {
++private fun safeResponseInfo(adError: AdError): JSObject? {
++    val info = (adError as? LoadAdError)?.responseInfo ?: return null
++    val result = JSObject()
++
++    info.responseId?.takeIf { it.isNotBlank() }?.let { result.put("responseId", it) }
++    info.mediationAdapterClassName?.takeIf { it.isNotBlank() }?.let {
++        result.put("mediationAdapterClassName", it)
++    }
++
++    val adapterResponses = JSONArray()
++    info.adapterResponses.take(8).forEach { adapterResponse ->
++        val response = JSObject()
++        adapterResponse.adapterClassName?.takeIf { it.isNotBlank() }?.let {
++            response.put("adapterClassName", it)
++        }
++        response.put("latencyMillis", adapterResponse.latencyMillis)
++        adapterResponses.put(response)
++    }
++    if (adapterResponses.length() > 0) result.put("adapterResponses", adapterResponses)
++
++    return result.takeIf { it.length() > 0 }
++}
++
++data class AdMobPluginError(
++    val code: Int,
++    val message: String,
++    val domain: String?,
++    val adUnitId: String?,
++    val responseInfo: JSObject?,
++) : JSObject() {
+     override fun put(key: String, value: Int): JSObject {
+         throw Exception("Do not put elements directly here use the constructor")
+     }
++
+     init {
+         super.put("code", this.code)
+         super.put("message", this.message)
++        if (this.domain != null) super.put("domain", this.domain)
++        if (this.adUnitId != null) super.put("adUnitId", this.adUnitId)
++        if (this.responseInfo != null) super.put("responseInfo", this.responseInfo)
+     }
+-    constructor(adError: AdError): this(adError.code, adError.message)
++
++    constructor(code: Int, message: String) : this(code, message, null, null, null)
++
++    constructor(adError: AdError) : this(adError, null)
++
++    constructor(adError: AdError, adUnitId: String?) : this(
++        adError.code,
++        adError.message,
++        adError.domain,
++        adUnitId,
++        safeResponseInfo(adError),
++    )
+ }
+diff --git a/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt b/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt
+index 16de42e1ef2a554d7465e18bbbb9eea3366b1096..ed20162e7d8bb5f80b1aa419dc250fa6212a740d 100644
+--- a/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt
++++ b/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt
+@@ -65,7 +65,7 @@ object RewardedAdCallbackAndListeners {
+             }
+ 
+             override fun onAdFailedToLoad(adError: LoadAdError) {
+-                val adMobError = AdMobPluginError(adError)
++                val adMobError = AdMobPluginError(adError, adOptions.adId)
+ 
+                 notifyListenersFunction.accept(RewardAdPluginEvents.FailedToLoad, adMobError)
+                 call.reject(adError.message)
+diff --git a/dist/esm/shared/admob-error.interface.d.ts b/dist/esm/shared/admob-error.interface.d.ts
+index 66a9504befc6b8ee0ce5c788e61406d2394dfa3d..97be86a4a0fa892dc6036fa09972b04eca5d6c67 100644
+--- a/dist/esm/shared/admob-error.interface.d.ts
++++ b/dist/esm/shared/admob-error.interface.d.ts
+@@ -1,15 +1,31 @@
++/**
++ * A bounded, non-user-specific summary of Google Mobile Ads response metadata.
++ */
++export interface AdMobResponseInfo {
++    /** Google response identifier, when supplied by the SDK. */
++    responseId?: string;
++    /** Name of the mediation adapter that returned the response, when available. */
++    mediationAdapterClassName?: string;
++    /** At most eight adapter summaries; credentials and request extras are omitted. */
++    adapterResponses?: Array<{
++        adapterClassName?: string;
++        latencyMillis: number;
++    }>;
++}
+ /**
+  * An error returned by the Google Mobile Ads SDK.
+  *
+  * @see https://developers.google.com/admob/android/reference/com/google/android/gms/ads/AdError
+  */
+ export interface AdMobError {
+-    /**
+-     * Gets the error's code.
+-     */
++    /** Gets the error's code. */
+     code: number;
+-    /**
+-     * Gets the message describing the error.
+-     */
++    /** Gets the message describing the error. */
+     message: string;
++    /** The SDK error domain, when supplied by the native bridge. */
++    domain?: string;
++    /** The ad unit associated with the failed operation; do not share as user data. */
++    adUnitId?: string;
++    /** Allow-listed response metadata; excludes ad request extras and user identifiers. */
++    responseInfo?: AdMobResponseInfo;
+ }
