@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@capacitor-community/admob@8.1.0':
-    hash: 4a1e00ad6588bcd6d627390a43076a5833081b0f78cc5c67fa68ea2684c24176
+    hash: d4ffe211553e876c39c15a887ff69b610588848f634d36b7ea1206678b31ef07
     path: patches/@capacitor-community__admob@8.1.0.patch
 
 importers:
@@ -15,7 +15,7 @@ importers:
     dependencies:
       '@capacitor-community/admob':
         specifier: ^8.1.0
-        version: 8.1.0(patch_hash=4a1e00ad6588bcd6d627390a43076a5833081b0f78cc5c67fa68ea2684c24176)
+        version: 8.1.0(patch_hash=d4ffe211553e876c39c15a887ff69b610588848f634d36b7ea1206678b31ef07)
       '@capacitor/android':
         specifier: ^8.4.1
         version: 8.4.1(@capacitor/core@8.4.1)
@@ -2824,7 +2824,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@capacitor-community/admob@8.1.0(patch_hash=4a1e00ad6588bcd6d627390a43076a5833081b0f78cc5c67fa68ea2684c24176)':
+  '@capacitor-community/admob@8.1.0(patch_hash=d4ffe211553e876c39c15a887ff69b610588848f634d36b7ea1206678b31ef07)':
     dependencies:
       '@capacitor/core': 8.4.1
       '@rdlabo/capacitor-docgen': 0.4.1

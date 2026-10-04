@@ -1,8 +1,8 @@
 diff --git a/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt b/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
-index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..fe17c8170e934c425e7800d3e610e78e73dc49a8 100644
+index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..ec467b9d25eb1941af5370317bd2ae4b20ed2659 100644
 --- a/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
 +++ b/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
-@@ -2,14 +2,58 @@ package com.getcapacitor.community.admob.models
+@@ -2,14 +2,60 @@ package com.getcapacitor.community.admob.models
  
  import com.getcapacitor.JSObject
  import com.google.android.gms.ads.AdError
@@ -55,7 +55,9 @@ index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..fe17c8170e934c425e7800d3e610e78e
 +
 +    constructor(code: Int, message: String) : this(code, message, null, null, null)
 +
-+    constructor(adError: AdError, adUnitId: String? = null) : this(
++    constructor(adError: AdError) : this(adError, null)
++
++    constructor(adError: AdError, adUnitId: String?) : this(
 +        adError.code,
 +        adError.message,
 +        adError.domain,
