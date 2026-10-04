@@ -5,7 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@capacitor-community/admob@8.1.0': de500a4b9ae770f89d78be597aecce27ac737328503f44421091fcb6177416c2
+  '@capacitor-community/admob@8.1.0':
+    hash: de500a4b9ae770f89d78be597aecce27ac737328503f44421091fcb6177416c2
+    path: patches/@capacitor-community__admob@8.1.0.patch
 
 importers:
 
