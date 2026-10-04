@@ -29,9 +29,9 @@ These existing production units match all implemented formats. Their configurati
 
 ## Test versus release configuration
 
-Test mode is the default unless `VITE_ADMOB_TESTING=false` is explicitly supplied. The debug APK job always sets test mode, so it uses Google's sample banner, interstitial, rewarded units, and sample App ID.
+Production ad units are the code default. Test mode is enabled only when `VITE_ADMOB_TESTING=true`; debug APK builds set that flag and use Google's sample banner, interstitial, and rewarded units.
 
-The base Android resource at `android/app/src/main/res/values/strings.xml` contains Google's sample App ID. Only the release resource overlay at `android/app/src/release/res/values/strings.xml` contains the production App ID. The Android Build workflow's `admob_testing` input defaults to true; leave it enabled for closed/internal testing. For a production AAB build, explicitly disable **Use Google sample ads** while requesting the release build. The workflow builds and stores artifacts; it does not publish to Google Play.
+The base Android resource at `android/app/src/main/res/values/strings.xml` contains Google's sample App ID. Only the release resource overlay at `android/app/src/release/res/values/strings.xml` contains the production App ID. The Android Build workflow's `admob_testing` input defaults to false. For a production AAB, select **Build a signed AAB** and leave **Use Google sample ads** disabled. Enable it only for a closed-testing AAB. Debug APKs and automatic push builds use sample units. The workflow builds and stores artifacts; it does not publish to Google Play.
 
 For local builds, test mode:
 
