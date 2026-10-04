@@ -11,9 +11,9 @@ on:
         default: false
         type: boolean
       admob_testing:
-        description: Use Google sample ads (keep enabled for closed testing)
+        description: Use Google sample ads (enable for debug or closed-testing AABs)
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -140,6 +140,18 @@ jobs:
         env:
           VITE_ADMOB_TESTING: ${{ github.event_name != 'workflow_dispatch' || inputs.admob_testing }}
         run: pnpm build
+
+      - name: Verify production rewarded units
+        if: github.event_name == 'workflow_dispatch' && inputs.build_release == true && inputs.admob_testing == false
+        shell: bash
+        run: |
+          set -euo pipefail
+          for id in "ca-app-pub-7778383086464835/5578402291" "ca-app-pub-7778383086464835/1234465629"; do
+            if ! grep -R -Fq "$id" dist/assets; then
+              echo "Production rewarded ad unit not found in bundle: $id" >&2
+              exit 1
+            fi
+          done
 
       - name: Sync with Capacitor
         run: pnpm cap:sync
