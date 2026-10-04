@@ -1,8 +1,8 @@
 diff --git a/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt b/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
-index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..386a8744104649d88344b44c166464c506944c37 100644
+index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..fe17c8170e934c425e7800d3e610e78e73dc49a8 100644
 --- a/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
 +++ b/android/src/main/java/com/getcapacitor/community/admob/models/AdMobPluginError.kt
-@@ -2,14 +2,61 @@ package com.getcapacitor.community.admob.models
+@@ -2,14 +2,58 @@ package com.getcapacitor.community.admob.models
  
  import com.getcapacitor.JSObject
  import com.google.android.gms.ads.AdError
@@ -26,9 +26,6 @@ index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..386a8744104649d88344b44c166464c5
 +            response.put("adapterClassName", it)
 +        }
 +        response.put("latencyMillis", adapterResponse.latencyMillis)
-+        adapterResponse.description?.takeIf { it.isNotBlank() }?.let {
-+            response.put("description", it.take(500))
-+        }
 +        adapterResponses.put(response)
 +    }
 +    if (adapterResponses.length() > 0) result.put("adapterResponses", adapterResponses)
@@ -67,7 +64,7 @@ index 82540fbe27d6c48b3db7d9d8a054ce4ef4309ef0..386a8744104649d88344b44c166464c5
 +    )
  }
 diff --git a/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt b/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt
-index 16de42e1ef2a554d7465e18bbbb9eea3366b1096..6a4837c6fe0a97d280e978f564f86ff082481e99 100644
+index 16de42e1ef2a554d7465e18bbbb9eea3366b1096..ed20162e7d8bb5f80b1aa419dc250fa6212a740d 100644
 --- a/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt
 +++ b/android/src/main/java/com/getcapacitor/community/admob/rewarded/RewardedAdCallbackAndListeners.kt
 @@ -65,7 +65,7 @@ object RewardedAdCallbackAndListeners {
@@ -80,10 +77,10 @@ index 16de42e1ef2a554d7465e18bbbb9eea3366b1096..6a4837c6fe0a97d280e978f564f86ff0
                  notifyListenersFunction.accept(RewardAdPluginEvents.FailedToLoad, adMobError)
                  call.reject(adError.message)
 diff --git a/dist/esm/shared/admob-error.interface.d.ts b/dist/esm/shared/admob-error.interface.d.ts
-index 66a9504befc6b8ee0ce5c788e61406d2394dfa3d..250f024b011d8a3c6a95f3be2d9c8baf7f6bf276 100644
+index 66a9504befc6b8ee0ce5c788e61406d2394dfa3d..97be86a4a0fa892dc6036fa09972b04eca5d6c67 100644
 --- a/dist/esm/shared/admob-error.interface.d.ts
 +++ b/dist/esm/shared/admob-error.interface.d.ts
-@@ -1,15 +1,32 @@
+@@ -1,15 +1,31 @@
 +/**
 + * A bounded, non-user-specific summary of Google Mobile Ads response metadata.
 + */
@@ -96,7 +93,6 @@ index 66a9504befc6b8ee0ce5c788e61406d2394dfa3d..250f024b011d8a3c6a95f3be2d9c8baf
 +    adapterResponses?: Array<{
 +        adapterClassName?: string;
 +        latencyMillis: number;
-+        description?: string;
 +    }>;
 +}
  /**
