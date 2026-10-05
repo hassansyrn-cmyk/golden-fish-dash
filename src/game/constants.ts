@@ -1,6 +1,6 @@
 import type { AchievementDef, DailyChallengeDef, SkinDef } from './types';
 
-export const VERSION = 'v1.0.0';
+export const VERSION = 'v1.0.12';
 
 export const STORAGE_KEYS = {
   personalBest: 'gfr_personal_best',
