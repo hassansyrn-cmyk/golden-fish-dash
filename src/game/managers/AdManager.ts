@@ -37,7 +37,9 @@ const units = {
     : import.meta.env.VITE_ADMOB_LUCKY_SPIN_REWARDED_ID || PRODUCTION_UNITS.luckySpinRewarded,
 };
 
-let initialization: Promise<boolean> | null = null;
+type InitializationResult = 'ready' | 'consent-blocked' | 'failed';
+let initialization: Promise<InitializationResult> | null = null;
+let sdkInitialization: Promise<void> | null = null;
 type RewardedPlacement = 'gameplay' | 'luckySpin';
 const preparedRewardedAdIds = new Set<string>();
 let interstitialPrepared = false;
@@ -52,12 +54,24 @@ function isNativeAdMobAvailable() {
 
 async function initialize(): Promise<boolean> {
   if (!isNativeAdMobAvailable()) return false;
-  if (initialization) return initialization;
+  if (initialization) return (await initialization) === 'ready';
 
-  initialization = (async () => {
+  const attempt: Promise<InitializationResult> = (async () => {
     try {
-      // Google sample ads are non-personalized and must remain available in
-      // closed testing even before the production UMP message is published.
+      // Initialize the Mobile Ads SDK before requesting UMP consent information.
+      // The plugin requires consent to allow ad requests, not SDK initialization.
+      if (!sdkInitialization) {
+        const sdkAttempt = AdMob.initialize({
+          initializeForTesting: testing,
+          maxAdContentRating: MaxAdContentRating.ParentalGuidance,
+        });
+        sdkInitialization = sdkAttempt.catch((error) => {
+          sdkInitialization = null;
+          throw error;
+        });
+      }
+      await sdkInitialization;
+
       if (!testing) {
         let consentInfo = await AdMob.requestConsentInfo();
         if (
@@ -68,23 +82,30 @@ async function initialize(): Promise<boolean> {
         }
 
         if (!consentInfo.canRequestAds) {
-          console.warn('[AdMob] Ads are paused until consent allows ad requests.');
-          return false;
+          console.warn('[AdMob] Ads are paused until consent allows ad requests.', {
+            status: consentInfo.status,
+            isConsentFormAvailable: consentInfo.isConsentFormAvailable,
+            canRequestAds: consentInfo.canRequestAds,
+          });
+          return 'consent-blocked';
         }
       }
 
-      await AdMob.initialize({
-        initializeForTesting: testing,
-        maxAdContentRating: MaxAdContentRating.ParentalGuidance,
-      });
-      return true;
+      return 'ready';
     } catch (error) {
-      console.warn('[AdMob] SDK initialization failed.', error);
-      return false;
+      console.warn('[AdMob] SDK initialization or consent check failed.', error);
+      return 'failed';
     }
   })();
 
-  return initialization;
+  initialization = attempt;
+  const result = await attempt;
+  // Retry transient SDK or consent failures on the next ad attempt. Keep a
+  // completed consent block cached so a declined form is not shown repeatedly.
+  if (result === 'failed' && initialization === attempt) {
+    initialization = null;
+  }
+  return result === 'ready';
 }
 
 async function preloadRewarded(placement: RewardedPlacement = 'gameplay') {
