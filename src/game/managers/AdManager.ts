@@ -22,6 +22,7 @@ const PRODUCTION_UNITS = {
 } as const;
 
 const testing = import.meta.env.VITE_ADMOB_TESTING === 'true';
+const diagnosticsEnabled = import.meta.env.VITE_ADMOB_DIAGNOSTICS === 'true';
 const units = {
   banner: testing
     ? GOOGLE_TEST_UNITS.banner
@@ -36,6 +37,74 @@ const units = {
     ? GOOGLE_TEST_UNITS.rewarded
     : import.meta.env.VITE_ADMOB_LUCKY_SPIN_REWARDED_ID || PRODUCTION_UNITS.luckySpinRewarded,
 };
+
+type DiagnosticStatus = 'pending' | 'initializing' | 'ready' | 'blocked' | 'error' | 'loading' | 'loaded';
+export interface AdDiagnosticsSnapshot {
+  native: boolean;
+  testAds: boolean;
+  updatedAt: string;
+  sdk: { status: DiagnosticStatus; detail: string };
+  consent: {
+    status: DiagnosticStatus;
+    consentStatus: string;
+    canRequestAds: boolean | null;
+    isConsentFormAvailable: boolean | null;
+    detail: string;
+  };
+  rewarded: { status: DiagnosticStatus; placement: string; detail: string };
+}
+
+const initialDiagnostics: AdDiagnosticsSnapshot = {
+  native: Capacitor.isNativePlatform(),
+  testAds: testing,
+  updatedAt: new Date().toISOString(),
+  sdk: { status: 'pending', detail: 'SDK initialization has not started.' },
+  consent: {
+    status: 'pending',
+    consentStatus: 'Not requested',
+    canRequestAds: null,
+    isConsentFormAvailable: null,
+    detail: 'UMP consent information has not been requested.',
+  },
+  rewarded: { status: 'pending', placement: 'gameplay', detail: 'Rewarded-ad load has not started.' },
+};
+let diagnosticSnapshot = initialDiagnostics;
+const diagnosticListeners = new Set<() => void>();
+
+export function getAdDiagnosticsSnapshot() {
+  return diagnosticSnapshot;
+}
+
+export function subscribeToAdDiagnostics(listener: () => void) {
+  diagnosticListeners.add(listener);
+  return () => diagnosticListeners.delete(listener);
+}
+
+function updateDiagnostics(update: Partial<AdDiagnosticsSnapshot>) {
+  if (!diagnosticsEnabled) return;
+  diagnosticSnapshot = { ...diagnosticSnapshot, ...update, updatedAt: new Date().toISOString() };
+  diagnosticListeners.forEach((listener) => listener());
+}
+
+function diagnosticError(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message || error.name;
+  if (error && typeof error === 'object') {
+    const value = error as { code?: unknown; message?: unknown; domain?: unknown };
+    const parts = [
+      value.code !== undefined ? `code=${String(value.code)}` : '',
+      value.domain !== undefined ? `domain=${String(value.domain)}` : '',
+      value.message !== undefined ? String(value.message) : '',
+    ].filter(Boolean);
+    if (parts.length) return parts.join(' · ');
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return Object.prototype.toString.call(error);
+    }
+  }
+  return String(error);
+}
 
 type InitializationResult = 'ready' | 'consent-blocked' | 'failed';
 let initialization: Promise<InitializationResult> | null = null;
@@ -53,7 +122,10 @@ function isNativeAdMobAvailable() {
 }
 
 async function initialize(): Promise<boolean> {
-  if (!isNativeAdMobAvailable()) return false;
+  if (!isNativeAdMobAvailable()) {
+    updateDiagnostics({ sdk: { status: 'error', detail: 'AdMob is available only in the native Android/iOS app.' } });
+    return false;
+  }
   if (initialization) return (await initialization) === 'ready';
 
   const attempt: Promise<InitializationResult> = (async () => {
@@ -61,27 +133,78 @@ async function initialize(): Promise<boolean> {
       // Initialize the Mobile Ads SDK before requesting UMP consent information.
       // The plugin requires consent to allow ad requests, not SDK initialization.
       if (!sdkInitialization) {
+        updateDiagnostics({ sdk: { status: 'initializing', detail: 'Starting the Google Mobile Ads SDK.' } });
         const sdkAttempt = AdMob.initialize({
           initializeForTesting: testing,
           maxAdContentRating: MaxAdContentRating.ParentalGuidance,
         });
         sdkInitialization = sdkAttempt.catch((error) => {
           sdkInitialization = null;
+          updateDiagnostics({ sdk: { status: 'error', detail: diagnosticError(error) } });
           throw error;
         });
       }
       await sdkInitialization;
+      updateDiagnostics({ sdk: { status: 'ready', detail: 'Google Mobile Ads SDK initialized.' } });
 
-      if (!testing) {
+      // The diagnostic build keeps Google's sample ad units but deliberately
+      // runs the same UMP gate as production so its actual consent state is visible.
+      if (!testing || diagnosticsEnabled) {
+        updateDiagnostics({
+          consent: {
+            status: 'initializing',
+            consentStatus: 'Requesting',
+            canRequestAds: null,
+            isConsentFormAvailable: null,
+            detail: 'Requesting UMP consent information.',
+          },
+        });
         let consentInfo = await AdMob.requestConsentInfo();
+        updateDiagnostics({
+          consent: {
+            status: 'ready',
+            consentStatus: String(consentInfo.status),
+            canRequestAds: consentInfo.canRequestAds,
+            isConsentFormAvailable: consentInfo.isConsentFormAvailable ?? null,
+            detail: 'UMP consent information received.',
+          },
+        });
+
         if (
           consentInfo.status === AdmobConsentStatus.REQUIRED &&
           consentInfo.isConsentFormAvailable
         ) {
+          updateDiagnostics({
+            consent: {
+              status: 'initializing',
+              consentStatus: String(consentInfo.status),
+              canRequestAds: consentInfo.canRequestAds,
+              isConsentFormAvailable: consentInfo.isConsentFormAvailable,
+              detail: 'UMP requires consent; showing the available consent form.',
+            },
+          });
           consentInfo = await AdMob.showConsentForm();
+          updateDiagnostics({
+            consent: {
+              status: 'ready',
+              consentStatus: String(consentInfo.status),
+              canRequestAds: consentInfo.canRequestAds,
+              isConsentFormAvailable: consentInfo.isConsentFormAvailable ?? diagnosticSnapshot.consent.isConsentFormAvailable,
+              detail: 'UMP consent form completed.',
+            },
+          });
         }
 
         if (!consentInfo.canRequestAds) {
+          updateDiagnostics({
+            consent: {
+              status: 'blocked',
+              consentStatus: String(consentInfo.status),
+              canRequestAds: false,
+              isConsentFormAvailable: consentInfo.isConsentFormAvailable ?? diagnosticSnapshot.consent.isConsentFormAvailable,
+              detail: 'UMP currently does not allow ad requests; no ad load was attempted.',
+            },
+          });
           console.warn('[AdMob] Ads are paused until consent allows ad requests.', {
             status: consentInfo.status,
             isConsentFormAvailable: consentInfo.isConsentFormAvailable,
@@ -93,6 +216,15 @@ async function initialize(): Promise<boolean> {
 
       return 'ready';
     } catch (error) {
+      if (diagnosticsEnabled && diagnosticSnapshot.consent.status === 'initializing') {
+        updateDiagnostics({
+          consent: {
+            ...diagnosticSnapshot.consent,
+            status: 'error',
+            detail: diagnosticError(error),
+          },
+        });
+      }
       console.warn('[AdMob] SDK initialization or consent check failed.', error);
       return 'failed';
     }
@@ -114,6 +246,9 @@ async function preloadRewarded(placement: RewardedPlacement = 'gameplay') {
   const adId = rewardedUnitId(placement);
   if (preparedRewardedAdIds.has(adId)) return true;
 
+  updateDiagnostics({
+    rewarded: { status: 'loading', placement, detail: 'Requesting a Google test rewarded ad.' },
+  });
   try {
     await AdMob.prepareRewardVideoAd({
       adId,
@@ -121,10 +256,13 @@ async function preloadRewarded(placement: RewardedPlacement = 'gameplay') {
       immersiveMode: true,
     });
     preparedRewardedAdIds.add(adId);
+    updateDiagnostics({ rewarded: { status: 'loaded', placement, detail: 'Google test rewarded ad loaded.' } });
     return true;
   } catch (error) {
+    const detail = diagnosticError(error);
     console.warn('[AdMob] Rewarded ad was not available.', error);
     preparedRewardedAdIds.delete(adId);
+    updateDiagnostics({ rewarded: { status: 'error', placement, detail } });
     return false;
   }
 }

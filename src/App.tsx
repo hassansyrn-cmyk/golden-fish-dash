@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import GoldenFishRush from '@/game/GoldenFishRush';
+import AdDiagnosticsPanel from '@/game/AdDiagnosticsPanel';
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <Router />
         </WouterRouter>
+        {import.meta.env.VITE_ADMOB_DIAGNOSTICS === 'true' && <AdDiagnosticsPanel />}
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

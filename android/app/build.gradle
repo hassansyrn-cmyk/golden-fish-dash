@@ -29,6 +29,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (project.findProperty("diagnosticApk")?.toString() == "true") {
+                applicationIdSuffix ".diagnostic"
+                versionNameSuffix "-diagnostic"
+                resValue "string", "app_name", "Golden Fish Dash (Diagnostic)"
+                resValue "string", "admob_app_id", "ca-app-pub-7778383086464835~5563066796"
+            }
+        }
         release {
             minifyEnabled true
             shrinkResources true

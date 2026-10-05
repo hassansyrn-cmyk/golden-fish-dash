@@ -64,6 +64,7 @@ jobs:
       - name: Build web application
         env:
           VITE_ADMOB_TESTING: "true"
+          VITE_ADMOB_DIAGNOSTICS: "true"
         run: pnpm build
 
       - name: Sync with Capacitor
@@ -73,12 +74,12 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug -PdiagnosticApk=true --no-daemon
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: golden-fish-dash-debug-apk-${{ github.run_number }}
+          name: golden-fish-dash-admob-diagnostic-apk-${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -87,7 +88,8 @@ jobs:
   release-aab:
     name: Build Signed Android App Bundle
     needs: debug-apk
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_release == true)
+    # Diagnostic branches are APK-only, including automatic push-triggered runs.
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_release == true)) && !startsWith(github.ref, 'refs/heads/diagnostic/')
     runs-on: ubuntu-latest
     env:
       RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
