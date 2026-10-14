@@ -2,33 +2,21 @@ import { Capacitor } from '@capacitor/core';
 import {
   AdMob,
   AdmobConsentStatus,
-  BannerAdPosition,
-  BannerAdSize,
   MaxAdContentRating,
 } from '@capacitor-community/admob';
 
 const GOOGLE_TEST_UNITS = {
   appId: 'ca-app-pub-3940256099942544~3347511713',
-  banner: 'ca-app-pub-3940256099942544/6300978111',
-  interstitial: 'ca-app-pub-3940256099942544/1033173712',
   rewarded: 'ca-app-pub-3940256099942544/5224354917',
 } as const;
 
 const PRODUCTION_UNITS = {
-  banner: 'ca-app-pub-7778383086464835/3015643122',
-  interstitial: 'ca-app-pub-7778383086464835/1702561451',
   rewarded: 'ca-app-pub-7778383086464835/5578402291',
   luckySpinRewarded: 'ca-app-pub-7778383086464835/1234465629',
 } as const;
 
 const testing = import.meta.env.VITE_ADMOB_TESTING === 'true';
 const units = {
-  banner: testing
-    ? GOOGLE_TEST_UNITS.banner
-    : import.meta.env.VITE_ADMOB_BANNER_ID || PRODUCTION_UNITS.banner,
-  interstitial: testing
-    ? GOOGLE_TEST_UNITS.interstitial
-    : import.meta.env.VITE_ADMOB_INTERSTITIAL_ID || PRODUCTION_UNITS.interstitial,
   rewarded: testing
     ? GOOGLE_TEST_UNITS.rewarded
     : import.meta.env.VITE_ADMOB_REWARDED_ID || PRODUCTION_UNITS.rewarded,
@@ -42,7 +30,6 @@ let initialization: Promise<InitializationResult> | null = null;
 let sdkInitialization: Promise<void> | null = null;
 type RewardedPlacement = 'gameplay' | 'luckySpin';
 const preparedRewardedAdIds = new Set<string>();
-let interstitialPrepared = false;
 
 function rewardedUnitId(placement: RewardedPlacement) {
   return placement === 'luckySpin' ? units.luckySpinRewarded : units.rewarded;
@@ -129,25 +116,6 @@ async function preloadRewarded(placement: RewardedPlacement = 'gameplay') {
   }
 }
 
-async function preloadInterstitial() {
-  if (!(await initialize())) return false;
-  if (interstitialPrepared) return true;
-
-  try {
-    await AdMob.prepareInterstitial({
-      adId: units.interstitial,
-      isTesting: testing,
-      immersiveMode: true,
-    });
-    interstitialPrepared = true;
-    return true;
-  } catch (error) {
-    console.warn('[AdMob] Interstitial ad was not available.', error);
-    interstitialPrepared = false;
-    return false;
-  }
-}
-
 export const adManager = {
   isNative: isNativeAdMobAvailable,
   isTesting: () => testing,
@@ -157,7 +125,7 @@ export const adManager = {
     const ready = await initialize();
     if (!ready) return false;
 
-    const preloadTasks = [preloadRewarded('gameplay'), preloadInterstitial()];
+    const preloadTasks = [preloadRewarded('gameplay')];
     if (units.luckySpinRewarded !== units.rewarded) {
       preloadTasks.push(preloadRewarded('luckySpin'));
     }
@@ -182,49 +150,6 @@ export const adManager = {
       preparedRewardedAdIds.delete(adId);
       void preloadRewarded(placement);
       return false;
-    }
-  },
-
-  async showInterstitial(): Promise<boolean> {
-    if (!(await preloadInterstitial())) return false;
-
-    try {
-      await AdMob.showInterstitial({ adId: units.interstitial });
-      interstitialPrepared = false;
-      void preloadInterstitial();
-      return true;
-    } catch (error) {
-      console.warn('[AdMob] Interstitial ad was not shown.', error);
-      interstitialPrepared = false;
-      void preloadInterstitial();
-      return false;
-    }
-  },
-
-  async showBanner() {
-    if (!(await initialize())) return false;
-
-    try {
-      await AdMob.showBanner({
-        adId: units.banner,
-        adSize: BannerAdSize.ADAPTIVE_BANNER,
-        position: BannerAdPosition.BOTTOM_CENTER,
-        margin: 0,
-        isTesting: testing,
-      });
-      return true;
-    } catch (error) {
-      console.warn('[AdMob] Banner ad was not available.', error);
-      return false;
-    }
-  },
-
-  async removeBanner() {
-    if (!isNativeAdMobAvailable()) return;
-    try {
-      await AdMob.removeBanner();
-    } catch {
-      // Safe cleanup when no banner was loaded.
     }
   },
 

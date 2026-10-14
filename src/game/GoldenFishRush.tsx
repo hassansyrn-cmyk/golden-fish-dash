@@ -13,7 +13,6 @@ import UnlockCelebration from './screens/UnlockCelebration';
 import ShopScreen from './screens/ShopScreen';
 import DailyRewardsScreen from './screens/DailyRewardsScreen';
 import LuckySpinScreen from './screens/LuckySpinScreen';
-import { BannerAd } from './AdPlaceholders';
 import Footer from './Footer';
 import { useGameEngine } from './useGameEngine';
 import { audioManager } from './managers/AudioManager';
@@ -23,7 +22,6 @@ import {
   getSettings,
   addCoins,
   addXP,
-  incrementGameOverCount,
   markUsedSecondChanceEver,
   unlockAchievement,
 } from './storage';
@@ -143,7 +141,6 @@ export default function GoldenFishRush() {
   const skin = getSelectedSkin();
   const backListenerRef = useRef<any>(null);
   const exitConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countedGameOverRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
@@ -153,16 +150,6 @@ export default function GoldenFishRush() {
   useEffect(() => {
     void adManager.initializeAndPreload();
   }, []);
-
-  useEffect(() => {
-    if (screen !== 'gameover' || countedGameOverRef.current) return;
-    countedGameOverRef.current = true;
-
-    const gameOverCount = incrementGameOverCount();
-    if (gameOverCount % 3 === 0) {
-      void adManager.showInterstitial();
-    }
-  }, [screen]);
 
   // Android hardware back button handling (Capacitor)
   useEffect(() => {
@@ -266,7 +253,6 @@ export default function GoldenFishRush() {
 
   // Start run - shop boosts are now automatically applied inside the hook's setup()
   const startRun = useCallback(() => {
-    countedGameOverRef.current = false;
     setRewardsDoubledThisRun(false);
     setUsedSecondChanceThisRun(false);
     setReviveCountdown(null);
@@ -584,9 +570,6 @@ export default function GoldenFishRush() {
         </button>
       )}
 
-      {/* The native bottom banner overlays the WebView; keep it off the dense
-          game-over screen so it cannot cover the results or Main Menu button. */}
-      <BannerAd visible={screen === 'menu'} />
       <Footer />
     </div>
   );
