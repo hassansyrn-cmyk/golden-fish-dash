@@ -584,7 +584,9 @@ export default function GoldenFishRush() {
         </button>
       )}
 
-      <BannerAd visible={screen === 'menu' || screen === 'gameover'} />
+      {/* The native bottom banner overlays the WebView; keep it off the dense
+          game-over screen so it cannot cover the results or Main Menu button. */}
+      <BannerAd visible={screen === 'menu'} />
       <Footer />
     </div>
   );
