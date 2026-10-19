@@ -664,6 +664,7 @@ function createBossWebGLRenderer(width: number, height: number): BossVideoRender
       canvas,
       render(video: HTMLVideoElement, w: number, h: number) {
         try {
+          if (gl.isContextLost()) return false;
           if (canvas.width !== w || canvas.height !== h) {
             canvas.width = w;
             canvas.height = h;
@@ -672,7 +673,7 @@ function createBossWebGLRenderer(width: number, height: number): BossVideoRender
           gl.bindTexture(gl.TEXTURE_2D, texture);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-          return true;
+          return !gl.isContextLost() && gl.getError() === gl.NO_ERROR;
         } catch {
           return false;
         }
@@ -753,8 +754,18 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
 
   if (Math.abs(frame.lastTime - video.currentTime) > 0.0001) {
     if (frame.glRenderer) {
-      frame.glRenderer.render(video, frameWidth, frameHeight);
-    } else if (frame.context) {
+      if (!frame.glRenderer.render(video, frameWidth, frameHeight)) {
+        frame.glRenderer.dispose();
+        frame.glRenderer = null;
+        frame.canvas = document.createElement('canvas');
+        frame.context = frame.canvas.getContext('2d', { willReadFrequently: true });
+        if (!frame.context) {
+          bossVideoFrameCache.delete(config.id);
+          return null;
+        }
+      }
+    }
+    if (frame.context) {
       if (frame.canvas.width !== frameWidth || frame.canvas.height !== video.videoHeight) {
         frame.canvas.width = frameWidth;
         frame.canvas.height = video.videoHeight;

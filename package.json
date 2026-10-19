@@ -9,6 +9,7 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:performance": "node scripts/test-boss-video-pixels.mjs",
+    "test:ads": "node scripts/test-rewarded-ad-lifecycle.cjs",
     "cap:sync": "cap sync android",
     "cap:open:android": "cap open android"
   },

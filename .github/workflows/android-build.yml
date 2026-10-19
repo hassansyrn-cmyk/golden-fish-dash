@@ -44,6 +44,9 @@ jobs:
       - name: Type-check game source
         run: pnpm typecheck
 
+      - name: Verify rewarded-ad lifecycle
+        run: pnpm test:ads
+
       - name: Verify boss pixel equivalence
         run: node scripts/test-boss-video-pixels.mjs
 

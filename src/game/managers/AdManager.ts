@@ -31,6 +31,7 @@ let initialization: Promise<InitializationResult> | null = null;
 let sdkInitialization: Promise<void> | null = null;
 type RewardedPlacement = 'gameplay' | 'luckySpin';
 const preparedRewardedAdIds = new Set<string>();
+let rewardedShowInFlight = false;
 
 function rewardedUnitId(placement: RewardedPlacement) {
   return placement === 'luckySpin' ? units.luckySpinRewarded : units.rewarded;
@@ -136,33 +137,61 @@ export const adManager = {
 
   async showRewarded(placement: RewardedPlacement = 'gameplay'): Promise<boolean> {
     if (!isNativeAdMobAvailable()) return true;
-    if (!(await preloadRewarded(placement))) return false;
+    // The native plugin exposes process-wide listeners. Never overlap shows:
+    // concurrent callers could otherwise observe the same reward and grant it twice.
+    if (rewardedShowInFlight) return false;
+    rewardedShowInFlight = true;
+
+    let preloaded = false;
+    try {
+      preloaded = await preloadRewarded(placement);
+    } catch (error) {
+      console.warn('[AdMob] Rewarded ad preload failed:', error);
+    }
+    if (!preloaded) {
+      rewardedShowInFlight = false;
+      return false;
+    }
 
     const adId = rewardedUnitId(placement);
     let earned = false;
     let rewardedHandle: PluginListenerHandle | null = null;
     let dismissedHandle: PluginListenerHandle | null = null;
+    let failedHandle: PluginListenerHandle | null = null;
 
     try {
-      // Listen directly to the native Rewarded event to safeguard against
-      // promise rejection or timing issues caused by dismissal on Android.
+      // Android resolves showRewardVideoAd from onUserEarnedReward, before the
+      // fullscreen ad closes. Only Dismissed completes a successful presentation.
+      let finish!: (value: boolean) => void;
+      const lifecycle = new Promise<boolean>((resolve) => { finish = resolve; });
+      let terminal = false;
+      const settle = (value: boolean) => {
+        if (terminal) return;
+        terminal = true;
+        finish(value);
+      };
+      dismissedHandle = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        console.log('[AdMob] Rewarded ad dismissed');
+        settle(earned);
+      });
+      failedHandle = await AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => {
+        settle(false);
+      });
       rewardedHandle = await AdMob.addListener(RewardAdPluginEvents.Rewarded, (reward) => {
         console.log('[AdMob] Rewarded event received:', reward);
         earned = true;
       });
 
-      dismissedHandle = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-        console.log('[AdMob] Rewarded ad dismissed');
+      // On Android this promise may resolve at reward-time, not close-time.
+      // Rejection indicates show failure; ignore the resolved reward payload.
+      void AdMob.showRewardVideoAd().catch((error) => {
+        console.warn('[AdMob] showRewardVideoAd failed:', error);
+        settle(false);
       });
-
-      const result = await AdMob.showRewardVideoAd();
-      if (result) {
-        earned = true;
-      }
+      return await lifecycle;
     } catch (error) {
-      console.warn('[AdMob] showRewardVideoAd completed or threw:', error);
-      // Even if showRewardVideoAd threw on dismiss, if the Rewarded event fired,
-      // the user successfully watched the ad and earned the reward.
+      console.warn('[AdMob] Could not start rewarded ad:', error);
+      return false;
     } finally {
       if (rewardedHandle) {
         await rewardedHandle.remove().catch(() => undefined);
@@ -170,11 +199,13 @@ export const adManager = {
       if (dismissedHandle) {
         await dismissedHandle.remove().catch(() => undefined);
       }
+      if (failedHandle) {
+        await failedHandle.remove().catch(() => undefined);
+      }
       preparedRewardedAdIds.delete(adId);
+      rewardedShowInFlight = false;
       void preloadRewarded(placement);
     }
-
-    return earned;
   },
 
   async showPrivacyOptions() {
