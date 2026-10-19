@@ -2531,7 +2531,6 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.translate(shark.x, shark.y);
   ctx.rotate(Math.sin(timeMs * 0.004 + shark.bobPhase) * 0.045);
 
-  const pulse = (Math.sin(timeMs * 0.005) + 1) / 2;
   if (shark.minionArt && drawMinionSprite(ctx, shark.minionArt, timeMs, shark.bobPhase, shark.width * 1.28)) {
     ctx.restore();
     return;
@@ -2676,7 +2675,6 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   const { config } = boss;
   const isWarning = boss.phase === 'warning';
   const remaining = Math.max(0, boss.battleStartedAt + config.battleDurationMs - state.timeMs);
-  const pulse = 0.62 + (Math.sin(state.timeMs * 0.007) + 1) * 0.19;
 
   if (isWarning) {
     const remainingSeconds = Math.max(1, Math.ceil((boss.battleStartedAt - state.timeMs) / 1000));
