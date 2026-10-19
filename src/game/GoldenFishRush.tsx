@@ -121,7 +121,7 @@ const ShieldIcon = ({ full }: { full: boolean }) => (
   </svg>
 );
 
-const REVIVE_INVINCIBILITY_MS = 2000;
+const REVIVE_INVINCIBILITY_MS = 3200;
 const MAX_VISIBLE_EXTRA_LIVES = 2;
 const LATE_GAME_VISIBLE_EXTRA_LIVES = 3;
 const MAX_VISIBLE_SHIELDS = 2;
@@ -141,6 +141,7 @@ export default function GoldenFishRush() {
   const skin = getSelectedSkin();
   const backListenerRef = useRef<any>(null);
   const exitConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isWatchingAdRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setScreen('menu'), 900);
@@ -164,6 +165,12 @@ export default function GoldenFishRush() {
       }
 
       backListenerRef.current = await App.addListener('backButton', () => {
+        // If an ad is currently playing or being watched, ignore the back button
+        // so dismiss gestures on the ad do not navigate to gameover.
+        if (isWatchingAdRef.current) {
+          return;
+        }
+
         if (
           screen === 'shop' ||
           screen === 'settings' ||
@@ -227,7 +234,8 @@ export default function GoldenFishRush() {
     screen === 'playing' ||
     screen === 'paused' ||
     screen === 'continueAd' ||
-    reviveCountdown !== null;
+    reviveCountdown !== null ||
+    (screen === 'gameover' && !usedSecondChanceThisRun);
 
   const enginePaused = screen !== 'playing' || reviveCountdown !== null;
 
@@ -533,6 +541,9 @@ export default function GoldenFishRush() {
           <ContinueAdScreen
             onFinished={handleAdFinished}
             onSkip={handleSkipAd}
+            onWatchStateChange={(watching) => {
+              isWatchingAdRef.current = watching;
+            }}
           />
         )}
 

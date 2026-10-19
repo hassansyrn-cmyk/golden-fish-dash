@@ -1,8 +1,9 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import {
   AdMob,
   AdmobConsentStatus,
   MaxAdContentRating,
+  RewardAdPluginEvents,
 } from '@capacitor-community/admob';
 
 const GOOGLE_TEST_UNITS = {
@@ -134,23 +135,46 @@ export const adManager = {
   },
 
   async showRewarded(placement: RewardedPlacement = 'gameplay'): Promise<boolean> {
+    if (!isNativeAdMobAvailable()) return true;
     if (!(await preloadRewarded(placement))) return false;
 
     const adId = rewardedUnitId(placement);
+    let earned = false;
+    let rewardedHandle: PluginListenerHandle | null = null;
+    let dismissedHandle: PluginListenerHandle | null = null;
 
     try {
-      // The plugin resolves only after the earned-reward callback. Never grant
-      // a revival from dismissal or a failed ad presentation.
-      await AdMob.showRewardVideoAd({ adId });
-      preparedRewardedAdIds.delete(adId);
-      void preloadRewarded(placement);
-      return true;
+      // Listen directly to the native Rewarded event to safeguard against
+      // promise rejection or timing issues caused by dismissal on Android.
+      rewardedHandle = await AdMob.addListener(RewardAdPluginEvents.Rewarded, (reward) => {
+        console.log('[AdMob] Rewarded event received:', reward);
+        earned = true;
+      });
+
+      dismissedHandle = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        console.log('[AdMob] Rewarded ad dismissed');
+      });
+
+      const result = await AdMob.showRewardVideoAd();
+      if (result) {
+        earned = true;
+      }
     } catch (error) {
-      console.warn('[AdMob] Rewarded ad did not earn a reward.', error);
+      console.warn('[AdMob] showRewardVideoAd completed or threw:', error);
+      // Even if showRewardVideoAd threw on dismiss, if the Rewarded event fired,
+      // the user successfully watched the ad and earned the reward.
+    } finally {
+      if (rewardedHandle) {
+        await rewardedHandle.remove().catch(() => undefined);
+      }
+      if (dismissedHandle) {
+        await dismissedHandle.remove().catch(() => undefined);
+      }
       preparedRewardedAdIds.delete(adId);
       void preloadRewarded(placement);
-      return false;
     }
+
+    return earned;
   },
 
   async showPrivacyOptions() {

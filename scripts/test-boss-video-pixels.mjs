@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 
-const require = createRequire(import.meta.url);
-const ts = require('typescript');
 const source = await readFile(new URL('../src/game/bossVideoPixels.ts', import.meta.url), 'utf8');
-const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText;
+const js = source.replace(/:\s*(?:Uint8ClampedArray|number|void)/g, '');
 const helperUrl = `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
 const { transformBossVideoPixels } = await import(helperUrl);
 

@@ -6,9 +6,10 @@ import { adManager } from '../managers/AdManager';
 interface Props {
   onFinished: () => void;
   onSkip: () => void;
+  onWatchStateChange?: (watching: boolean) => void;
 }
 
-export default function ContinueAdScreen({ onFinished, onSkip }: Props) {
+export default function ContinueAdScreen({ onFinished, onSkip, onWatchStateChange }: Props) {
   const { t } = useI18n();
   const [hasToken, setHasToken] = useState(false);
   const [tokenCount, setTokenCount] = useState(0);
@@ -30,16 +31,24 @@ export default function ContinueAdScreen({ onFinished, onSkip }: Props) {
   const handleWatchAd = async () => {
     if (isWatching) return;
     setIsWatching(true);
+    onWatchStateChange?.(true);
     setMessage(null);
 
-    const earnedReward = await adManager.showRewarded();
-    if (earnedReward) {
-      onFinished();
-      return;
-    }
+    try {
+      const earnedReward = await adManager.showRewarded();
+      if (earnedReward) {
+        onWatchStateChange?.(false);
+        onFinished();
+        return;
+      }
 
-    setMessage(t('continue.adUnavailable'));
-    setIsWatching(false);
+      setMessage(t('continue.adUnavailable'));
+    } catch {
+      setMessage(t('continue.adUnavailable'));
+    } finally {
+      setIsWatching(false);
+      onWatchStateChange?.(false);
+    }
   };
 
   return (

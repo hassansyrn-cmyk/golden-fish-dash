@@ -99,7 +99,8 @@ function safeVibrate(pattern: number | number[], enabled: boolean) {
 }
 
 function sizeCanvasForDisplay(canvas: HTMLCanvasElement, width: number, height: number) {
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  // Cap devicePixelRatio at 1.5 to maintain retina clarity while cutting GPU fillrate and memory bandwidth by ~45%
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
   canvas.width = Math.round(width * pixelRatio);
   canvas.height = Math.round(height * pixelRatio);
 
@@ -209,30 +210,43 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
     state.invincibleUntil = state.timeMs + invincibleMs;
     state.shakeIntensity = 0; // Reset any camera shake so revive countdown is smooth (no background tremble)
 
+    // Grant 1 shield charge so the player has a safety buffer upon revival
+    state.shieldCharges = Math.max(state.shieldCharges, 1);
+
+    // If a boss is active, clear all active waves and push back boss attacks
+    if (state.boss) {
+      state.boss.waves = [];
+      state.boss.nextWaveAt = state.timeMs + 3500;
+      state.boss.nextSummonAt = state.timeMs + 4500;
+    }
+
+    // Clear all obstacles across an expanded safety window
     state.obstacles = state.obstacles.filter((obs) => {
-      const approximateHalfObstacleWidth = 20;
+      const approximateHalfObstacleWidth = 25;
       const obsRight = obs.x + approximateHalfObstacleWidth;
       const obsLeft = obs.x - approximateHalfObstacleWidth;
 
-      const safelyBehindFish = obsRight < fishX - state.width * 0.25;
-      const farAhead = obsLeft > state.width + 140;
+      const safelyBehindFish = obsRight < fishX - state.width * 0.35;
+      const farAhead = obsLeft > state.width + 180;
 
       return safelyBehindFish || farAhead;
     });
 
     state.sharks = state.sharks.filter((shark) => {
-      return shark.x < fishX - 80 || shark.x > state.width + 100;
+      return shark.x < fishX - 120 || shark.x > state.width + 120;
     });
 
     state.seaMines = state.seaMines.filter((mine) => {
-      return mine.x < fishX - 80 || mine.x > state.width + 100;
+      return mine.x < fishX - 120 || mine.x > state.width + 120;
     });
 
     state.jellyfish = state.jellyfish.filter((jelly) => {
-      return jelly.x < fishX - 80 || jelly.x > state.width + 100;
+      return jelly.x < fishX - 120 || jelly.x > state.width + 120;
     });
 
-    state.elapsedSinceSpawn = -850;
+    state.elapsedSinceSpawn = -1600;
+
+    setHudState(readHudState(state));
 
     audioManager.playSound('reward', settings.sound);
     safeVibrate([45, 35, 45], settings.vibration);

@@ -502,9 +502,16 @@ function minionArtFor(bossId: BossId, kind: BossSummonKind, summonIndex: number,
   return choice[round % choice.length];
 }
 
+interface BossVideoRenderer {
+  canvas: HTMLCanvasElement;
+  render: (video: HTMLVideoElement, w: number, h: number) => boolean;
+  dispose: () => void;
+}
+
 interface BossVideoFrame {
   canvas: HTMLCanvasElement;
-  context: CanvasRenderingContext2D;
+  context?: CanvasRenderingContext2D | null;
+  glRenderer?: BossVideoRenderer | null;
   lastTime: number;
 }
 
@@ -579,6 +586,112 @@ function drawMinionSprite(ctx: CanvasRenderingContext2D, artId: MinionArtId, tim
   return true;
 }
 
+function createBossWebGLRenderer(width: number, height: number): BossVideoRenderer | null {
+  if (typeof document === 'undefined') return null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const gl = canvas.getContext('webgl', {
+      alpha: true,
+      premultipliedAlpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      preserveDrawingBuffer: true,
+    });
+    if (!gl) return null;
+
+    const vs = gl.createShader(gl.VERTEX_SHADER)!;
+    gl.shaderSource(
+      vs,
+      `attribute vec2 aPos;
+       varying vec2 vUv;
+       void main() {
+         vUv = aPos * 0.5 + 0.5;
+         gl_Position = vec4(aPos.x, -aPos.y, 0.0, 1.0);
+       }`,
+    );
+    gl.compileShader(vs);
+    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) return null;
+
+    const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
+    gl.shaderSource(
+      fs,
+      `precision mediump float;
+       varying vec2 vUv;
+       uniform sampler2D uTex;
+       void main() {
+         vec2 colorCoord = vec2(vUv.x, vUv.y * 0.5);
+         vec2 matteCoord = vec2(vUv.x, vUv.y * 0.5 + 0.5);
+         vec4 c = texture2D(uTex, colorCoord);
+         float matte = texture2D(uTex, matteCoord).r;
+         if (matte <= 0.1882) {
+           gl_FragColor = vec4(0.0);
+         } else {
+           vec3 lifted = pow(c.rgb, vec3(0.60));
+           gl_FragColor = vec4(lifted, 1.0);
+         }
+       }`,
+    );
+    gl.compileShader(fs);
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) return null;
+
+    const program = gl.createProgram()!;
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null;
+    gl.useProgram(program);
+
+    const posBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+    const posAttr = gl.getAttribLocation(program, 'aPos');
+    gl.enableVertexAttribArray(posAttr);
+    gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+
+    const texture = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    return {
+      canvas,
+      render(video: HTMLVideoElement, w: number, h: number) {
+        try {
+          if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+            gl.viewport(0, 0, w, h);
+          }
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      dispose() {
+        try {
+          gl.deleteTexture(texture);
+          gl.deleteProgram(program);
+          gl.deleteShader(vs);
+          gl.deleteShader(fs);
+          gl.deleteBuffer(posBuf);
+        } catch {}
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 function getBossVideo(config: BossConfig) {
   if (typeof document === 'undefined' || !config.alphaVideoPath) return null;
   let video = bossVideoCache.get(config.id);
@@ -589,7 +702,7 @@ function getBossVideo(config: BossConfig) {
     video.defaultMuted = true;
     video.loop = true;
     video.playsInline = true;
-    video.preload = 'auto';
+    video.preload = 'metadata';
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
     bossVideoCache.set(config.id, video);
@@ -606,9 +719,17 @@ function startBossVideo(config: BossConfig) {
 
 function stopBossVideo(config: BossConfig) {
   const video = bossVideoCache.get(config.id);
-  if (!video) return;
-  video.pause();
-  video.currentTime = 0;
+  if (video) {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    bossVideoCache.delete(config.id);
+  }
+  const frame = bossVideoFrameCache.get(config.id);
+  if (frame) {
+    frame.glRenderer?.dispose();
+    bossVideoFrameCache.delete(config.id);
+  }
 }
 
 function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
@@ -618,29 +739,33 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
 
   let frame = bossVideoFrameCache.get(config.id);
   if (!frame) {
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-    frame = { canvas, context, lastTime: -1 };
+    const glRenderer = createBossWebGLRenderer(frameWidth, frameHeight);
+    if (glRenderer) {
+      frame = { canvas: glRenderer.canvas, glRenderer, lastTime: -1 };
+    } else {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) return null;
+      frame = { canvas, context, lastTime: -1 };
+    }
     bossVideoFrameCache.set(config.id, frame);
   }
 
-  if (frame.canvas.width !== frameWidth || frame.canvas.height !== video.videoHeight) {
-    frame.canvas.width = frameWidth;
-    frame.canvas.height = video.videoHeight;
-    frame.lastTime = -1;
-  }
-
   if (Math.abs(frame.lastTime - video.currentTime) > 0.0001) {
-    frame.context.drawImage(video, 0, 0, frameWidth, video.videoHeight);
-    const pixels = frame.context.getImageData(0, 0, frameWidth, video.videoHeight);
-    const alphaOffset = frameWidth * frameHeight * 4;
-    transformBossVideoPixels(pixels.data, alphaOffset);
-    frame.context.putImageData(pixels, 0, 0, 0, 0, frameWidth, frameHeight);
-    // The canvas temporarily holds the stacked alpha matte below the artwork.
-    // Clear it after extracting the top frame so browser interpolation cannot leak
-    // its seam as a thin line beneath the rendered boss.
-    frame.context.clearRect(0, frameHeight, frameWidth, video.videoHeight - frameHeight);
+    if (frame.glRenderer) {
+      frame.glRenderer.render(video, frameWidth, frameHeight);
+    } else if (frame.context) {
+      if (frame.canvas.width !== frameWidth || frame.canvas.height !== video.videoHeight) {
+        frame.canvas.width = frameWidth;
+        frame.canvas.height = video.videoHeight;
+      }
+      frame.context.drawImage(video, 0, 0, frameWidth, video.videoHeight);
+      const pixels = frame.context.getImageData(0, 0, frameWidth, video.videoHeight);
+      const alphaOffset = frameWidth * frameHeight * 4;
+      transformBossVideoPixels(pixels.data, alphaOffset);
+      frame.context.putImageData(pixels, 0, 0, 0, 0, frameWidth, frameHeight);
+      frame.context.clearRect(0, frameHeight, frameWidth, video.videoHeight - frameHeight);
+    }
     frame.lastTime = video.currentTime;
   }
 
@@ -682,8 +807,7 @@ function drawWaterTexture(ctx: CanvasRenderingContext2D, state: EngineState) {
   const driftY = (state.timeMs * 0.004) % tile;
 
   ctx.save();
-  ctx.globalAlpha = 0.09;
-  ctx.globalCompositeOperation = 'soft-light';
+  ctx.globalAlpha = 0.055;
   for (let x = -tile - driftX; x < state.width + tile; x += tile) {
     for (let y = -tile - driftY; y < state.height + tile; y += tile) {
       ctx.drawImage(texture, x, y, tile, tile);
@@ -2045,13 +2169,18 @@ function drawFishPowerUpIndicators(ctx: CanvasRenderingContext2D, state: EngineS
   if (state.magnetUntil > state.timeMs || isFever) {
     const magPulse = (Math.sin(state.timeMs * 0.009) + 1) / 2;
     ctx.save();
+    // Fast aura fill instead of heavy Gaussian blur
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (isFever ? 2.05 : 1.6), 0, Math.PI * 2);
+    ctx.fillStyle = isFever ? 'rgba(224, 64, 251, 0.18)' : 'rgba(255, 109, 0, 0.16)';
+    ctx.fill();
     ctx.shadowColor = isFever ? '#e040fb' : '#ff6d00';
-    ctx.shadowBlur = isFever ? 44 : 32 + magPulse * 14;
-    ctx.globalAlpha = 0.4 + magPulse * 0.25;
+    ctx.shadowBlur = isFever ? 8 : 6;
+    ctx.globalAlpha = 0.55 + magPulse * 0.25;
     ctx.beginPath();
     ctx.arc(0, 0, r * (isFever ? 1.85 : 1.45), 0, Math.PI * 2);
     ctx.strokeStyle = isFever ? '#e040fb' : '#ff9500';
-    ctx.lineWidth = isFever ? 4.0 : 2.5;
+    ctx.lineWidth = isFever ? 3.5 : 2.5;
     ctx.stroke();
     ctx.restore();
   }
@@ -2061,7 +2190,7 @@ function drawFishPowerUpIndicators(ctx: CanvasRenderingContext2D, state: EngineS
     ctx.save();
     ctx.globalAlpha = 0.45 + rushPulse * 0.25;
     ctx.shadowColor = '#ffd54f';
-    ctx.shadowBlur = 14 + rushPulse * 10;
+    ctx.shadowBlur = 6;
     ctx.strokeStyle = '#fff3a6';
     ctx.lineWidth = 1.8;
     ctx.setLineDash([3, 4]);
@@ -2128,8 +2257,17 @@ function drawFish(ctx: CanvasRenderingContext2D, state: EngineState, fishX: numb
       ctx.restore();
     }
     ctx.save();
+    // Fast outer aura instead of 32px Gaussian blur
+    ctx.save();
+    ctx.globalAlpha = 0.22 + pulse * 0.15;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 1.5, r * 1.1, 0, 0, Math.PI * 2);
+    ctx.fillStyle = isFever ? '#e040fb' : glow;
+    ctx.fill();
+    ctx.restore();
+
     ctx.shadowColor = isFever ? '#e040fb' : glow;
-    ctx.shadowBlur = isFever ? 32 : id === 'legendary' ? 30 : id === 'diamond' ? 24 : 16;
+    ctx.shadowBlur = isFever ? 8 : 6;
 
     // Tiny bubble and sparkle wake: visual only, kept behind the fish so it
     // never obscures obstacles or changes collision behaviour.
@@ -2400,7 +2538,7 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   }
   const tailSway = Math.sin(timeMs * 0.014 + shark.bobPhase) * 0.17;
   ctx.shadowColor = '#d32f2f';
-  ctx.shadowBlur = 15 + pulse * 6;
+  ctx.shadowBlur = 4;
 
   // Shark Body
   const sharkBodyGrad = ctx.createLinearGradient(-shark.width / 2, 0, shark.width / 2, 0);
@@ -2603,7 +2741,7 @@ function drawBossEncounter(ctx: CanvasRenderingContext2D, state: EngineState) {
   const travelAlpha = boss.phase === 'retreating' ? Math.max(0.34, 1 - retreatProgress * 0.58) : 1;
   ctx.globalAlpha = travelAlpha;
   ctx.shadowColor = config.secondaryAccent;
-  ctx.shadowBlur = 16 * pulse;
+  ctx.shadowBlur = 0;
   const videoFrame = videoReady && bossVideo ? getBossVideoFrame(config, bossVideo) : null;
   if (videoFrame) {
     const animationSize = boss.width * 1.36 * (config.artScale ?? 1);
@@ -2727,7 +2865,7 @@ function drawSeaMine(ctx: CanvasRenderingContext2D, mine: SeaMine, timeMs: numbe
     return;
   }
   ctx.shadowColor = '#ff8f00';
-  ctx.shadowBlur = 10 + glowAmount * 12;
+  ctx.shadowBlur = 4;
 
   // Compact amber sonar ring communicates danger without expanding the hitbox.
   ctx.save();
@@ -2802,7 +2940,7 @@ function drawJellyfish(ctx: CanvasRenderingContext2D, jelly: Jellyfish, timeMs: 
     return;
   }
   ctx.shadowColor = '#e040fb';
-  ctx.shadowBlur = 12 + pulse * 11;
+  ctx.shadowBlur = 4;
 
   // Soft outer aura makes a jellyfish visible against dense water without
   // widening its collision area.
@@ -2878,13 +3016,16 @@ function drawCoin(ctx: CanvasRenderingContext2D, coin: Coin, timeMs: number) {
   ctx.translate(coin.x, coin.y + Math.sin(timeMs * 0.00115 + coin.x) * 0.85);
   ctx.scale(scaleX, 1);
 
+  // Outer glow rim rendered directly without expensive Gaussian blur pass
+  ctx.beginPath();
+  ctx.arc(0, 0, (coin.bonus ? 12 : 9) + 1.6, 0, Math.PI * 2);
+  ctx.fillStyle = coin.bonus ? 'rgba(255, 179, 71, 0.45)' : 'rgba(255, 242, 117, 0.42)';
+  ctx.fill();
+
   ctx.beginPath();
   ctx.arc(0, 0, coin.bonus ? 12 : 9, 0, Math.PI * 2);
   ctx.fillStyle = coin.bonus ? '#ff9500' : '#ffd60a';
-  ctx.shadowColor = coin.bonus ? '#ffb347' : '#fff275';
-  ctx.shadowBlur = 10;
   ctx.fill();
-  ctx.shadowBlur = 0;
   ctx.strokeStyle = '#a97400';
   ctx.lineWidth = 1.5;
   ctx.stroke();
@@ -2911,7 +3052,7 @@ function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
   if (heartImage?.complete && heartImage.naturalWidth) {
     const size = 18;
     ctx.shadowColor = '#ff1744';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 4;
     ctx.drawImage(heartImage, -size, -size * 0.93, size * 2, size * 1.8);
     ctx.restore();
     return;
@@ -2919,7 +3060,7 @@ function drawGem(ctx: CanvasRenderingContext2D, gem: Gem, timeMs: number) {
 
   // Fallback while the vector asset is loading.
   ctx.shadowColor = '#ff1744';
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = 4;
 
   const size = 15; // Beautiful larger radius
 
@@ -2985,7 +3126,7 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
   if (pu.type === 'shield') {
     // Soft outer blue/cyan halo glow
     ctx.shadowColor = '#00e5ff';
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 5;
 
     const r = 13; // shield base bounding radius
 
@@ -3034,7 +3175,7 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
   } else if (pu.type === 'magnet') {
     // Red horseshoe magnet with silver tips and animated magnetic waves
     ctx.shadowColor = '#ff1744';
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 5;
 
     ctx.save();
     ctx.rotate(Math.PI * 0.15); // slightly tilted for dynamic cartoon feel
@@ -3092,7 +3233,7 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
     ctx.fillStyle = tipGrad;
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 0.5;
+    ctx.lineWidth = 0.8;
     ctx.stroke();
 
     // Right pole
@@ -3117,9 +3258,8 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
   } else if (pu.type === 'fever') {
     // 3D yellow/gold lightning bolt with sparkles
     ctx.save();
-    const starPulse = (Math.sin(timeMs * 0.015) + 1) / 2;
     ctx.shadowColor = '#ffd600';
-    ctx.shadowBlur = 15 + starPulse * 8;
+    ctx.shadowBlur = 6;
 
     // sparkles
     const sparkleAngle = timeMs * 0.005;
@@ -3177,9 +3317,8 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, pu: PowerUp, timeMs: number)
   } else if (pu.type === 'hourglass') {
     // Hourglass with golden frames and cyan sand
     ctx.save();
-    const pulse = (Math.sin(timeMs * 0.008) + 1) / 2;
     ctx.shadowColor = '#00e5ff';
-    ctx.shadowBlur = 15 + pulse * 6;
+    ctx.shadowBlur = 5;
 
     const w = 11; // Plate width
     const h = 13; // Half-height
@@ -3300,15 +3439,15 @@ function drawBubbleBoostRing(ctx: CanvasRenderingContext2D, ring: BubbleBoostRin
   ctx.fill();
 
   ctx.shadowColor = '#00e5ff';
-  ctx.shadowBlur = 18 + pulse * 12;
+  ctx.shadowBlur = 6;
   ctx.strokeStyle = '#7df9ff';
-  ctx.lineWidth = 4 + pulse * 1.4;
+  ctx.lineWidth = 3.5;
   ctx.beginPath();
   ctx.arc(0, 0, ring.radius, 0, Math.PI * 2);
   ctx.stroke();
 
   ctx.shadowColor = '#ffd54f';
-  ctx.shadowBlur = 11 + pulse * 7;
+  ctx.shadowBlur = 4;
   ctx.strokeStyle = '#fff3a6';
   ctx.lineWidth = 1.8;
   ctx.setLineDash([5, 4]);
@@ -3351,9 +3490,8 @@ function drawTreasureChest(ctx: CanvasRenderingContext2D, chest: TreasureChest, 
   ctx.save();
   ctx.translate(chest.x + chest.width / 2, chest.y + chest.height / 2 + wobble);
 
-  const pulse = (Math.sin(timeMs * 0.0028) + 1) / 2;
   ctx.shadowColor = '#ffb300';
-  ctx.shadowBlur = 12 + pulse * 6;
+  ctx.shadowBlur = 6;
 
   ctx.fillStyle = '#5d4037';
   ctx.fillRect(-chest.width / 2, -chest.height / 2 + 8, chest.width, chest.height - 8);
