@@ -156,7 +156,23 @@ const DEFAULT_SETTINGS: Settings = {
   language: detectInitialLanguage(),
 };
 
+let cachedSettings: Settings | null = null;
+let settingsStorageListenerAttached = false;
+
+function attachSettingsStorageListener() {
+  if (settingsStorageListenerAttached || typeof window === 'undefined') return;
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEYS.settings || event.key === null) {
+      cachedSettings = null;
+    }
+  });
+  settingsStorageListenerAttached = true;
+}
+
 export function getSettings(): Settings {
+  attachSettingsStorageListener();
+  if (cachedSettings) return { ...cachedSettings };
+
   const saved = readJSON<Partial<Settings>>(STORAGE_KEYS.settings, {});
   const language: AppLanguage = saved.language === 'ar' || saved.language === 'en'
     ? saved.language
@@ -168,10 +184,12 @@ export function getSettings(): Settings {
     writeJSON(STORAGE_KEYS.settings, settings);
   }
 
-  return settings;
+  cachedSettings = settings;
+  return { ...settings };
 }
 
 export function setSettings(settings: Settings) {
+  cachedSettings = { ...settings };
   writeJSON(STORAGE_KEYS.settings, settings);
 }
 

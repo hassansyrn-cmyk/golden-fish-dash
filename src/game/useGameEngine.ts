@@ -499,7 +499,16 @@ export function useGameEngine({ canvasRef, active, paused, skin, onGameOver }: U
 
           if (now - lastHudRefreshRef.current >= 100) {
             lastHudRefreshRef.current = now;
-            setHudState(readHudState(state));
+            const nextHudState = readHudState(state);
+            setHudState((current) =>
+              current.shieldCharges === nextHudState.shieldCharges &&
+              current.magnetRemainingMs === nextHudState.magnetRemainingMs &&
+              current.feverRemainingMs === nextHudState.feverRemainingMs &&
+              current.hourglassRemainingMs === nextHudState.hourglassRemainingMs &&
+              current.dropRushRemainingMs === nextHudState.dropRushRemainingMs
+                ? current
+                : nextHudState,
+            );
 
             const challenge = miniChallengeRef.current;
             if (challenge?.status === 'active') {

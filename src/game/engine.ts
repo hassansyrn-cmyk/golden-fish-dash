@@ -9,6 +9,7 @@
 import { BASE, SKINS } from './constants';
 import type { SkinId, FloatingText } from './types';
 import { translate } from './i18n';
+import { transformBossVideoPixels } from './bossVideoPixels';
 
 type EnvironmentId = 'lagoon' | 'coral' | 'kelp' | 'ruins' | 'volcanic' | 'temple' | 'abyss' | 'crystal' | 'moonlit' | 'sunkenCity' | 'aurora' | 'crownReef' | 'eternalTemple';
 
@@ -634,29 +635,7 @@ function getBossVideoFrame(config: BossConfig, video: HTMLVideoElement) {
     frame.context.drawImage(video, 0, 0, frameWidth, video.videoHeight);
     const pixels = frame.context.getImageData(0, 0, frameWidth, video.videoHeight);
     const alphaOffset = frameWidth * frameHeight * 4;
-    for (let index = 0; index < alphaOffset; index += 4) {
-      // Use the matte only to separate the black video backdrop from the boss.
-      // The boss itself stays fully opaque, preserving the rich original RGB
-      // values instead of letting a soft matte darken it over the game world.
-      const matte = pixels.data[alphaOffset + index];
-      // H.264 compression leaves faint low-level matte residue at the bottom edge.
-      // Treat it as transparent to prevent the thin dark line beneath every boss.
-      if (matte <= 48) {
-        pixels.data[index] = 0;
-        pixels.data[index + 1] = 0;
-        pixels.data[index + 2] = 0;
-        pixels.data[index + 3] = 0;
-        continue;
-      }
-      // The H.264 source is authored on black. A gentle gamma lift restores
-      // the original perceived brightness on the underwater game background
-      // without shifting the boss palette or blowing out its highlights.
-      const lift = (channel: number) => Math.min(255, Math.round(255 * Math.pow(channel / 255, 0.60)));
-      pixels.data[index] = lift(pixels.data[index]);
-      pixels.data[index + 1] = lift(pixels.data[index + 1]);
-      pixels.data[index + 2] = lift(pixels.data[index + 2]);
-      pixels.data[index + 3] = 255;
-    }
+    transformBossVideoPixels(pixels.data, alphaOffset);
     frame.context.putImageData(pixels, 0, 0, 0, 0, frameWidth, frameHeight);
     // The canvas temporarily holds the stacked alpha matte below the artwork.
     // Clear it after extracting the top frame so browser interpolation cannot leak

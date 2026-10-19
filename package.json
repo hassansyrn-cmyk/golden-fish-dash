@@ -1,6 +1,6 @@
 {
   "name": "@workspace/golden-fish-rush",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:performance": "node scripts/test-boss-video-pixels.mjs",
     "cap:sync": "cap sync android",
     "cap:open:android": "cap open android"
   },

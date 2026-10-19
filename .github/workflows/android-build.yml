@@ -44,6 +44,9 @@ jobs:
       - name: Type-check game source
         run: pnpm typecheck
 
+      - name: Verify boss pixel equivalence
+        run: node scripts/test-boss-video-pixels.mjs
+
       - name: Set up Java JDK 21
         uses: actions/setup-java@v5
         with:
