@@ -2531,6 +2531,7 @@ function drawShark(ctx: CanvasRenderingContext2D, shark: PredatorShark, timeMs: 
   ctx.translate(shark.x, shark.y);
   ctx.rotate(Math.sin(timeMs * 0.004 + shark.bobPhase) * 0.045);
 
+  const pulse = (Math.sin(timeMs * 0.005) + 1) / 2;
   if (shark.minionArt && drawMinionSprite(ctx, shark.minionArt, timeMs, shark.bobPhase, shark.width * 1.28)) {
     ctx.restore();
     return;
