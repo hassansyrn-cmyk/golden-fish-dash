@@ -1,2 +1,4 @@
 minimumReleaseAgeExclude:
   - '@capacitor-community/admob@8.1.0'
+patchedDependencies:
+  '@capacitor-community/admob@8.1.0': patches/@capacitor-community__admob@8.1.0.patch

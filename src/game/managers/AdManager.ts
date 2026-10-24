@@ -5,6 +5,7 @@ import {
   BannerAdPosition,
   BannerAdSize,
   MaxAdContentRating,
+  RewardAdPluginEvents,
 } from '@capacitor-community/admob';
 
 const GOOGLE_TEST_UNITS = {
@@ -42,12 +43,170 @@ type RewardedPlacement = 'gameplay' | 'luckySpin';
 const preparedRewardedAdIds = new Set<string>();
 let interstitialPrepared = false;
 
+interface AdMobAdapterDiagnostic {
+  adapterClassName?: string;
+  latencyMillis?: number;
+  description?: string;
+}
+
+interface AdMobResponseDiagnostic {
+  responseId?: string;
+  mediationAdapterClassName?: string;
+  adapterResponses?: AdMobAdapterDiagnostic[];
+}
+
+interface AdMobErrorDiagnostic {
+  code?: number;
+  domain?: string;
+  message: string;
+  responseInfo?: AdMobResponseDiagnostic;
+}
+
+export interface AdMobDiagnostic {
+  at: string;
+  stage: string;
+  mode: 'google-test-units' | 'production-units';
+  placement?: RewardedPlacement | 'rewarded';
+  error?: AdMobErrorDiagnostic;
+  consent?: {
+    status: string;
+    isConsentFormAvailable: boolean;
+    canRequestAds: boolean;
+  };
+}
+
+const MAX_DIAGNOSTICS = 20;
+const diagnostics: AdMobDiagnostic[] = [];
+const enrichedLoadFailures = new Map<string, number>();
+const enrichedShowFailures = new Map<string, number>();
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function safeString(value: unknown, maxLength = 500): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return value.replace(/[\r\n\t]+/g, ' ').slice(0, maxLength);
+}
+
+function normalizeError(error: unknown): AdMobErrorDiagnostic {
+  const value = asRecord(error);
+  const rawMessage = safeString(value.message) ?? safeString(error instanceof Error ? error.message : error);
+  const rawCode = value.code;
+  const response = asRecord(value.responseInfo);
+  const adapterResponses = Array.isArray(response.adapterResponses)
+    ? response.adapterResponses.slice(0, 8).map((item) => {
+        const adapter = asRecord(item);
+        const latency = adapter.latencyMillis;
+        return {
+          ...(safeString(adapter.adapterClassName, 200)
+            ? { adapterClassName: safeString(adapter.adapterClassName, 200) }
+            : {}),
+          ...(typeof latency === 'number' && Number.isFinite(latency)
+            ? { latencyMillis: latency }
+            : {}),
+          ...(safeString(adapter.description)
+            ? { description: safeString(adapter.description) }
+            : {}),
+        } satisfies AdMobAdapterDiagnostic;
+      })
+    : undefined;
+  const responseInfo: AdMobResponseDiagnostic = {
+    ...(safeString(response.responseId, 200)
+      ? { responseId: safeString(response.responseId, 200) }
+      : {}),
+    ...(safeString(response.mediationAdapterClassName, 200)
+      ? { mediationAdapterClassName: safeString(response.mediationAdapterClassName, 200) }
+      : {}),
+    ...(adapterResponses?.length ? { adapterResponses } : {}),
+  };
+
+  return {
+    ...(typeof rawCode === 'number' && Number.isFinite(rawCode) ? { code: rawCode } : {}),
+    ...(safeString(value.domain, 200) ? { domain: safeString(value.domain, 200) } : {}),
+    message: rawMessage ?? 'No error message was supplied by the native plugin.',
+    ...(Object.keys(responseInfo).length ? { responseInfo } : {}),
+  };
+}
+
+function snapshotDiagnostics(): AdMobDiagnostic[] {
+  return JSON.parse(JSON.stringify(diagnostics)) as AdMobDiagnostic[];
+}
+
+if (typeof window !== 'undefined') {
+  const developerWindow = window as Window & {
+    __goldenFishAdMobDiagnostics?: () => AdMobDiagnostic[];
+  };
+  developerWindow.__goldenFishAdMobDiagnostics = snapshotDiagnostics;
+}
+
+function recordDiagnostic(
+  stage: string,
+  options: {
+    placement?: RewardedPlacement | 'rewarded';
+    error?: unknown;
+    consent?: AdMobDiagnostic['consent'];
+    level?: 'info' | 'warn';
+  } = {},
+) {
+  const entry: AdMobDiagnostic = {
+    at: new Date().toISOString(),
+    stage,
+    mode: testing ? 'google-test-units' : 'production-units',
+    ...(options.placement ? { placement: options.placement } : {}),
+    ...(options.error !== undefined ? { error: normalizeError(options.error) } : {}),
+    ...(options.consent ? { consent: options.consent } : {}),
+  };
+  diagnostics.push(entry);
+  if (diagnostics.length > MAX_DIAGNOSTICS) diagnostics.shift();
+
+  const serialized = JSON.stringify(entry);
+  if (options.level === 'info') {
+    console.info('[AdMob][diagnostic]', serialized);
+  } else {
+    console.warn('[AdMob][diagnostic]', serialized);
+  }
+}
+
 function rewardedUnitId(placement: RewardedPlacement) {
   return placement === 'luckySpin' ? units.luckySpinRewarded : units.rewarded;
 }
 
+function placementForAdUnit(adUnitId: unknown): RewardedPlacement | 'rewarded' | undefined {
+  if (typeof adUnitId !== 'string') return undefined;
+  if (units.rewarded === units.luckySpinRewarded && adUnitId === units.rewarded) return 'rewarded';
+  if (adUnitId === units.rewarded) return 'gameplay';
+  if (adUnitId === units.luckySpinRewarded) return 'luckySpin';
+  return undefined;
+}
+
 function isNativeAdMobAvailable() {
   return Capacitor.isNativePlatform();
+}
+
+async function initializeDiagnosticListeners() {
+  try {
+    await Promise.all([
+      AdMob.addListener(RewardAdPluginEvents.FailedToLoad, (error) => {
+        const adUnitId = asRecord(error).adUnitId;
+        if (typeof adUnitId === 'string') enrichedLoadFailures.set(adUnitId, Date.now());
+        recordDiagnostic('rewarded_load_failed', {
+          placement: placementForAdUnit(adUnitId),
+          error,
+        });
+      }),
+      AdMob.addListener(RewardAdPluginEvents.FailedToShow, (error) => {
+        const message = normalizeError(error).message;
+        enrichedShowFailures.set(message, Date.now());
+        recordDiagnostic('rewarded_show_failed', { error });
+      }),
+    ]);
+  } catch (error) {
+    // Diagnostics must never prevent ad initialization or requests.
+    recordDiagnostic('diagnostic_listener_setup_failed', { error });
+  }
 }
 
 async function initialize(): Promise<boolean> {
@@ -68,7 +227,13 @@ async function initialize(): Promise<boolean> {
         }
 
         if (!consentInfo.canRequestAds) {
-          console.warn('[AdMob] Ads are paused until consent allows ad requests.');
+          recordDiagnostic('consent_blocked', {
+            consent: {
+              status: String(consentInfo.status),
+              isConsentFormAvailable: Boolean(consentInfo.isConsentFormAvailable),
+              canRequestAds: false,
+            },
+          });
           return false;
         }
       }
@@ -77,9 +242,11 @@ async function initialize(): Promise<boolean> {
         initializeForTesting: testing,
         maxAdContentRating: MaxAdContentRating.ParentalGuidance,
       });
+      await initializeDiagnosticListeners();
+      recordDiagnostic('sdk_initialized', { level: 'info' });
       return true;
     } catch (error) {
-      console.warn('[AdMob] SDK initialization failed.', error);
+      recordDiagnostic('sdk_initialization_failed', { error });
       return false;
     }
   })();
@@ -93,6 +260,7 @@ async function preloadRewarded(placement: RewardedPlacement = 'gameplay') {
   const adId = rewardedUnitId(placement);
   if (preparedRewardedAdIds.has(adId)) return true;
 
+  enrichedLoadFailures.delete(adId);
   try {
     await AdMob.prepareRewardVideoAd({
       adId,
@@ -102,7 +270,11 @@ async function preloadRewarded(placement: RewardedPlacement = 'gameplay') {
     preparedRewardedAdIds.add(adId);
     return true;
   } catch (error) {
-    console.warn('[AdMob] Rewarded ad was not available.', error);
+    const observedAt = enrichedLoadFailures.get(adId);
+    if (!observedAt || Date.now() - observedAt > 5000) {
+      recordDiagnostic('rewarded_load_failed', { placement, error });
+    }
+    enrichedLoadFailures.delete(adId);
     preparedRewardedAdIds.delete(adId);
     return false;
   }
@@ -121,7 +293,7 @@ async function preloadInterstitial() {
     interstitialPrepared = true;
     return true;
   } catch (error) {
-    console.warn('[AdMob] Interstitial ad was not available.', error);
+    recordDiagnostic('interstitial_load_failed', { error });
     interstitialPrepared = false;
     return false;
   }
@@ -131,6 +303,7 @@ export const adManager = {
   isNative: isNativeAdMobAvailable,
   isTesting: () => testing,
   getTestAppId: () => GOOGLE_TEST_UNITS.appId,
+  getDiagnostics: snapshotDiagnostics,
 
   async initializeAndPreload() {
     const ready = await initialize();
@@ -157,7 +330,12 @@ export const adManager = {
       void preloadRewarded(placement);
       return true;
     } catch (error) {
-      console.warn('[AdMob] Rewarded ad did not earn a reward.', error);
+      const message = normalizeError(error).message;
+      const observedAt = enrichedShowFailures.get(message);
+      if (!observedAt || Date.now() - observedAt > 5000) {
+        recordDiagnostic('rewarded_show_failed', { placement, error });
+      }
+      enrichedShowFailures.delete(message);
       preparedRewardedAdIds.delete(adId);
       void preloadRewarded(placement);
       return false;
@@ -173,7 +351,7 @@ export const adManager = {
       void preloadInterstitial();
       return true;
     } catch (error) {
-      console.warn('[AdMob] Interstitial ad was not shown.', error);
+      recordDiagnostic('interstitial_show_failed', { error });
       interstitialPrepared = false;
       void preloadInterstitial();
       return false;
@@ -193,7 +371,7 @@ export const adManager = {
       });
       return true;
     } catch (error) {
-      console.warn('[AdMob] Banner ad was not available.', error);
+      recordDiagnostic('banner_load_failed', { error });
       return false;
     }
   },
@@ -213,7 +391,7 @@ export const adManager = {
       await AdMob.showPrivacyOptionsForm();
       return true;
     } catch (error) {
-      console.warn('[AdMob] Privacy options form was not available.', error);
+      recordDiagnostic('privacy_options_form_failed', { error });
       return false;
     }
   },

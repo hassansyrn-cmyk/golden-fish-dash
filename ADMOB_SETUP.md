@@ -54,3 +54,8 @@ Production unit IDs may be overridden with `VITE_ADMOB_BANNER_ID`, `VITE_ADMOB_I
 ## Closed-testing validation
 
 Test on a physical Android device with `VITE_ADMOB_TESTING=true`. Confirm that the banner appears on menu and game-over screens only, the rewarded continue and double-reward flows grant rewards only after the SDK confirms them, Lucky Spin uses its dedicated rewarded unit, and the interstitial appears after every third completed run. Review the Privacy Policy, Google Play Data safety form, and AdMob consent configuration before any production publication.
+
+
+## Developer diagnostics
+
+On a device build, AdMob diagnostics are emitted as structured `[AdMob][diagnostic]` console records and retained in memory (the latest 20 events). From an attached WebView JavaScript console, run `window.__goldenFishAdMobDiagnostics()` to retrieve a snapshot. Records include the build's test-versus-production unit mode, stage, placement where known, SDK error code/domain/message, and a bounded response summary (response ID, mediation adapter, and at most eight adapter responses). They omit ad request extras, credentials, stack traces, and player identifiers; nothing is uploaded or persisted by this diagnostic path.
